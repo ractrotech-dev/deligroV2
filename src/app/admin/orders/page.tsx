@@ -1,4 +1,5 @@
 import { requireRole } from "@/lib/auth";
+import { cashDue } from "@/lib/wallet/money";
 import Link from "next/link";
 import { AutoRefresh } from "@/components/shared/auto-refresh";
 import { formatINR } from "@/lib/utils/format";
@@ -136,6 +137,13 @@ function ItemsCell({
 }
 
 /** The line under the payment method: what is still owed, if anything. */
+/** How the order is being paid, in one word or two. */
+function paymentWord(o: { paymentMethod?: string; total: number; pointsUsed?: number }): string {
+  if (o.paymentMethod === "online") return "Online";
+  if (!o.pointsUsed) return "Cash";
+  return cashDue(o.total, o.pointsUsed) > 0 ? "Cash and points" : "Points";
+}
+
 function PaymentNote({ order: o }: Readonly<{ order: AdminOrderRow }>) {
   if (
     o.paymentMethod === "cod" &&
@@ -310,7 +318,7 @@ function renderOrders(
         o.paymentMethod ? (
           <div className="min-w-0">
             <p className="truncate text-[12px] text-ink">
-              {o.paymentMethod === "online" ? "Online" : "Cash"}
+              {paymentWord(o)}
             </p>
             <PaymentNote order={o} />
           </div>

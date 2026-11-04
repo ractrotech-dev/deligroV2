@@ -75,6 +75,8 @@ interface SettingsRow {
   feature_online_payment?: boolean;
   feature_cash_payment?: boolean;
   cash_limit_per_order?: number | string;
+  feature_wallet?: boolean;
+  wallet_change_max_per_order?: number | string;
   review_window_days?: number;
   review_edit_window_hours?: number;
   rider_apk_version_code?: number;
@@ -142,6 +144,15 @@ const OPTIONAL_GROUPS = [
     write: (input: PlatformSettings): Record<string, unknown> => ({
       feature_cash_payment: input.featureCashPayment,
       cash_limit_per_order: input.cashLimitPerOrder,
+    }),
+  },
+  {
+    /** Migration 0197. The wallet switch and the per-order limit arrive together. */
+    key: "platform_settings.feature_wallet",
+    select: "feature_wallet, wallet_change_max_per_order",
+    write: (input: PlatformSettings): Record<string, unknown> => ({
+      feature_wallet: input.featureWallet,
+      wallet_change_max_per_order: input.walletChangeMaxPerOrder,
     }),
   },
   {
@@ -362,6 +373,13 @@ function mapSettings(row: SettingsRow): PlatformSettings {
       0,
       Math.round(Number(row.cash_limit_per_order ?? DEFAULT_SETTINGS.cashLimitPerOrder)) || 0,
     ),
+    // Absent columns (pre-0197) read as wallet off: no points can move.
+    featureWallet: row.feature_wallet ?? DEFAULT_SETTINGS.featureWallet,
+    walletChangeMaxPerOrder: Math.max(
+      1,
+      Math.round(Number(row.wallet_change_max_per_order ?? DEFAULT_SETTINGS.walletChangeMaxPerOrder)) ||
+        DEFAULT_SETTINGS.walletChangeMaxPerOrder,
+    ),
     // Absent columns (pre-0033) fall back to the shared defaults, so the review
     // windows behave identically before the migration lands.
     reviewWindowDays: Number(
@@ -565,6 +583,13 @@ export async function cashLimitAvailable(): Promise<boolean> {
   const supabase = await createClient();
   await availableGroups(supabase);
   return !columnKnownMissing("platform_settings.cash_limit_per_order");
+}
+
+/** Are the 0197 wallet columns in this database? False only when the probe found them missing. */
+export async function walletSettingsAvailable(): Promise<boolean> {
+  const supabase = await createClient();
+  await availableGroups(supabase);
+  return !columnKnownMissing("platform_settings.feature_wallet");
 }
 
 /** Is the 0086 column in this database? False only when the probe found it missing. */

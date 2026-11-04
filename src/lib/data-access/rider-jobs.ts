@@ -19,6 +19,7 @@ import {
   acceptDelivery,
   activeCustomerPhone,
   activeOrderDetail,
+  driverPaymentFor,
   paymentInstruction,
   pointOf,
   readPoolPayments,
@@ -43,6 +44,7 @@ import {
   type RejectReason,
 } from "@/lib/rider/offer-window";
 import { podPhotoRequired } from "@/lib/rider/delivery-machine";
+import { walletChangeState } from "@/lib/data-access/wallet";
 import { riderDeliveryStatus, type RiderDeliveryStatus } from "@/lib/rider/figures";
 import { isCashOrder } from "@/lib/data-access/rider-delivery-actions";
 import type { PlatformSettings } from "@/types";
@@ -178,6 +180,8 @@ export interface RiderJobOptions {
   settings?: PlatformSettings;
   /** `driver.call_customer`; read from the feature switches when omitted. */
   canCall?: boolean;
+  /** `driver.cod_change`; read from the feature switches when omitted. */
+  canAddChange?: boolean;
   /** Tests: the routing server and the fetch that reaches it, and how a ring is stopped. */
   routingBaseUrl?: string;
   fetch?: typeof fetch;
@@ -715,6 +719,7 @@ async function readActive(
   presence: RiderPresence | null,
   settings: PlatformSettings,
   canCall: boolean,
+  canAddChange: boolean,
   now: number
 ): Promise<RiderActive | null> {
   const delivery = await readActiveDelivery(supabase, driverId);
@@ -738,10 +743,10 @@ async function readActive(
   ]);
 
   const status = deliveryStatus(delivery);
-  const payment: DriverPayment = (() => {
-    const instruction = paymentInstruction(detail);
-    return { instruction, collectAmount: instruction === "collect" ? (order.total ?? 0) : 0 };
-  })();
+  const payment: DriverPayment = {
+    ...driverPaymentFor(detail, order.total),
+    walletChange: await walletChangeState(supabase, order.id, settings, canAddChange),
+  };
 
   const shop = shopStop(order);
   const drop = dropStop(order);
@@ -827,16 +832,16 @@ export async function getRiderBoard(
   const settings = opts.settings ?? (await getSettings());
   const windowSeconds =
     opts.windowSeconds ?? normalizeOfferWindow(settings.riderOfferWindowSeconds);
-  const [presence, canCall] = await Promise.all([
+  const [presence, features] = await Promise.all([
     readRiderPresence(driverId, now),
-    opts.canCall !== undefined
-      ? Promise.resolve(opts.canCall)
-      : getFeatures("driver", driverId).then((f) => f["driver.call_customer"] !== false),
+    getFeatures("driver", driverId),
   ]);
+  const canCall = opts.canCall ?? features["driver.call_customer"] !== false;
+  const canAddChange = opts.canAddChange ?? features["driver.cod_change"] !== false;
 
   const [{ offers, upcoming }, active] = await Promise.all([
     readOffersAndUpcoming(supabase, driverId, presence, windowSeconds, settings, now),
-    readActive(supabase, driverId, presence, settings, canCall, now),
+    readActive(supabase, driverId, presence, settings, canCall, canAddChange, now),
   ]);
 
   return {

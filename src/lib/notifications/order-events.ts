@@ -399,6 +399,20 @@ export function notifyDelivered(orderId: string): Promise<void> {
   );
 }
 
+/** A rider added the change from a cash order to the customer's wallet. */
+export function notifyWalletChangeAdded(orderId: string, change: number): Promise<void> {
+  const id = shortOrderId(orderId);
+  return notifyCustomer(
+    orderId,
+    { en: `₹${change} added to your wallet`, hi: `₹${change} आपके वॉलेट में जुड़े` },
+    {
+      en: `The change from order #${id} is now in your wallet as ${change} points. Use them on your next order.`,
+      hi: `ऑर्डर #${id} के बचे पैसे अब आपके वॉलेट में ${change} पॉइंट के रूप में हैं। अगले ऑर्डर में इस्तेमाल करें।`,
+    },
+    { collapseId: `wallet-${orderId}` }
+  );
+}
+
 /**
  * Cancelled. `byVendor` changes the wording because the two cases are not the
  * same message: a customer who cancelled knows why, and one whose order the

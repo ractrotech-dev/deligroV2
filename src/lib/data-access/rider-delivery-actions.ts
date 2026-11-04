@@ -20,6 +20,8 @@ import {
   latchFor,
 } from "@/lib/data-access/driver-orders";
 import { RiderSchemaPendingError } from "@/lib/data-access/rider-status";
+import { readOrderPoints } from "@/lib/data-access/wallet";
+import { cashDue } from "@/lib/wallet/money";
 import {
   columnKnownMissing,
   isMissingColumn,
@@ -220,6 +222,8 @@ interface OrderRow {
   total: number | null;
   payment_method?: PaymentMethod | null;
   payment_status?: PaymentStatus | null;
+  /** Wallet points on the order (0197). Cash due = total − this. */
+  wallet_points_used?: number;
 }
 
 /**
@@ -233,12 +237,13 @@ async function readOrder(
 ): Promise<{ order: OrderRow | null }> {
   const read = (columns: string) =>
     supabase.from("orders").select(columns).eq("id", orderId).maybeSingle().overrideTypes<OrderRow>();
+  const pointsUsed = (await readOrderPoints(supabase, [orderId])).get(orderId) ?? 0;
 
   if (!columnKnownMissing(PAYMENT_COLUMNS)) {
     const { data, error } = await read("status, total, payment_method, payment_status");
     if (!error) {
       rememberColumn(PAYMENT_COLUMNS, true);
-      return { order: data };
+      return { order: data ? { ...data, wallet_points_used: pointsUsed } : data };
     }
     if (!isMissingColumn(error)) throw error;
     rememberColumn(PAYMENT_COLUMNS, false);
@@ -271,6 +276,7 @@ function machineState(row: DeliveryRow, order: OrderRow | null): MachineState {
 export function isCashOrder(
   order: { payment_method?: PaymentMethod | null; payment_status?: PaymentStatus | null } | null
 ): boolean {
+  // A fully covered wallet order is `paid` (0197), so it stops here too.
   if (order?.payment_status === "paid" || order?.payment_status === "refunded") return false;
   return order?.payment_method == null || order.payment_method === "cod";
 }
@@ -853,6 +859,11 @@ async function deliveryStatus(
  * collect and is left alone; with no payment columns at all (pre-0025) every
  * order was cash by construction.
  *
+ * The amount is the cash due: the bill less any wallet points (0197). Fully covered,
+ * the status is `paid` and there is nothing to record. A rider who added change has
+ * already recorded the full amount received, in the same transaction as the credit:
+ * this write finds the stamp set and leaves it alone.
+ *
  * Once only (`cod_collected_at is null`), so a second completion path can never
  * overwrite the first. Best-effort: a delivery must complete whether or not this
  * write succeeds. The columns are 0047's, and a write naming them on a database
@@ -866,6 +877,7 @@ export async function recordCodCollection(
     total: number | null;
     payment_method?: PaymentMethod | null;
     payment_status?: PaymentStatus | null;
+    wallet_points_used?: number | null;
   } | null
 ): Promise<void> {
   if (!isCashOrder(order)) return;
@@ -876,7 +888,7 @@ export async function recordCodCollection(
         ? supabase
             .from("deliveries")
             .update({
-              cod_collected_amount: order?.total ?? 0,
+              cod_collected_amount: cashDue(order?.total, order?.wallet_points_used),
               cod_collected_at: new Date().toISOString(),
             })
             .eq("id", deliveryId)

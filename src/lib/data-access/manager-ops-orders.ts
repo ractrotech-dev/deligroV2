@@ -2,6 +2,7 @@ import "server-only";
 import { randomUUID } from "node:crypto";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { readByIds } from "@/lib/data-access/scoped-riders";
+import { readOrderPoints } from "@/lib/data-access/wallet";
 import { scopeZoneIds, type ManagerScope } from "@/lib/auth/manager-scope";
 import { COUNTED_ORDER_FILTER, factsFromQueueRow, queueCounts, queueOrderIds, type QueueFactRow, type QueueFacts } from "@/lib/ops/queue";
 import type { DbOrderStatus, DeliveryStatus, OrderDetail, OrderListItem } from "@/lib/ops/order-contract";
@@ -47,6 +48,7 @@ interface ListRow {
   restaurant_id: string;
   total: number | null;
   payment_method: string | null;
+  wallet_points_used?: number | null;
   payment_status: string | null;
   channel: string | null;
   cancelled_by: string | null;
@@ -103,7 +105,12 @@ export function toOpsRow(r: ListRow, riders: Map<string, RiderInfo>): OpsOrderRo
     customerName: one(r.customer)?.full_name?.trim() || null,
     total: r.total ?? 0,
     itemCount: r.order_items?.length ?? 0,
-    payment: { method: r.payment_method, status: r.payment_status },
+    payment: {
+      method: r.payment_method,
+      status: r.payment_status,
+      // 0197. `total` stays the bill; cash due = total − this.
+      pointsUsed: r.wallet_points_used ?? 0,
+    },
     byPhone: r.channel === "phone",
     delivery: d ? { status: d.status, driverId: d.driver_id, pickedUpAt: d.picked_up_at, failedAt: d.failed_at } : null,
     riderName: rider?.name ?? null,
@@ -114,7 +121,18 @@ export function toOpsRow(r: ListRow, riders: Map<string, RiderInfo>): OpsOrderRo
   };
 }
 
+/**
+ * Wallet points on these orders (0197), read on their own so the Manager app keeps
+ * working between deploying this code and applying the migration. Shown to staff, never
+ * used to ask anyone for money, so a failed read shows none rather than failing the list.
+ */
+async function attachPoints(rows: { id: string; wallet_points_used?: number | null }[]): Promise<void> {
+  const points = await readOrderPoints(createAdminClient(), rows.map((r) => r.id)).catch(() => new Map<string, number>());
+  for (const r of rows) r.wallet_points_used = points.get(r.id) ?? 0;
+}
+
 async function withRiders(rows: ListRow[]): Promise<OpsOrderRow[]> {
+  await attachPoints(rows);
   const riders = await loadRiderInfo(rows.map((r) => one(r.deliveries)?.driver_id ?? "").filter(Boolean));
   return rows.map((r) => toOpsRow(r, riders));
 }
@@ -344,6 +362,7 @@ export async function getManagerOrderDetail(
   if (error) throw error;
   if (!data) return null;
   const r = data as unknown as DetailRow;
+  await attachPoints([r]);
   const d = one(r.deliveries);
 
   const [statusEv, deliveryEv, notes, audits, tickets, fix] = await Promise.all([
@@ -446,6 +465,7 @@ export async function getManagerOrderDetail(
         tax: r.tax_amount ?? 0,
         tip: r.tip ?? 0,
         total: r.total ?? 0,
+        pointsUsed: r.wallet_points_used ?? 0,
       },
       pickup: {
         name: shop?.name?.trim() || row.vendor.name,

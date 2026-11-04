@@ -230,6 +230,8 @@ function minutesLate(input: LatenessInput): number | null {
 
 /** `payment_method` / `payment_status` arrive together in 0025. */
 const PAYMENT_COLUMNS = "orders.payment_method";
+/** `wallet_points_used` arrives in 0197. */
+const WALLET_COLUMN = "orders.wallet_points_used";
 /** `accepted_at` / `ready_at` / `cancelled_at` arrive together in 0026. */
 const LIFECYCLE_COLUMNS = "orders.accepted_at";
 /** `tip` arrives in 0013, and is part of the charge breakdown. */
@@ -332,6 +334,7 @@ const UUID_RE =
 // other_charges_per_order is 0034, lifecycle is 0026, payment is 0025, tip is
 // 0013.
 const LIST_GROUPS: ProbeGroup[] = [
+  { key: "wallet", column: WALLET_COLUMN },
   { key: "kitchenPace", column: KITCHEN_PACE_COLUMN },
   { key: "restaurantTerms", column: RESTAURANT_TERM_COLUMN },
   { key: "lifecycle", column: LIFECYCLE_COLUMNS },
@@ -342,6 +345,7 @@ const LIST_GROUPS: ProbeGroup[] = [
 function listColumns(flags: Flags): string {
   return [
     "id, status, total, delivery_fee, tax_amount, created_at",
+    flags.wallet ? ", wallet_points_used" : "",
     flags.tip ? ", tip" : "",
     flags.payment ? ", payment_method, payment_status" : "",
     flags.lifecycle ? ", accepted_at, ready_at" : "",
@@ -389,6 +393,7 @@ interface ListRow {
   tip?: number | null;
   created_at: string;
   payment_method?: PaymentMethod | null;
+  wallet_points_used?: number | null;
   payment_status?: PaymentStatus | null;
   accepted_at?: string | null;
   ready_at?: string | null;
@@ -513,6 +518,7 @@ function mapListRow(
       // rather than calling an unknown payment "cash".
       paymentMethod: r.payment_method ?? undefined,
       paymentStatus: r.payment_status ?? undefined,
+      pointsUsed: r.wallet_points_used ?? 0,
       lateByMinutes: lateBy,
       items,
       itemCount: items.reduce((n, line) => n + line.qty, 0),
@@ -1007,6 +1013,8 @@ export interface AdminOrderDetail {
   total: number;
   paymentMethod: PaymentMethod | null;
   paymentStatus: PaymentStatus | null;
+  /** Wallet points on the order (0197). `total` stays the bill. */
+  pointsUsed: number;
   /** False when this database predates 0025 and every order is COD by definition. */
   paymentKnown: boolean;
   address: { label: string | null; line: string | null };
@@ -1019,6 +1027,7 @@ export interface AdminOrderDetail {
 }
 
 const DETAIL_GROUPS: ProbeGroup[] = [
+  { key: "wallet", column: WALLET_COLUMN },
   { key: "kitchenPace", column: KITCHEN_PACE_COLUMN },
   { key: "lifecycle", column: LIFECYCLE_COLUMNS },
   { key: "payment", column: PAYMENT_COLUMNS },
@@ -1028,6 +1037,7 @@ const DETAIL_GROUPS: ProbeGroup[] = [
 function detailColumns(flags: Flags): string {
   return [
     "id, status, total, delivery_fee, tax_amount, created_at, address",
+    flags.wallet ? ", wallet_points_used" : "",
     flags.tip ? ", tip" : "",
     flags.payment ? ", payment_method, payment_status" : "",
     flags.lifecycle ? ", accepted_at, ready_at, cancelled_at" : "",
@@ -1049,6 +1059,7 @@ interface DetailRow {
   created_at: string;
   address: { label?: string; line?: string } | null;
   payment_method?: PaymentMethod | null;
+  wallet_points_used?: number | null;
   payment_status?: PaymentStatus | null;
   accepted_at?: string | null;
   ready_at?: string | null;
@@ -1214,6 +1225,7 @@ export async function getAdminOrderDetail(
     total: row.total,
     paymentMethod: row.payment_method ?? null,
     paymentStatus: row.payment_status ?? null,
+    pointsUsed: row.wallet_points_used ?? 0,
     paymentKnown: Boolean(flags.payment),
     address: {
       label: row.address?.label?.trim() || null,

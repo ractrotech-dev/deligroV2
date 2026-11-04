@@ -1,4 +1,5 @@
 import { requireRole } from "@/lib/auth";
+import { cashDue } from "@/lib/wallet/money";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
@@ -269,7 +270,7 @@ function WhoAndWhere({ order }: Readonly<{ order: AdminOrderDetail }>) {
           <span className="text-muted">Cash (pre-0025 database)</span>
         ) : (
           <span>
-            {paymentMethodLabel(order.paymentMethod)}
+            {paymentMethodLabel(order)}
             {order.paymentStatus ? (
               <span className={paymentStatusClass(order.paymentStatus)}>
                 {order.paymentStatus}
@@ -291,9 +292,17 @@ function WhoAndWhere({ order }: Readonly<{ order: AdminOrderDetail }>) {
   );
 }
 
-function paymentMethodLabel(method: AdminOrderDetail["paymentMethod"]): string {
-  if (method === "online") return "Online";
-  if (method === "cod") return "Cash on delivery";
+function paymentMethodLabel(order: Pick<AdminOrderDetail, "paymentMethod" | "total" | "pointsUsed">): string {
+  if (order.paymentMethod === "online") return "Online";
+  if (order.paymentMethod === "cod") {
+    if (order.pointsUsed > 0) {
+      const due = cashDue(order.total, order.pointsUsed);
+      return due > 0
+        ? `${formatINR(order.pointsUsed)} points, ${formatINR(due)} cash`
+        : `${formatINR(order.pointsUsed)} points, no cash`;
+    }
+    return "Cash on delivery";
+  }
   return "Not recorded";
 }
 

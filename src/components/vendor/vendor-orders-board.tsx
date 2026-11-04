@@ -36,6 +36,7 @@ import {
 } from "@/components/vendor/vendor-ui";
 import { formatINR } from "@/lib/utils/format";
 import { cn } from "@/lib/utils/cn";
+import { cashDue } from "@/lib/wallet/money";
 import type { KitchenOrder } from "@/lib/roles-data";
 
 type OrderTab = "new" | "prep" | "ready" | "cancelled" | "done";
@@ -80,10 +81,11 @@ function PaymentBadge({ order }: { order: KitchenOrder }) {
   if (!order.paymentMethod) return null;
 
   if (order.paymentMethod === "cod") {
+    const due = cashDue(order.total, order.pointsUsed);
     return (
       <span className={cn(BADGE, "bg-pop/25 text-ink")}>
         <Banknote className="size-3" />
-        Cash {formatINR(order.total)}
+        {due === 0 && (order.pointsUsed ?? 0) > 0 ? "Paid with points" : `Cash ${formatINR(due)}`}
       </span>
     );
   }

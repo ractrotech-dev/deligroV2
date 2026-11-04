@@ -31,6 +31,8 @@ import { addressLocality } from "@/lib/utils/address-locality";
 import { formatINR } from "@/lib/utils/format";
 import { MAX_INSTRUCTIONS_LENGTH } from "@/lib/orders/instructions";
 import { computeChargesWith, TIP_OPTIONS } from "@/lib/pricing";
+import { cashDue, maxPointsFor } from "@/lib/wallet/money";
+import { WalletSection } from "@/components/checkout/wallet-section";
 import {
   blocksOrder,
   outOfRangeMessage,
@@ -229,10 +231,43 @@ export function CheckoutView({ config }: Readonly<{ config: CheckoutConfig }>) {
     };
   }, [restaurantSlug, rulesRead]);
 
+  // ---- the wallet ----
+  // Read once. The server takes the points under a lock when the order is placed, so
+  // a stale balance costs a clear message, never a wrong charge. A failed read leaves
+  // the section hidden and the customer pays cash as usual.
+  const [walletInfo, setWalletInfo] = useState<{ enabled: boolean; balance: number } | null>(null);
+  const [walletRead, setWalletRead] = useState(0);
+  const [useWallet, setUseWallet] = useState(false);
+  const [walletAmount, setWalletAmount] = useState("");
+
+  useEffect(() => {
+    if (!isSupabaseConfigured) return;
+    let live = true;
+    fetch("/api/wallet", { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d: { wallet?: { enabled: boolean; balance: number } } | null) => {
+        if (live && d?.wallet) setWalletInfo({ enabled: d.wallet.enabled, balance: d.wallet.balance });
+      })
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, [walletRead]);
+
+  const walletMax = maxPointsFor(walletInfo?.balance ?? 0, payTotal);
+  const showWallet = Boolean(walletInfo?.enabled && (walletInfo?.balance ?? 0) > 0);
+  // Decided from the selection, not `payOnline`, which depends on the sum below. Points
+  // go with cash only for now, and they can bring a bill back under the cash limit.
+  const pointsUsed =
+    showWallet && useWallet && paymentMethod !== "online"
+      ? Math.min(Number(walletAmount) || 0, walletMax)
+      : 0;
+  const cashToPay = cashDue(payTotal, pointsUsed);
+
   // Measured against what the customer will actually hand over — after the
-  // coupon, including delivery and tax. That is the cash the rider collects.
-  const availability = paymentAvailability(vendorRules, payTotal);
-  const codHint = codLimitHint(vendorRules, payTotal);
+  // coupon and any points, including delivery and tax. That is the cash the rider collects.
+  const availability = paymentAvailability(vendorRules, cashToPay);
+  const codHint = codLimitHint(vendorRules, cashToPay);
   // The same facts as `availability.notice` / `codHint`, in the customer's
   // language. The rules decide; these only word the outcome.
   const codLimit = formatINR(Math.max(0, Math.round(vendorRules.codMaxOrder)));
@@ -690,6 +725,9 @@ export function CheckoutView({ config }: Readonly<{ config: CheckoutConfig }>) {
             // The code only. What it is worth is re-derived server-side from
             // the order's own items, so the quote above is a preview.
             couponCode: coupon?.code,
+            // How many points to use, never what they're worth to the bill: the server
+            // checks them against the balance and takes them under a lock.
+            ...(!payOnline && pointsUsed > 0 ? { walletPoints: pointsUsed } : {}),
             address: {
               label: selectedAddress.label,
               line: [
@@ -746,6 +784,8 @@ export function CheckoutView({ config }: Readonly<{ config: CheckoutConfig }>) {
           if (data.message) {
             setError(data.message);
             setRulesRead((n) => n + 1);
+            // The points may be why: read the balance again.
+            if (data.error === "wallet_refused") setWalletRead((n) => n + 1);
             setStatus("ready");
             return;
           }
@@ -1082,7 +1122,7 @@ export function CheckoutView({ config }: Readonly<{ config: CheckoutConfig }>) {
             ? t("Pay & place order", "भुगतान करें और ऑर्डर करें")
             : t("Place order", "ऑर्डर करें")}
         </span>
-        <span>{formatINR(payTotal)}</span>
+        <span>{formatINR(payOnline ? payTotal : cashToPay)}</span>
       </>
     );
   }
@@ -1120,11 +1160,13 @@ export function CheckoutView({ config }: Readonly<{ config: CheckoutConfig }>) {
                 icon={<Banknote className="size-5" />}
                 label={t("Cash on delivery", "डिलीवरी पर नकद")}
                 desc={
-                  codHintText ??
-                  t(
-                    "Pay the courier when your order arrives.",
-                    "ऑर्डर आने पर डिलीवरी वाले को भुगतान करें।",
-                  )
+                  pointsUsed > 0 && cashToPay === 0
+                    ? t("Your points cover this order.", "आपके पॉइंट से पूरा ऑर्डर हो गया।")
+                    : codHintText ??
+                      t(
+                        "Pay the courier when your order arrives.",
+                        "ऑर्डर आने पर डिलीवरी वाले को भुगतान करें।",
+                      )
                 }
                 selected={availability.cod && !payOnline}
                 // Genuinely disabled, not merely styled that way.
@@ -1147,6 +1189,24 @@ export function CheckoutView({ config }: Readonly<{ config: CheckoutConfig }>) {
             />
           </div>
         </section>
+
+        {showWallet ? (
+          <WalletSection
+            balance={walletInfo?.balance ?? 0}
+            max={walletMax}
+            use={useWallet}
+            amount={walletAmount}
+            cashDue={cashToPay}
+            online={payOnline}
+            t={t}
+            onUse={(on) => {
+              setUseWallet(on);
+              // Starts at the most they can use; they can type less.
+              if (on) setWalletAmount(String(walletMax));
+            }}
+            onAmount={setWalletAmount}
+          />
+        ) : null}
 
         <section className="card p-4">
           <div className="flex gap-4">
@@ -1273,9 +1333,15 @@ export function CheckoutView({ config }: Readonly<{ config: CheckoutConfig }>) {
                 <span className="text-data">−{formatINR(discount)}</span>
               </div>
             ) : null}
+            {pointsUsed > 0 ? (
+              <div className="flex justify-between font-medium text-green">
+                <span>{t("Paid with points", "पॉइंट से भुगतान")}</span>
+                <span className="text-data">−{formatINR(pointsUsed)}</span>
+              </div>
+            ) : null}
             <div className="flex justify-between pt-1.5 text-[15px] font-bold text-ink">
-              <span>{t("To pay", "कुल भुगतान")}</span>
-              <span className="text-data">{formatINR(payTotal)}</span>
+              <span>{pointsUsed > 0 ? t("Cash to pay", "नकद देना है") : t("To pay", "कुल भुगतान")}</span>
+              <span className="text-data">{formatINR(payOnline ? payTotal : cashToPay)}</span>
             </div>
           </div>
         </section>

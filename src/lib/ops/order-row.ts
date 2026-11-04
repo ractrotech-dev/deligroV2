@@ -21,7 +21,7 @@ export interface OpsOrderRow {
   customerName: string | null;
   total: number;
   itemCount: number;
-  payment: { method: string | null; status: string | null };
+  payment: { method: string | null; status: string | null; pointsUsed?: number };
   byPhone: boolean;
   delivery: { status: string; driverId: string | null; pickedUpAt: string | null; failedAt: string | null } | null;
   riderName: string | null;

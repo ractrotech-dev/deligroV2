@@ -9,6 +9,7 @@ import {
   riderCashLimitsAvailable,
   riderDocsSettingAvailable,
   settingsTableExists,
+  walletSettingsAvailable,
 } from "@/lib/data-access/settings";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import type { PlatformSettings } from "@/types";
@@ -133,6 +134,16 @@ export async function cashLimitReady(): Promise<boolean> {
   if (!isSupabaseConfigured) return true;
   try {
     return await cashLimitAvailable();
+  } catch {
+    return true;
+  }
+}
+
+/** Can the wallet switch and limit be saved here? False before 0197; as above otherwise. */
+export async function walletSettingsReady(): Promise<boolean> {
+  if (!isSupabaseConfigured) return true;
+  try {
+    return await walletSettingsAvailable();
   } catch {
     return true;
   }

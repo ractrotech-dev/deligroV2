@@ -145,11 +145,17 @@ class RiderRef {
 }
 
 class Payment {
-  const Payment({this.method, this.status});
-  factory Payment.fromJson(Map<String, dynamic>? j) =>
-      Payment(method: PaymentMethod.parse(_str(j?['method'])), status: PaymentStatus.parse(_str(j?['status'])));
+  const Payment({this.method, this.status, this.pointsUsed = 0});
+  factory Payment.fromJson(Map<String, dynamic>? j) => Payment(
+        method: PaymentMethod.parse(_str(j?['method'])),
+        status: PaymentStatus.parse(_str(j?['status'])),
+        pointsUsed: _int(j?['pointsUsed']),
+      );
   final PaymentMethod? method;
   final PaymentStatus? status;
+
+  /// Wallet points on the order. The total stays the bill; the rider collects the rest.
+  final int pointsUsed;
 }
 
 class Eta {
@@ -286,7 +292,7 @@ class OrderLine {
 }
 
 class OrderMoney {
-  const OrderMoney({this.subtotal = 0, this.discount = 0, this.deliveryFee = 0, this.tax = 0, this.tip = 0, this.total = 0});
+  const OrderMoney({this.subtotal = 0, this.discount = 0, this.deliveryFee = 0, this.tax = 0, this.tip = 0, this.total = 0, this.pointsUsed = 0});
   factory OrderMoney.fromJson(Map<String, dynamic>? j) => OrderMoney(
         subtotal: _int(j?['subtotal']),
         discount: _int(j?['discount']),
@@ -294,7 +300,9 @@ class OrderMoney {
         tax: _int(j?['tax']),
         tip: _int(j?['tip']),
         total: _int(j?['total']),
+        pointsUsed: _int(j?['pointsUsed']),
       );
+  final int pointsUsed;
   final int subtotal;
   final int discount;
   final int deliveryFee;

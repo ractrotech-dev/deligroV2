@@ -1,4 +1,5 @@
 import { requireRole } from "@/lib/auth";
+import { randomUUID } from "node:crypto";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
@@ -9,7 +10,11 @@ import { ORDER_STATUS } from "@/components/admin/order-status";
 import { formatINR } from "@/lib/utils/format";
 import { getCustomerDetail } from "@/lib/data-access/admin-customers";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
+import { getCustomerBalance, listWalletMovements } from "@/lib/data-access/admin-wallets";
+import { shortOrderId } from "@/lib/utils/order-map";
+import { signedRupees, walletKindLabel } from "@/lib/wallet/money";
 import { AccountActions } from "./account-actions";
+import { WalletCorrection } from "./wallet-correction";
 
 export const metadata: Metadata = { title: "Customer · Admin · Deligro" };
 
@@ -30,6 +35,13 @@ export default async function AdminCustomerDetailPage({
 
   const customer = await getCustomerDetail(id);
   if (!customer) notFound();
+
+  const [walletBalance, walletHistory] = await Promise.all([
+    getCustomerBalance(id),
+    // A database without 0197 shows the note in the panel, not an error page.
+    listWalletMovements({ customerId: id, pageSize: 20 }).catch(() => ({ rows: [] })),
+  ]);
+  const walletMoves = walletHistory.rows;
 
   return (
     <div className="admin-measure space-y-4">
@@ -90,6 +102,52 @@ export default async function AdminCustomerDetailPage({
           }
         />
       </FigureRow>
+
+      <Panel
+        title="Wallet"
+        subtitle={walletBalance === null ? "Needs migration 0197" : `${formatINR(walletBalance)} held for this customer`}
+        action={
+          <Link
+            href={`/admin/customer-wallets?view=movements&customer=${customer.id}`}
+            className="text-[12px] font-semibold text-ink underline"
+          >
+            All movements
+          </Link>
+        }
+      >
+        {walletMoves.length === 0 ? (
+          <p className="text-sm text-muted">No points have moved on this account.</p>
+        ) : (
+          <ul>
+            {walletMoves.map((m) => (
+              <li
+                key={m.id}
+                className="flex items-center gap-3 border-b border-[color:var(--c-divider)] py-2.5 last:border-b-0"
+              >
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-[12.5px] text-ink">{walletKindLabel(m.kind)}</span>
+                  <span className="block truncate text-[11.5px] text-muted">
+                    {m.at} · {m.actorName} · {m.reason}
+                  </span>
+                </span>
+                {m.orderId ? (
+                  <Link href={`/admin/orders/${m.orderId}`} className="text-data shrink-0 text-xs underline">
+                    #{shortOrderId(m.orderId)}
+                  </Link>
+                ) : null}
+                <span className="text-data w-[80px] shrink-0 text-right text-[13px] font-semibold tabular-nums">
+                  {signedRupees(m.amount)}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+        {walletBalance === null ? null : (
+          <div className="mt-3 border-t border-[color:var(--c-divider)] pt-3">
+            <WalletCorrection id={customer.id} actionId={randomUUID()} />
+          </div>
+        )}
+      </Panel>
 
       <Panel
         title="Order history"

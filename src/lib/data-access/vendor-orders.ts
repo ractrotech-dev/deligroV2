@@ -62,6 +62,7 @@ interface VendorOrderRow {
    * as "cash", and the board must not render it as such.
    */
   payment_method?: PaymentMethod | null;
+  wallet_points_used?: number | null;
   payment_status?: PaymentStatus | null;
   /**
    * Migration 0026, stamped by `stamp_order_lifecycle()` on the transition
@@ -110,6 +111,7 @@ const LIFECYCLE_COLUMNS = "orders.accepted_at";
 const PREP_COLUMNS = "orders.preparing_at";
 const OPTIONS_COLUMN = "order_items.options";
 const INVOICE_COLUMNS = "orders.invoice_no";
+const WALLET_COLUMN = "orders.wallet_points_used";
 
 interface SelectFlags {
   /** `payment_method` / `payment_status` only exist from 0025. */
@@ -122,6 +124,8 @@ interface SelectFlags {
   options: boolean;
   /** `invoice_no` / `invoice_at` only exist from 0063. */
   invoice: boolean;
+  /** `wallet_points_used` only exists from 0197. */
+  wallet: boolean;
 }
 
 function select(flags: SelectFlags): string {
@@ -133,6 +137,7 @@ function select(flags: SelectFlags): string {
     flags.lifecycle ? ", accepted_at, ready_at" : "",
     flags.prep ? ", preparing_at, prep_minutes" : "",
     flags.invoice ? ", invoice_no, invoice_at" : "",
+    flags.wallet ? ", wallet_points_used" : "",
     flags.options
       ? ", order_items(name, qty, price, options, menu_items(description, image_url))"
       : ", order_items(name, qty, price, menu_items(description, image_url))",
@@ -200,12 +205,14 @@ async function selectVendorOrders<T>(
     prep: !columnKnownMissing(PREP_COLUMNS),
     options: !columnKnownMissing(OPTIONS_COLUMN),
     invoice: !columnKnownMissing(INVOICE_COLUMNS),
+    wallet: !columnKnownMissing(WALLET_COLUMN),
   };
 
   // `isMissingColumn` doesn't say WHICH column is missing, so drop the newest
   // migration's group first and re-probe rather than guessing. At most one
   // attempt per still-optimistic group, plus the final bare one.
   const groups: Array<{ key: keyof SelectFlags; column: string }> = [
+    { key: "wallet", column: WALLET_COLUMN },
     { key: "invoice", column: INVOICE_COLUMNS },
     { key: "options", column: OPTIONS_COLUMN },
     { key: "prep", column: PREP_COLUMNS },
@@ -302,6 +309,7 @@ function mapKitchenOrder(row: VendorOrderRow): KitchenOrder {
     // rider to collect money the customer has already paid.
     paymentMethod: row.payment_method ?? undefined,
     paymentStatus: row.payment_status ?? undefined,
+    pointsUsed: row.wallet_points_used ?? 0,
     acceptedAt: row.accepted_at,
     readyAt: row.ready_at,
     createdAt: row.created_at,

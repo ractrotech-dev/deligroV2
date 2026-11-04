@@ -144,6 +144,13 @@ function parse(
     cashLimitPerOrder: form.has("cashLimitPerOrder")
       ? int(form.get("cashLimitPerOrder"), current.cashLimitPerOrder)
       : current.cashLimitPerOrder,
+    // 0197. Read only when the form rendered them, like the cash pair above.
+    featureWallet: form.has("featureWalletShown")
+      ? bool(form, "featureWallet")
+      : current.featureWallet,
+    walletChangeMaxPerOrder: form.has("walletChangeMaxPerOrder")
+      ? int(form.get("walletChangeMaxPerOrder"), current.walletChangeMaxPerOrder)
+      : current.walletChangeMaxPerOrder,
     // 0086. The switch sits in the Riders card and is always posted with it;
     // on a database without 0086 the group is not written at all.
     blockDispatchOnExpiredDocs: form.has("blockDispatchOnExpiredDocsShown")
@@ -367,6 +374,14 @@ export async function saveSettingsAction(
         ? "Online payment can't take money yet: its keys are not set. Keep cash on."
         : "Keep at least one payment method on. With cash and online both off, no one can order.",
     };
+  }
+  // A typo is refused, not clamped into a limit nobody chose. The 0197 CHECK agrees.
+  if (
+    !Number.isInteger(parsed.walletChangeMaxPerOrder) ||
+    parsed.walletChangeMaxPerOrder < 1 ||
+    parsed.walletChangeMaxPerOrder > 10_000
+  ) {
+    return { ok: false, error: "The most a rider can add must be a whole number from 1 to 10,000." };
   }
 
   try {

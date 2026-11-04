@@ -37,6 +37,10 @@ export const DEFAULT_SETTINGS: PlatformSettings = {
   // cash on, no platform cash limit.
   featureCashPayment: true,
   cashLimitPerOrder: 0,
+  // What an un-migrated or unreadable settings row falls back to: no points move.
+  // The 0197 column itself defaults to on.
+  featureWallet: false,
+  walletChangeMaxPerOrder: 100,
 
   defaultPrepMinutes: 20,
   // One circle around Bemetara city centre — see lib/geo/service-area.ts.

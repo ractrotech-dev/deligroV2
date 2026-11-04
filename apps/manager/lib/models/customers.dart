@@ -107,6 +107,7 @@ class CustomerDetail extends CustomerSummary {
     this.localities = const [],
     this.cancelledOrders = 0,
     this.aov = 0,
+    this.walletBalance = 0,
     this.firstOrderAt,
     this.ratingsGiven = 0,
     this.avgRatingGiven,
@@ -133,6 +134,7 @@ class CustomerDetail extends CustomerSummary {
       localities: jStrings(j['localities']),
       cancelledOrders: jInt(j['cancelledOrders']),
       aov: jInt(j['aov']),
+      walletBalance: jInt(j['walletBalance']),
       firstOrderAt: jDate(j['firstOrderAt']),
       ratingsGiven: jInt(j['ratingsGiven']),
       avgRatingGiven: jDoubleOrNull(j['avgRatingGiven']),
@@ -147,6 +149,9 @@ class CustomerDetail extends CustomerSummary {
   final List<String> localities;
   final int cancelledOrders;
   final int aov;
+
+  /// Wallet points held. Read-only: only an admin corrects a balance.
+  final int walletBalance;
   final DateTime? firstOrderAt;
   final int ratingsGiven;
   final double? avgRatingGiven;

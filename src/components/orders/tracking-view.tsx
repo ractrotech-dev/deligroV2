@@ -27,6 +27,8 @@ import {
 } from "@/components/orders/tracking-sheet";
 import { ProofOfDelivery } from "@/components/orders/proof-of-delivery";
 import { RiderRatingCard } from "@/components/orders/rider-rating-card";
+import { WalletCodeCard } from "@/components/orders/wallet-code-card";
+import { cashDue } from "@/lib/wallet/money";
 import { useLiveTracking, type TrackingHealth } from "@/hooks/use-live-tracking";
 import { useCancelCountdown } from "@/hooks/use-cancel-countdown";
 import {
@@ -67,6 +69,9 @@ function minutesLabel(n: number, t: T): string {
  * delivered.
  */
 function totalLabel(order: UiOrder, delivered: boolean, t: T): string {
+  // With points on it, the figure beside this is the bill, and the rows below say how
+  // it was paid. "Total paid (Cash)" would claim cash that nobody handed over.
+  if ((order.pointsUsed ?? 0) > 0) return t("Bill total", "बिल का कुल");
   if (order.paymentStatus === "refunded")
     return t("Total refunded", "कुल रकम वापस की गई");
   if (isOrderPaid(order)) return t("Total paid", "कुल भुगतान हो गया");
@@ -190,8 +195,11 @@ function trackingHeadline(
 export function TrackingView({
   order,
   initialEta,
+  walletOn = false,
 }: Readonly<{
   order: UiOrder;
+  /** The wallet is on: offer the change code during a cash delivery. */
+  walletOn?: boolean;
   /**
    * Computed server-side for the first paint, so the headline is not a
    * per-restaurant constant for the frame before the first poll answers.
@@ -537,6 +545,8 @@ export function TrackingView({
 
             <OrderFollowUp
               order={order}
+              status={status}
+              walletOn={walletOn}
               delivered={delivered}
               canCancel={canCancel}
               cancelSeconds={cancelSeconds}
@@ -984,6 +994,8 @@ function CourierInfo({
 /** The bill, and everything left to do with the order from here. */
 function OrderFollowUp({
   order,
+  status,
+  walletOn,
   delivered,
   canCancel,
   cancelSeconds,
@@ -992,6 +1004,9 @@ function OrderFollowUp({
   setShowCancelConfirm,
 }: Readonly<{
   order: UiOrder;
+  /** The live status, which the order prop can trail. */
+  status: string;
+  walletOn: boolean;
   delivered: boolean;
   canCancel: boolean;
   /** Whole seconds left, from the database's last answer. */
@@ -1032,7 +1047,35 @@ function OrderFollowUp({
             {formatINR(order.total)}
           </span>
         </div>
+        {(order.pointsUsed ?? 0) > 0 ? (
+          <dl className="mt-2 space-y-1 text-sm">
+            <div className="flex justify-between font-medium text-green">
+              <dt>
+                {status === "CANCELLED"
+                  ? t("Points returned to your wallet", "पॉइंट वॉलेट में वापस")
+                  : t("Paid with points", "पॉइंट से भुगतान")}
+              </dt>
+              <dd className="text-data">
+                {status === "CANCELLED" ? "" : "−"}
+                {formatINR(order.pointsUsed ?? 0)}
+              </dd>
+            </div>
+            {status === "CANCELLED" ? null : (
+              <div className="flex justify-between font-bold">
+                <dt>{delivered ? t("Paid in cash", "नकद दिया") : t("Pay the rider in cash", "राइडर को नकद दें")}</dt>
+                <dd className="text-data">{formatINR(cashDue(order.total, order.pointsUsed))}</dd>
+              </div>
+            )}
+          </dl>
+        ) : null}
       </div>
+
+      {walletOn &&
+      status === "ON_THE_WAY" &&
+      order.paymentMethod !== "online" &&
+      cashDue(order.total, order.pointsUsed) > 0 ? (
+        <WalletCodeCard orderId={order.id} />
+      ) : null}
 
       {canCancel ? (
         <div className="space-y-1">

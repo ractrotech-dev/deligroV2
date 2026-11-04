@@ -1,6 +1,7 @@
 import "server-only";
 import { createClient } from "@/lib/supabase/server";
 import { readAllRows } from "@/lib/data-access/read-all";
+import { isMissingColumn } from "@/lib/data-access/schema-probe";
 import { requireRole } from "@/lib/auth";
 import { loadMetricOrders } from "@/lib/data-access/ops-metrics";
 import { adminDailyPoints } from "@/lib/metrics/admin";
@@ -235,7 +236,7 @@ export async function getOrderStatusMix(
 
 /** One slice of "how did people pay". */
 export interface PaymentSlice {
-  method: "cod" | "online";
+  method: "cod" | "online" | "wallet";
   label: string;
   count: number;
   /** Gross value of those orders, whole rupees. */
@@ -278,21 +279,29 @@ export async function getPaymentMix(
     { method: "cod", label: "Cash on delivery", count: 0, gmv: 0 },
     { method: "online", label: "Paid online", count: 0, gmv: 0 },
   ];
+  const wallet: PaymentSlice = { method: "wallet", label: "Wallet points", count: 0, gmv: 0 };
 
-  let rows: { payment_method: string | null; total: number | null }[] = [];
+  // The cash slice is the cash the rider collects. Points are their own slice: nobody
+  // handed that money over for this order (0197). Its row shows only once it has any.
+  let rows: { payment_method: string | null; total: number | null; wallet_points_used?: number | null }[] = [];
   try {
     const supabase = await createClient();
-    const { data, error } = await readAllRows((from, to) => {
-      let query = supabase
-        .from("orders")
-        .select("payment_method, total")
-        .neq("status", "cancelled");
-      if (since) query = query.gte("created_at", since);
-      if (restaurantId) query = query.eq("restaurant_id", restaurantId);
-      return query.order("id").range(from, to);
-    });
+    const read = (columns: string) =>
+      readAllRows((from, to) => {
+        let query = supabase
+          .from("orders")
+          .select(columns)
+          .neq("status", "cancelled");
+        if (since) query = query.gte("created_at", since);
+        if (restaurantId) query = query.eq("restaurant_id", restaurantId);
+        return query.order("id").range(from, to);
+      });
+    let { data, error } = await read("payment_method, total, wallet_points_used");
+    if (error && isMissingColumn(error as { code?: string })) {
+      ({ data, error } = await read("payment_method, total"));
+    }
     if (error) return empty;
-    rows = (data ?? []) as typeof rows;
+    rows = (data ?? []) as unknown as typeof rows;
   } catch {
     return empty;
   }
@@ -303,10 +312,23 @@ export async function getPaymentMix(
     // default for this platform — it is what an order with no recorded online
     // payment was — and it is also the direction that over-states the figure a
     // human has to go and reconcile, rather than under-stating it.
-    const slice = row.payment_method === "online" ? empty[1] : empty[0];
-    slice.count += 1;
-    slice.gmv += Math.round(Number(row.total) || 0);
+    const total = Math.round(Number(row.total) || 0);
+    const points = Math.max(0, Math.round(Number(row.wallet_points_used) || 0));
+    if (row.payment_method === "online") {
+      empty[1].count += 1;
+      empty[1].gmv += total;
+      continue;
+    }
+    // Fully covered by points: not a cash order at all.
+    if (points === 0 || total > points) {
+      empty[0].count += 1;
+      empty[0].gmv += total - points;
+    }
+    if (points > 0) {
+      wallet.count += 1;
+      wallet.gmv += points;
+    }
   }
 
-  return empty;
+  return wallet.count > 0 ? [...empty, wallet] : empty;
 }
