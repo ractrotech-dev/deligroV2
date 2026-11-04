@@ -19,7 +19,7 @@ import {
  * leaves the database the same: verify from unverified / pending / rejected
  * (aadhaar, driving licence and photo verified, unless overridden with a
  * reason); reject from unverified / pending only — a verified rider is
- * suspended, not un-verified.
+ * stopped (the Stop button on their page), not un-verified.
  */
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -140,7 +140,7 @@ const MESSAGES: Record<string, string> = {
   not_found: "That record is no longer there. Reload the page.",
   already_decided: "Someone has already decided this. Reload to see the outcome.",
   stale: "The rider's status changed while this page was open. Reload and decide again.",
-  invalid_transition: "That decision doesn't apply to the rider's current status. A verified rider is suspended from Team, not un-verified.",
+  invalid_transition: "That decision doesn't apply to the rider's current status. To stop a verified rider working, use Stop at the top of their page.",
   documents_unverified: "Verify the Aadhaar, driving licence and photo first, or tick the override and say why.",
   active_delivery: "The rider is carrying an order. Reject them once it is delivered or reassigned.",
   invalid_value: "The requested value can't be saved. Reject it with a note so the rider can send it again.",
