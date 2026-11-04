@@ -99,6 +99,8 @@
     "test:migration-0177": "node scripts/qa/sql/migration-0177.mjs",
     "test:migration-0178": "node scripts/qa/sql/migration-0178.mjs",
     "test:migration-0179": "node scripts/qa/sql/migration-0179.mjs",
+    "test:migration-0186": "node scripts/qa/sql/migration-0186.mjs",
+    "test:admin-money-screens": "tsx --conditions=react-server scripts/qa/admin-money-screens.ts",
     "test:weather": "tsx scripts/qa/weather.ts",
     "test:platform-lock": "tsx scripts/qa/platform-lock.ts",
     "test:manager-english": "tsx scripts/qa/manager-english-only.ts",

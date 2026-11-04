@@ -22,7 +22,8 @@ money, and its payment could not be marked paid.
 - `breakdownOrder` in `src/lib/settlements/math.ts` and `ops_order_breakdown` in
   migration 0185 now give a cash order the same payout as an online one.
 - The admin Settlements screens lead with the one amount to send.
-- Paying still needs a second person, as before (0156).
+- An admin finishes a payment alone, with a reason on the record (0186 turns on
+  the one-admin rule from 0152). A manager still needs someone else to approve.
 - Partner app and vendor website wording no longer says the shop keeps the cash.
 
 ## Payments made before this change
