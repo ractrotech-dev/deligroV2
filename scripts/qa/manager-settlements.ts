@@ -73,7 +73,7 @@ check("a 400 from Razorpay → definite", classifyGatewayFailure(new RazorpayErr
 check("a 502 from Razorpay → unknown", classifyGatewayFailure(new RazorpayError("razorpay_refund_failed_502", 502)) === "unknown");
 check("a 500 from Razorpay → unknown", classifyGatewayFailure(new RazorpayError("razorpay_refund_failed_500", 502)) === "unknown");
 check("a network error → unknown", classifyGatewayFailure(new TypeError("fetch failed")) === "unknown");
-check("the admin refund action passes a reason", /decideRefund\(\{ id: admin\.id \}, id, decision, reason\)/.test(read("src/app/admin/actions.ts")));
+check("nothing outside refunds.ts can reach the gateway decision", !/decideRefund/.test(read("src/app/admin/actions.ts")) && !/decideRefund/.test(read("src/app/api/manager/finance/refunds/[id]/decide/route.ts")));
 
 console.log("\n── routes ──");
 const list = read("src/app/api/manager/finance/settlements/route.ts");
@@ -84,12 +84,10 @@ check("POST settlements is rate-limited", /managerWriteLimit\(/.test(list));
 const detail = read("src/app/api/manager/finance/settlements/[id]/route.ts");
 check("settlement detail answers 404 out of scope", /not_found/.test(detail) && /getSettlementFor\(/.test(detail));
 const decide = read("src/app/api/manager/finance/refunds/[id]/decide/route.ts");
-check("refund decide needs finance.adjust", /manager\.finance\.adjust/.test(decide));
-check("refund decide checks the refund is in scope first", /getRefundFor\(/.test(decide));
+check("refund decide refuses (rule book: no refunds)", /refunds_closed/.test(decide) && /status: 410/.test(decide));
 check("refund decide is rate-limited", /managerWriteLimit\(/.test(decide));
-check("refund decide answers effect_failed / already_decided", /already_decided/.test(decide) && /effect_failed|record_failed/.test(decide));
-check("money sent but not recorded has its own answer (no retry)", /recorded_failed_after_gateway/.test(decide));
-check("an unknown gateway outcome has its own answer", /gateway_unknown/.test(decide));
+const customerRefund = read("src/app/api/refunds/route.ts");
+check("a customer's refund request is refused, and writes nothing", /refunds_closed/.test(customerRefund) && !/requestRefund|createClient|createAdminClient/.test(customerRefund));
 const refundList = read("src/app/api/manager/finance/refunds/route.ts");
 check("refund list needs finance.view", /managerApiContext\("manager\.finance\.view"\)/.test(refundList));
 

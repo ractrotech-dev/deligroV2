@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { managerApiContext } from "@/lib/auth/manager-api.server";
+import { managerApiContext, managerWriteLimit } from "@/lib/auth/manager-api.server";
 
 export const dynamic = "force-dynamic";
 
@@ -15,5 +15,7 @@ export const dynamic = "force-dynamic";
 export async function POST() {
   const ctx = await managerApiContext("manager.finance.view");
   if (ctx instanceof Response) return ctx;
+  const limited = await managerWriteLimit(ctx, "refund-decide");
+  if (limited) return limited;
   return NextResponse.json({ error: "refunds_closed" }, { status: 410 });
 }

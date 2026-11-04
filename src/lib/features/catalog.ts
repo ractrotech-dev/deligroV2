@@ -101,7 +101,7 @@ export const FEATURES = [
   // exceptions). Off hides the screen's menu entry and shortcuts, the route
   // shows a notice, and its Server Actions refuse. Turning it back on is this
   // same switch, so an admin can never lock themselves out of it. None today:
-  // `admin.refunds` went with the Refunds page (owner's rule, 2026-11-04).
+  // the first one went with the Refunds page (owner's rule, 2026-11-04).
 ] as const satisfies readonly FeatureDef[];
 
 export type FeatureKey = (typeof FEATURES)[number]["key"];
