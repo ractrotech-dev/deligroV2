@@ -15,7 +15,8 @@ import '../orders/reason_dialog.dart';
 
 /// What a cash refusal means, in words.
 String cashRefusalText(Refused<Object?> r) => switch (r.code) {
-      'already_decided' || 'already_resolved' => 'Already handled by someone else.',
+      'already_decided' => "A manager or the owner already decided this. It isn't counted twice.",
+      'already_resolved' => 'Already handled by someone else.',
       'note_required' => 'Say what is wrong — a note is needed to dispute.',
       'manual_handover_exists' =>
         "This cash was already recorded by hand for that day. Dispute the deposit instead, so it isn't counted twice.",
@@ -170,7 +171,12 @@ class _DepositCardState extends ConsumerState<DepositCard> {
           if (d.decisionNote != null || d.decidedBy != null) ...[
             const SizedBox(height: 4),
             Text(
-              [if (d.decidedBy != null) d.decidedBy!.name, placedAt(d.decidedAt), ?d.decisionNote]
+              [
+                if (d.decidedBy != null)
+                  '${d.status == DepositStatus.disputed ? 'Disputed' : 'Confirmed'} by ${d.decidedBy!.name}',
+                placedAt(d.decidedAt),
+                ?d.decisionNote,
+              ]
                   .where((s) => s.isNotEmpty)
                   .join(' · '),
               style: TextStyle(fontSize: 12.5, color: c.muted),

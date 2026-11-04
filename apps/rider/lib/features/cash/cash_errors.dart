@@ -14,14 +14,14 @@ String cashErrorText(Object error) {
     'exceeds_pending' =>
       available is num
           ? 'You can deposit at most ${money(available)} right now. '
-                'Cash you have already sent is waiting for a manager.'
+                'Cash you have already sent is waiting to be confirmed.'
           : 'That is more than your cash in hand.',
     'invalid_amount' => 'Enter a whole number of rupees above zero.',
     'reference_required' => 'Enter the UPI reference for this payment.',
     'bad_photo' => receiptPhotoRefused,
-    'invalid_manager' => 'Choose a manager from the list.',
+    'invalid_manager' => 'Choose someone from the list.',
     'invalid_note' => 'That note is too long.',
-    'already_decided' => 'A manager has already looked at this deposit.',
+    'already_decided' => 'A manager or the owner has already looked at this deposit.',
     'already_open' => 'You have already reported a problem for this day.',
     'invalid_day' => 'You can only report a problem for the last 90 days.',
     'message_required' => 'Tell us what looks wrong (up to 500 characters).',

@@ -473,12 +473,12 @@ function rpcDecide(args: Row): { code: number; body: Row } {
   }
   const day = istDayOf(dep.created_at);
   const linked = new Set(t("cash_deposits").map((d) => d.handover_id).filter(Boolean));
-  if (t("cod_handovers").some((h) => h.leg === "rider_to_manager" && h.from_user === dep.driver_id && h.handover_date === day && !linked.has(h.id))) {
+  if (t("cod_handovers").some((h) => h.leg !== "manager_to_owner" && h.from_user === dep.driver_id && h.handover_date === day && !linked.has(h.id))) {
     return err(409, "23505", "manual_handover_exists");
   }
   if (mode.failInsert.has("cod_handovers")) return err(500, "XX000", "boom"); // rolled back whole: nothing written
   const h = {
-    id: crypto.randomUUID(), leg: "rider_to_manager", from_user: dep.driver_id, to_user: actor.id,
+    id: crypto.randomUUID(), leg: actor.role === "admin" ? "rider_to_owner" : "rider_to_manager", from_user: dep.driver_id, to_user: actor.id,
     amount: dep.amount, handover_date: day, recorded_by: actor.id, created_at: new Date().toISOString(),
     note: note || `Deposit ${dep.method}${dep.reference ? ` ${dep.reference}` : ""}`,
   };
@@ -898,8 +898,11 @@ async function dataTier(): Promise<void> {
     const s = await x.getRiderCashSummary(R1);
     assert.deepEqual([s.depositedTotal, s.pending, s.submittedAwaiting], [600, 400, 0], "deposited through the handover, counted once");
     // the same deposit cannot be decided again
-    assert.deepEqual(await x.decideDeposit({ id: MGR2, role: "manager" }, id, "confirm"), { ok: false, error: "already_decided" });
-    assert.deepEqual(await x.decideDeposit({ id: MGR2, role: "manager" }, id, "dispute", "late"), { ok: false, error: "already_decided" });
+    // Rule book, "Rider cash": the first confirmation stands, and the second person is told who.
+    const firstWon = { ok: false, error: "already_decided", decided: { status: "confirmed", byName: "Anil Manager" } };
+    assert.deepEqual(await x.decideDeposit({ id: MGR2, role: "manager" }, id, "confirm"), firstWon);
+    assert.deepEqual(await x.decideDeposit({ id: MGR2, role: "manager" }, id, "dispute", "late"), firstWon);
+    assert.equal(x.alreadyDecidedMessage(firstWon.decided), "Already confirmed by Anil Manager. It isn't counted twice.");
     assert.equal(t("cod_handovers").length, 1, "still exactly one handover");
     // the confirmer receives it, named or not (P8-R11); the first handover is linked to its deposit, so it is not 'manual'
     const second = (await x.submitDeposit(R1, { amount: 100, method: "cash" })) as { id: string };
@@ -1091,7 +1094,11 @@ async function dataTier(): Promise<void> {
     assert.equal(mine.status, "withdrawn");
     assert.deepEqual(await x.withdrawDeposit(R1, mine.id), { ok: false, error: "already_decided" });
     // a withdrawn deposit cannot then be confirmed
-    assert.deepEqual(await x.decideDeposit({ id: MGR, role: "manager" }, mine.id, "confirm"), { ok: false, error: "already_decided" });
+    assert.deepEqual(await x.decideDeposit({ id: MGR, role: "manager" }, mine.id, "confirm"), {
+      ok: false,
+      error: "already_decided",
+      decided: { status: "withdrawn", byName: null },
+    });
   });
 
   await group("data: raising a dispute — a real day within 90 days, a message, an optional whole-rupee claim, one open per day", async () => {
@@ -1270,12 +1277,37 @@ async function dataTier(): Promise<void> {
     assert.deepEqual(told.sort(), [R1, R2].sort(), "each rider is told of any incentive the completion earned (as completeDelivery does)");
   });
 
+  await group("data: the owner's confirmation — rider_to_owner, comes off what the rider holds, and the manager is then told who got there first", async () => {
+    reset();
+    seedProfiles();
+    const OWNER = crypto.randomUUID();
+    t("profiles").push({ id: OWNER, role: "admin", full_name: "The Owner" });
+    seedDelivery(1, R1, { total: 1000, collected: 1000, collectedAt: new Date().toISOString() });
+    const submitted = await x.submitDeposit(R1, { amount: 600, method: "cash", managerId: MGR });
+    const id = (submitted as { id: string }).id;
+    assert.deepEqual(await x.decideDeposit({ id: OWNER, role: "admin" }, id, "confirm"), { ok: true });
+    const [h] = t("cod_handovers");
+    assert.deepEqual([h.leg, h.to_user, h.recorded_by], ["rider_to_owner", OWNER, OWNER], "to the person who received it, not the manager the rider named");
+    const s = await x.getRiderCashSummary(R1);
+    assert.deepEqual([s.depositedTotal, s.pending], [600, 400], "it comes off the rider's cash");
+    assert.deepEqual(await x.decideDeposit({ id: MGR, role: "manager" }, id, "confirm"), {
+      ok: false,
+      error: "already_decided",
+      decided: { status: "confirmed", byName: "The Owner" },
+    });
+    assert.equal(t("cod_handovers").length, 1, "one handover, however many people act");
+  });
+
   await group("data: managers a rider can name — id and name only", async () => {
     reset();
     seedProfiles();
     const managers = await x.listDepositManagers();
     assert.deepEqual(managers.map((m) => m.name).sort(), ["Anil Manager", "Meena Manager"]);
     assert.deepEqual(Object.keys(managers[0]).sort(), ["id", "name"]);
+    // Rule book, "Rider cash": the rider can also give it straight to the owner.
+    t("profiles").push({ id: crypto.randomUUID(), role: "admin", full_name: "The Owner" });
+    const withOwner = await x.listDepositManagers();
+    assert.deepEqual(withOwner.map((m) => m.name), ["Anil Manager", "Meena Manager", "Owner"], "the owner is last, and is not shown by name");
   });
 
   await group("data: reminders — over the limit or held too long, at most once in 6 hours, claimed atomically", async () => {

@@ -19,8 +19,10 @@ import { formatINR } from "@/lib/utils/format";
 import {
   codDaySummary,
   codOutstandingSummary,
+  listCashPeople,
   listCodHandovers,
   type CodHandoverRow,
+  type ManagerCodOutstanding,
   type RiderCodOutstanding,
 } from "@/lib/data-access/cod-handovers";
 import {
@@ -51,6 +53,7 @@ async function load<T>(read: () => Promise<T[]>): Promise<Loaded<T>> {
 const unavailable = (state: "pending" | "failed", what: string) =>
   state === "pending" ? `${what} need migration 0085.` : `Could not load ${what.toLowerCase()}. Try again.`;
 import { CashFlow } from "./cash-flow";
+import { CashReceivedForm, ConfirmHandoverButton, DepositDecision } from "./cash-actions";
 
 export const dynamic = "force-dynamic";
 
@@ -61,10 +64,14 @@ export const dynamic = "force-dynamic";
  * spend) that has been logged, whether the underlying payment happened offline
  * or not.
  *
- * Read-only by design. This screen exists so nothing recorded offline is also
- * invisible to the owner — it does not add an approval step, a payment
- * execution, or a reconciliation gate that does not already exist elsewhere in
- * this app. Nothing below is corrected automatically; a gap is a prompt to ask.
+ * Platform: WEB (the admin panel is desktop only).
+ *
+ * This screen exists so nothing recorded offline is also invisible to the owner,
+ * and it is where the owner confirms cash they received (rule book, "Rider cash"):
+ * a rider's declared deposit, cash handed over directly by a rider, and cash from
+ * a manager. One confirmation is enough and each one records who confirmed. There
+ * is no payment execution here. Nothing below is corrected automatically; a gap is
+ * a prompt to ask.
  *
  * ## The chain, as a chain
  *
@@ -94,6 +101,7 @@ type Search = { leg?: string; category?: string };
 
 const LEG_LABEL: Record<string, string> = {
   rider_to_manager: "Rider → manager",
+  rider_to_owner: "Rider → owner",
   manager_to_owner: "Manager → owner",
 };
 
@@ -129,6 +137,17 @@ const riderColumns: Column<RiderCodOutstanding>[] = [
     ),
   },
   {
+    key: "owner",
+    header: "Handed to owner",
+    align: "right",
+    width: "w-[140px]",
+    cell: (r) => (
+      <span className="text-data text-[12.5px]">
+        {formatINR(r.handedToOwner)}
+      </span>
+    ),
+  },
+  {
     key: "outstanding",
     header: "Outstanding",
     align: "right",
@@ -145,6 +164,46 @@ const riderColumns: Column<RiderCodOutstanding>[] = [
         }
       >
         {formatINR(r.outstanding)}
+      </span>
+    ),
+  },
+];
+
+/* ---------- manager outstanding ---------- */
+const managerColumns: Column<ManagerCodOutstanding>[] = [
+  {
+    key: "manager",
+    header: "Manager",
+    cell: (m) => <span className="truncate text-[12.5px] font-medium text-ink">{m.managerName}</span>,
+  },
+  {
+    key: "received",
+    header: "Received from riders",
+    align: "right",
+    width: "w-[170px]",
+    cell: (m) => <span className="text-data text-[12.5px]">{formatINR(m.received)}</span>,
+  },
+  {
+    key: "handedOn",
+    header: "Handed to owner",
+    align: "right",
+    width: "w-[150px]",
+    cell: (m) => <span className="text-data text-[12.5px]">{formatINR(m.handedOn)}</span>,
+  },
+  {
+    key: "outstanding",
+    header: "Outstanding",
+    align: "right",
+    width: "w-[130px]",
+    cell: (m) => (
+      <span
+        className={
+          m.outstanding < 0
+            ? "text-data text-[12.5px] font-semibold text-deal"
+            : "text-data text-[12.5px] font-semibold text-[color:var(--c-ink-amber)]"
+        }
+      >
+        {formatINR(m.outstanding)}
       </span>
     ),
   },
@@ -173,7 +232,8 @@ const handoverColumns: Column<CodHandoverRow>[] = [
   {
     key: "from",
     header: "From",
-    cell: (h) => <Person name={h.fromUserName} />,
+    // A manager's own row has always left "from" empty: whoever wrote it gave the cash.
+    cell: (h) => <Person name={h.fromUserName ?? (h.leg === "manager_to_owner" ? h.recordedByName : null)} />,
   },
   {
     key: "to",
@@ -190,6 +250,17 @@ const handoverColumns: Column<CodHandoverRow>[] = [
         {formatINR(h.amount)}
       </span>
     ),
+  },
+  {
+    key: "confirmedBy",
+    header: "Confirmed by",
+    width: "w-[170px]",
+    cell: (h) =>
+      h.confirmedByName ? (
+        <Person name={h.confirmedByName} muted />
+      ) : (
+        <ConfirmHandoverButton handoverId={h.id} />
+      ),
   },
   {
     key: "recordedBy",
@@ -293,8 +364,19 @@ const depositColumns: Column<RecentDeposit>[] = [
   {
     key: "method",
     header: "Method",
-    width: "w-[90px]",
-    cell: (d) => <span className="text-[12px] text-muted">{d.method === "upi" ? "UPI" : "Cash"}</span>,
+    width: "w-[150px]",
+    cell: (d) => (
+      <span className="text-[12px] text-muted" title={d.note ?? ""}>
+        {d.method === "upi" ? "UPI" : "Cash"}
+        {d.reference ? ` · ${d.reference}` : ""}
+      </span>
+    ),
+  },
+  {
+    key: "named",
+    header: "Rider says to",
+    width: "w-[130px]",
+    cell: (d) => <Person name={d.namedName} muted />,
   },
   {
     key: "status",
@@ -316,13 +398,26 @@ const depositColumns: Column<RecentDeposit>[] = [
     ),
   },
   {
+    key: "decidedBy",
+    header: "Decided by",
+    width: "w-[140px]",
+    cell: (d) => <Person name={d.decidedByName} muted />,
+  },
+  {
     key: "note",
-    header: "Manager's note",
+    header: "Note",
     cell: (d) => (
       <span className="truncate text-[11.5px] text-muted" title={d.decisionNote ?? ""}>
         {d.decisionNote ?? "—"}
       </span>
     ),
+  },
+  {
+    key: "act",
+    header: "",
+    align: "right",
+    width: "w-[170px]",
+    cell: (d) => (d.status === "submitted" ? <DepositDecision depositId={d.id} /> : null),
   },
 ];
 
@@ -377,12 +472,12 @@ export default async function AdminCashLedgerPage({
 
   const sp = await searchParams;
   const leg =
-    sp.leg === "rider_to_manager" || sp.leg === "manager_to_owner"
+    sp.leg === "rider_to_manager" || sp.leg === "rider_to_owner" || sp.leg === "manager_to_owner"
       ? sp.leg
       : "";
   const category = (sp.category ?? "") as ExpenseCategory | "";
 
-  const [summary, outstanding, handovers, expenses, monthTotals] =
+  const [summary, outstanding, handovers, expenses, monthTotals, people] =
     await Promise.all([
       // The admin ledger is every zone's.
       codDaySummary(ALL_ZONES),
@@ -390,6 +485,7 @@ export default async function AdminCashLedgerPage({
       listCodHandovers(ALL_ZONES, HANDOVER_WINDOW),
       listOperationalExpenses(ALL_ZONES, EXPENSE_WINDOW),
       operationalExpenseMonthTotals(ALL_ZONES),
+      listCashPeople(),
     ]);
 
   // Rider deposits and disputes (0085) read on their own: a database without
@@ -404,6 +500,7 @@ export default async function AdminCashLedgerPage({
     (r) => r.outstanding !== 0
   );
   const riderNoun = ridersWithOutstanding.length === 1 ? "rider" : "riders";
+  const managersWithOutstanding = outstanding.byManager.filter((m) => m.outstanding !== 0);
   const unattributed =
     outstanding.unattributedCollected - outstanding.unattributedHandedToManager;
 
@@ -427,12 +524,12 @@ export default async function AdminCashLedgerPage({
     {
       label: "Collected today (COD)",
       value: formatINR(summary.collectedToday),
-      note: `${formatINR(summary.handedToManagerToday)} handed on today`,
+      note: `${formatINR(summary.handedToManagerToday + summary.riderToOwnerToday)} handed on today`,
     },
     {
       label: "Outstanding with riders",
       value: formatINR(outstanding.outstandingWithRiders),
-      note: "Collected, not yet handed to a manager",
+      note: "Collected, not yet handed to a manager or the owner",
     },
     {
       label: "Outstanding with managers",
@@ -454,7 +551,7 @@ export default async function AdminCashLedgerPage({
     <>
       <PageHeader
         title="Cash & expenses"
-        description="COD collection, the rider → manager → owner handover chain, and EV bike / rider operating costs. The cash itself moves by hand — a manager enters it from /manager/cash as the day goes, and this screen shows only what has been recorded."
+        description="COD collection, cash from riders and managers, and EV bike / rider operating costs. The cash moves by hand. A manager or the owner confirms what they received, and one confirmation is enough."
         status={
           stillOut > 0 ? (
             <StatusBadge tone="amber">
@@ -477,9 +574,17 @@ export default async function AdminCashLedgerPage({
           collected={outstanding.totalCollected}
           handedToManager={outstanding.totalHandedToManager}
           handedToOwner={outstanding.totalHandedToOwner}
+          riderToOwner={outstanding.totalRiderToOwner}
           withRiders={outstanding.outstandingWithRiders}
           withManagers={outstanding.outstandingWithManagers}
         />
+      </Section>
+
+      <Section
+        title="Cash you received"
+        description="Cash a rider or a manager gave you directly. Record it here so their balance goes down. If the rider declared a deposit, confirm that below instead."
+      >
+        <CashReceivedForm riders={people.riders} managers={people.managers} />
       </Section>
 
       <Section
@@ -500,7 +605,7 @@ export default async function AdminCashLedgerPage({
           empty={
             <Empty>
               Every rider&rsquo;s recorded collections match what they have
-              handed to a manager.
+              handed over.
             </Empty>
           }
           totals={
@@ -523,6 +628,21 @@ export default async function AdminCashLedgerPage({
       </Section>
 
       <Section
+        title="Manager cash outstanding"
+        meta={managersWithOutstanding.length ? `${managersWithOutstanding.length} holding` : undefined}
+      >
+        <DataTable
+          caption="Cash outstanding per manager"
+          columns={managerColumns}
+          rows={managersWithOutstanding}
+          rowKey={(m) => m.managerId}
+          dense
+          minWidth={620}
+          empty={<Empty>No manager is holding cash on record.</Empty>}
+        />
+      </Section>
+
+      <Section
         title="Cash handovers"
         meta={`last ${HANDOVER_WINDOW} recorded`}
         actions={
@@ -535,6 +655,11 @@ export default async function AdminCashLedgerPage({
                 href: href({ leg: "rider_to_manager" }),
                 label: "Rider → manager",
                 count: handovers.filter((h) => h.leg === "rider_to_manager").length,
+              },
+              {
+                href: href({ leg: "rider_to_owner" }),
+                label: "Rider → owner",
+                count: handovers.filter((h) => h.leg === "rider_to_owner").length,
               },
               {
                 href: href({ leg: "manager_to_owner" }),
@@ -551,7 +676,7 @@ export default async function AdminCashLedgerPage({
           rows={shownHandovers}
           rowKey={(h) => h.id}
           dense
-          minWidth={860}
+          minWidth={1020}
           empty={
             leg ? (
               <Empty action={{ href: href({ leg: undefined }), label: "Show all legs" }}>
@@ -570,7 +695,7 @@ export default async function AdminCashLedgerPage({
       <Section
         title="Rider deposits"
         meta="last 30 declared"
-        description="What riders say they handed over. A deposit counts only once a manager confirms it — that writes the handover above."
+        description="What riders say they handed over. It counts once a manager or you confirm it. The first confirmation stands."
       >
         <DataTable
           caption="Rider cash deposits"
@@ -578,7 +703,7 @@ export default async function AdminCashLedgerPage({
           rows={deposits.rows}
           rowKey={(d) => d.id}
           dense
-          minWidth={760}
+          minWidth={1040}
           empty={
             <Empty>
               {deposits.state !== "ok"

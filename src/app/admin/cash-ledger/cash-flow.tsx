@@ -5,8 +5,8 @@ import { cn } from "@/lib/utils/cn";
 /**
  * Where the cash is, as the chain it actually travels.
  *
- * COD money moves rider → manager → owner, by hand, one conversation at a
- * time. The screen used to state that as four figures in a row, which leaves
+ * COD money moves rider → manager → owner, or rider → owner, by hand, one
+ * conversation at a time. The screen used to state that as four figures in a row, which leaves
  * the reader to work out that "outstanding with riders" is the *gap* between
  * two of the others — and the gap is the whole point, because a gap is a
  * question somebody has to go and ask.
@@ -31,12 +31,16 @@ export function CashFlow({
   collected,
   handedToManager,
   handedToOwner,
+  riderToOwner,
   withRiders,
   withManagers,
 }: Readonly<{
   collected: number;
   handedToManager: number;
+  /** Manager → owner. */
   handedToOwner: number;
+  /** Rider → owner, directly. */
+  riderToOwner: number;
   withRiders: number;
   withManagers: number;
 }>) {
@@ -56,8 +60,12 @@ export function CashFlow({
       <Passed amount={handedToOwner} label="handed over" />
       <Holder
         who="Owner"
-        holding={handedToOwner}
-        caption="Banked or held by the owner"
+        holding={handedToOwner + riderToOwner}
+        caption={
+          riderToOwner > 0
+            ? `${formatINR(riderToOwner)} of this came directly from riders`
+            : "Banked or held by the owner"
+        }
         // The end of the chain. Money here has arrived rather than stalled, so
         // it is never the warning tone however large it is — which is the one
         // place the "holding money is a question" rule does not hold.

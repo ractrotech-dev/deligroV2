@@ -98,6 +98,8 @@ export const AUDIT_ACTIONS: readonly AuditActionDef[] = [
   { code: "cash.deposit.confirm", label: "Cash deposit confirmed", group: "Finance", sensitive: true },
   { code: "cash.deposit.dispute", label: "Cash deposit disputed", group: "Finance", sensitive: true },
   { code: "cash.dispute.resolve", label: "Cash dispute resolved", group: "Finance", sensitive: true },
+  { code: "cash.received", label: "Cash recorded as received by the owner", group: "Finance", sensitive: true },
+  { code: "cash.handover.confirm", label: "Manager's cash handover confirmed by the owner", group: "Finance", sensitive: true },
   { code: "settings.single_admin_payments", label: "Sole-admin payments switch changed", group: "Finance", sensitive: true },
   // Marketing (0160)
   { code: "marketing.request_create", label: "Marketing request recorded for a vendor", group: "Marketing", sensitive: false },
