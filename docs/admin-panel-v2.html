@@ -142,7 +142,7 @@ label.f input, label.f select { padding: 8px 10px; border-radius: var(--r); bord
 </style>
 </head>
 <body>
-<div class="strip"><span>Admin Panel Version 2. Design preview with sample numbers. Click anything.</span><a href="#all-pages">Where every old page went</a></div>
+<div class="strip"><span>Admin Panel Version 2. Design preview with sample numbers. Click anything.</span><span class="row"><a href="#problems-found">Problems found today</a><a href="#all-pages">Where every old page went</a></span></div>
 <div class="app">
   <aside class="side">
     <a class="brand" href="#home"><i>D</i>Deligro</a>
@@ -181,7 +181,7 @@ const SECTIONS = [
   {id:'shops', label:'Shops', icon:'shops', badge:2, to:'shops-all', pages:[['shops-all','All shops'],['shops-new','New shops',2],['shops-order','Home page order'],['shops-cats','Categories'],['shops-photos','Photos']]},
   {id:'customers', label:'Customers', icon:'people', to:'customers', pages:[]},
   {id:'riders', label:'Riders', icon:'bike', to:'riders-all', pages:[['riders-all','All riders'],['riders-rewards','Rewards']]},
-  {id:'money', label:'Money', icon:'money', to:'money-pay', pages:[['money-pay','Pay shops'],['money-cash','Cash'],['money-reports','Reports']]},
+  {id:'money', label:'Money', icon:'money', to:'money-pay', pages:[['money-pay','Pay shops'],['money-riders','Pay riders'],['money-cash','Cash'],['money-reports','Reports']]},
   {id:'offers', label:'Offers', icon:'gift', to:'offers-codes', pages:[['offers-codes','Promo codes'],['offers-banners','Banners'],['offers-requests','Shop requests',1]]},
   {id:'messages', label:'Messages', icon:'chat', badge:1, to:'messages-help', pages:[['messages-help','Help requests',1],['messages-alerts','Alerts',2],['messages-news','Announcements']]},
   {id:'set', label:'Settings', icon:'gear', to:'set-home', pages:[]},
@@ -197,6 +197,7 @@ function table(cols, rows, goFn) {
         return `<td class="${c.r?'r ':''}${c.b?'b':''}">${v}</td>`; }).join('')}</tr>`; }).join('')
   }</tbody></table></div>`;
 }
+const pager = (t) => `<div class="row" style="justify-content:space-between"><span class="m">${t}</span><span class="row"><button class="btn sm" data-toast="Previous page">Back</button><button class="btn sm" data-toast="Next page">Next</button></span></div>`;
 const act = (t, msg, cls='') => `<button class="btn ${cls}" data-toast="${msg||t+': sample only'}">${t}</button>`;
 const facts = rows => `<div class="facts">${rows.map(([a,b,s]) => `<div class="${s?'sum':''}"><span>${a}</span><span>${b}</span></div>`).join('')}</div>`;
 const LIVE = [
@@ -237,9 +238,9 @@ home: () => `
 
 'orders-live': () => table(ORDERCOL, LIVE, r=>'order-view'),
 'orders-problems': () => table([{t:'Order',k:'o',b:1},{t:'Shop',k:'s'},{t:'Problem',f:r=>pill(r.p,'pr')},{t:'',r:1,f:r=>act(r.a)}],
-  [{o:'FA074CB6',s:'Biryani House',p:'No rider',a:'Give a rider'},{o:'2257B730',s:'Sharma Sweets',p:'12 min late',a:'Call rider'}], r=>'order-view'),
+  [{o:'FA074CB6',s:'Biryani House',p:'No rider',a:'Give a rider'},{o:'2257B730',s:'Sharma Sweets',p:'12 min late',a:'Call rider'},{o:'51EE0A19',s:'Pizza Corner',p:'Payment failed',a:'Call customer'}], r=>'order-view'),
 'orders-all': () => `<div class="row">${['Today','Yesterday','This week','All'].map((t,i)=>`<button class="btn sm" data-toast="Shows ${t.toLowerCase()}">${t}</button>`).join('')}</div>` +
-  table(ORDERCOL, [...LIVE,{o:'C47D0011',s:'Pizza Corner',c:'Anil Kumar',r:'Amit',st:'Delivered',cl:'pg',t:'31 min'},{o:'D19E0042',s:'Cafe Mocha',c:'Riya Sen',r:'None',st:'Cancelled',cl:'pm',t:''}], r=>'order-view'),
+  table(ORDERCOL, [...LIVE,{o:'C47D0011',s:'Pizza Corner',c:'Anil Kumar',r:'Amit',st:'Delivered',cl:'pg',t:'31 min'},{o:'D19E0042',s:'Cafe Mocha',c:'Riya Sen',r:'None',st:'Cancelled',cl:'pm',t:''}], r=>'order-view') + pager('1 to 7 of 12,480 orders'),
 'orders-refunds': () => table([{t:'Order',k:'o',b:1},{t:'Customer',k:'c'},{t:'Why',k:'w'},{t:'Amount',k:'a',r:1,b:1},{t:'',r:1,f:()=>`<span class="row" style="justify-content:flex-end">${act('Give money back','Refund approved: sample only','go')}${act('Say no')}</span>`}],
   [{o:'B2201C44',c:'Asha Verma',w:'Food was cold',a:'₹240'},{o:'9F11AA20',c:'Rohit Sahu',w:'Item missing',a:'₹120'},{o:'71CC0D31',c:'Neha Jain',w:'Never arrived',a:'₹510'}]),
 'order-view': () => `
@@ -263,21 +264,21 @@ home: () => `
 'shops-photos': () => `<div class="row">${act('Upload photos','','go')}</div><div class="photos">${['Paneer','Biryani','Pizza','Naan','Dosa','Gulab Jamun','Burger','Momos'].map(n=>`<div>${n}</div>`).join('')}</div>`,
 'shop-view': () => `
   <div class="crumb"><a href="#shops-all">Shops</a><span>/</span><span>Sharma Sweets</span></div>
-  <div class="head"><h1>Sharma Sweets</h1><div class="row">${act('Edit')}${act('Menu')}<a class="btn go" href="#pay-shop">Pay ₹1,534</a></div></div>
+  <div class="head"><h1>Sharma Sweets</h1><div class="row">${act('Edit')}${act('Menu')}${act('Set map pin')}${act('Reset password')}${act('Stop shop','Stopped: sample only','bad')}<a class="btn go" href="#pay-shop">Pay ₹1,534</a></div></div>
   <div class="grid g4"><div class="tile"><span class="n">42</span><span class="l">Orders this month</span></div><div class="tile"><span class="n">₹31,200</span><span class="l">Sales this month</span></div><div class="tile ok"><span class="n">Open</span><span class="l">Right now</span></div><div class="tile"><span class="n">4.4</span><span class="l">Rating</span></div></div>
-  <div class="half"><section class="grid"><h2>Owner</h2>${facts([['Name','Ramesh Sharma'],['Phone','98765 43210'],['Area','Bemetara']])}</section><section class="grid"><h2>Bank</h2>${facts([['UPI','sharmasweets@okhdfc'],['Bank','HDFC Bank'],['Paid','Every week']])}</section></div>`,
+  <div class="half"><section class="grid"><h2>Owner</h2>${facts([['Name','Ramesh Sharma'],['Phone','98765 43210'],['Area','Bemetara'],['Map pin','Set']])}</section><section class="grid"><h2>Bank</h2>${facts([['UPI','sharmasweets@okhdfc'],['Bank','HDFC Bank'],['Paid','Every week']])}</section></div>`,
 'shop-add': () => `<div class="crumb"><a href="#shops-all">Shops</a><span>/</span><span>Add a shop</span></div><h1>Add a shop</h1>
-  <div class="form">${['Shop name','Owner name','Phone','Area','UPI or bank account','Deligro cut %'].map(l=>`<label class="f">${l}<input></label>`).join('')}</div><div class="row">${act('Save shop','Saved: sample only','go')}</div>`,
+  <div class="form">${['Shop name','Owner name','Phone','Area','Map pin','UPI or bank account','Deligro cut %'].map(l=>`<label class="f">${l}<input></label>`).join('')}</div><div class="row">${act('Save shop','Saved: sample only','go')}</div>`,
 
 customers: () => table([{t:'Customer',k:'n',b:1},{t:'Phone',k:'p'},{t:'Orders',k:'o',r:1},{t:'Spent',k:'s',r:1,b:1},{t:'Last order',k:'l'}],
-  [{n:'Asha Verma',p:'98260 11223',o:14,s:'₹6,240',l:'Today'},{n:'Rohit Sahu',p:'99070 44556',o:6,s:'₹2,110',l:'Yesterday'},{n:'Neha Jain',p:'94252 77889',o:22,s:'₹11,480',l:'2 Nov'}], r=>'customer-view'),
+  [{n:'Asha Verma',p:'98260 11223',o:14,s:'₹6,240',l:'Today'},{n:'Rohit Sahu',p:'99070 44556',o:6,s:'₹2,110',l:'Yesterday'},{n:'Neha Jain',p:'94252 77889',o:22,s:'₹11,480',l:'2 Nov'}], r=>'customer-view') + pager('1 to 3 of 1,240 customers'),
 'customer-view': () => `<div class="crumb"><a href="#customers">Customers</a><span>/</span><span>Asha Verma</span></div><div class="head"><h1>Asha Verma</h1><div class="row">${act('Call')}${act('Block','Block: sample only','bad')}</div></div>
   <div class="grid g4"><div class="tile"><span class="n">14</span><span class="l">Orders</span></div><div class="tile"><span class="n">₹6,240</span><span class="l">Spent</span></div><div class="tile"><span class="n">1</span><span class="l">Refund</span></div></div>
   <section class="grid"><h2>Orders</h2>${table(ORDERCOL.filter(c=>c.t!=='Customer'), LIVE.slice(0,2), r=>'order-view')}</section>`,
 
 'riders-all': () => `<div class="row">${act('Add a rider','','go')}</div>` + table([{t:'Rider',k:'n',b:1},{t:'Area',k:'a'},{t:'Now',f:r=>pill(r.st,r.c)},{t:'Deliveries today',k:'d',r:1},{t:'Cash held',k:'h',r:1,b:1}],
   [{n:'Ravi',a:'Bemetara',st:'On delivery',c:'pb',d:7,h:'₹2,140'},{n:'Amit',a:'Bemetara',st:'Free',c:'pg',d:5,h:'₹1,020'},{n:'Sunil',a:'Durg',st:'On delivery',c:'pb',d:9,h:'₹1,090'},{n:'Deepak',a:'Durg',st:'Offline',c:'pm',d:0,h:'₹0'}], r=>'rider-view'),
-'rider-view': () => `<div class="crumb"><a href="#riders-all">Riders</a><span>/</span><span>Ravi</span></div><div class="head"><h1>Ravi</h1><div class="row">${act('Call')}${act('Edit')}${act('Stop rider','Stopped: sample only','bad')}</div></div>
+'rider-view': () => `<div class="crumb"><a href="#riders-all">Riders</a><span>/</span><span>Ravi</span></div><div class="head"><h1>Ravi</h1><div class="row">${act('Call')}${act('Edit')}${act('Reset password')}${act('Stop rider','Stopped: sample only','bad')}<a class="btn go" href="#money-riders">Pay rider</a></div></div>
   <div class="grid g4"><div class="tile"><span class="n">7</span><span class="l">Deliveries today</span></div><div class="tile warn"><span class="n">₹2,140</span><span class="l">Cash held</span></div><div class="tile"><span class="n">4.7</span><span class="l">Rating</span></div><div class="tile ok"><span class="n">Done</span><span class="l">Documents</span></div></div>
   <div class="half"><section class="grid"><h2>Details</h2>${facts([['Phone','98930 22110'],['Area','Bemetara'],['Bike','CG 07 AB 1234']])}</section><section class="grid"><h2>Pay</h2>${facts([['Salary','₹14,000'],['Last paid','1 Nov'],['Reward this month','₹600']])}</section></div>`,
 'riders-rewards': () => `<div class="row">${act('Add a reward','','go')}</div>` + table([{t:'Reward',k:'n',b:1},{t:'Target',k:'t'},{t:'Money',k:'m',r:1,b:1},{t:'Status',f:r=>pill(r.s,r.c)}],
@@ -297,6 +298,8 @@ customers: () => table([{t:'Customer',k:'n',b:1},{t:'Phone',k:'p'},{t:'Orders',k
   <div class="half"><div class="grid"><div class="big"><small>Send to Sharma Sweets</small><strong>₹1,534</strong></div><p>Send it from your bank or UPI app, then type the payment number here.</p>
   <label class="f">Payment number (UTR)<input></label><div class="row">${act('I have paid','Marked paid: sample only','go')}${act('Cancel payment')}</div></div>
   <section class="grid"><h2>How we got ₹1,534</h2>${facts([['Food sold','₹1,744'],['Deligro keeps','− ₹210'],['Send to the shop','₹1,534',1]])}</section></div>`,
+'money-riders': () => `<div class="big"><small>Salaries to pay</small><strong>₹28,000</strong></div>` + table([{t:'Rider',k:'n',b:1},{t:'Salary',k:'s',r:1},{t:'Reward',k:'w',r:1},{t:'Status',f:r=>pill(r.t,r.c)},{t:'Send',k:'a',r:1,b:1},{t:'',r:1,f:()=>act('Pay','Payment recorded: sample only')}],
+  [{n:'Ravi',s:'₹14,000',w:'₹600',t:'Due',c:'pa',a:'₹14,600'},{n:'Amit',s:'₹13,400',w:'₹0',t:'Waiting for approval',c:'pb',a:'₹13,400'}]),
 'money-cash': () => `<div class="grid g3"><div class="tile warn"><span class="n">₹4,250</span><span class="l">With riders</span></div><div class="tile"><span class="n">₹9,400</span><span class="l">With managers</span></div><div class="tile ok"><span class="n">₹52,000</span><span class="l">With you</span></div></div>
   <div class="row">${act('Add an expense','','go')}</div>` + table([{t:'Rider',k:'n',b:1},{t:'Collected',k:'c',r:1},{t:'Handed over',k:'h',r:1},{t:'Still has',k:'s',r:1,b:1},{t:'',r:1,f:()=>act('Cash received','Recorded: sample only')}],
   [{n:'Ravi',c:'₹3,640',h:'₹1,500',s:'₹2,140'},{n:'Sunil',c:'₹1,090',h:'₹0',s:'₹1,090'},{n:'Amit',c:'₹2,020',h:'₹1,000',s:'₹1,020'}]),
@@ -320,12 +323,60 @@ customers: () => table([{t:'Customer',k:'n',b:1},{t:'Phone',k:'p'},{t:'Orders',k
 'messages-news': () => `<div class="row">${act('Send a message','','go')}</div>` + table([{t:'Message',k:'m',b:1},{t:'Sent to',k:'t'},{t:'Date',k:'d'}],[{m:'Rain today, drive safe',t:'All riders',d:'2 Nov'},{m:'New payment day',t:'All shops',d:'28 Oct'}]),
 
 'set-home': () => `<div class="grid g3">${[['set-team','people','Team','Manager and rider logins'],['set-areas','map','Areas','Cities and delivery zones'],['set-prices','rupee','Prices and rules','Fees, tax, opening hours'],['set-switches','sw','App switches','Turn app features on or off'],['set-texts','text','Shop text messages','New order texts'],['set-history','clock','History','Who changed what']].map(([h,i,t,d])=>`<a class="tile link" href="#${h}">${icon(i)}<span style="color:var(--ink);font-weight:700;font-size:15px">${t}<span>${d}</span></span></a>`).join('')}</div>`,
-'set-team': () => `<div class="row">${act('Add a person','','go')}</div>` + table([{t:'Name',k:'n',b:1},{t:'Job',k:'j'},{t:'Area',k:'a'},{t:'Phone',k:'p'}],[{n:'Manoj',j:'Manager',a:'Bemetara',p:'98261 00112'},{n:'Ravi',j:'Rider',a:'Bemetara',p:'98930 22110'}]),
+'set-team': () => `<div class="row">${act('Add a person','','go')}</div>` + table([{t:'Name',k:'n',b:1},{t:'Job',k:'j'},{t:'Area',k:'a'},{t:'Phone',k:'p'},{t:'',r:1,f:()=>`<span class="row" style="justify-content:flex-end">${act('Reset password')}${act('Stop','Stopped: sample only','bad')}</span>`}],[{n:'Manoj',j:'Manager',a:'Bemetara',p:'98261 00112'},{n:'Ravi',j:'Rider',a:'Bemetara',p:'98930 22110'}]),
 'set-areas': () => `<div class="row">${act('Add an area','','go')}</div>` + table([{t:'Area',k:'n',b:1},{t:'Shops',k:'s',r:1},{t:'Riders',k:'r',r:1},{t:'Status',f:r=>pill(r.t,r.c)}],[{n:'Bemetara',s:41,r:10,t:'Open',c:'pg'},{n:'Durg',s:12,r:4,t:'Open',c:'pg'}]),
 'set-prices': () => `<div class="form">${[['Delivery fee (₹)',29],['Free delivery above (₹)',499],['Tax %',5],['Smallest order (₹)',99],['Deligro cut %',10],['Opens at','08:00'],['Closes at','23:00'],['Support phone','1800 000 000']].map(([l,v])=>`<label class="f">${l}<input value="${v}"></label>`).join('')}</div><div class="row">${act('Save','Saved: sample only','go')}</div>`,
 'set-switches': () => [['Riders','Cash deposit screen',1],['Riders','Rewards screen',1],['Managers','Approve payments',1],['Shops','Offers screen',0],['Admin','Refunds page',1]].map(([w,t,on])=>`<div class="sw"><span><span class="m">${w}:</span> ${t}</span><button aria-pressed="${!!on}" aria-label="${t}" data-sw></button></div>`).join(''),
 'set-texts': () => `<div class="sw"><span>Text shops on a new order</span><button aria-pressed="true" aria-label="Text shops" data-sw></button></div>` + table([{t:'Shop',k:'n',b:1},{t:'Phone',k:'p'},{t:'Texts sent',k:'c',r:1}],[{n:'Sharma Sweets',p:'98765 43210',c:88},{n:'Pizza Corner',p:'98765 11111',c:240}]),
-'set-history': () => table([{t:'When',k:'w'},{t:'Who',k:'p',b:1},{t:'Did what',k:'d'}],[{w:'Today 9:40',p:'Admin',d:'Approved Hot Rolls'},{w:'Today 9:12',p:'Manoj',d:'Paid Pizza Corner ₹9,840'},{w:'Yesterday',p:'Admin',d:'Changed delivery fee to ₹29'}]),
+'set-history': () => table([{t:'When',k:'w'},{t:'Who',k:'p',b:1},{t:'Did what',k:'d'}],[{w:'Today 9:40',p:'Admin',d:'Approved Hot Rolls'},{w:'Today 9:12',p:'Manoj',d:'Paid Pizza Corner ₹9,840'},{w:'Yesterday',p:'Admin',d:'Changed delivery fee to ₹29'}]) + pager('1 to 3 of 8,210 changes'),
+
+'problems-found': () => {
+  const group = (title, rows) => `<section class="grid"><h2>${title}</h2>${table([{t:'Where',k:'w',b:1},{t:'Problem',k:'p'}], rows.map(([w,p])=>({w,p})))}</section>`;
+  return `<h1>Problems found today</h1>
+  <div class="grid g4">
+    <div class="tile"><span class="n" style="font-size:20px">Mostly connected</span><span class="l">Customer app</span></div>
+    <div class="tile"><span class="n" style="font-size:20px">Mostly connected</span><span class="l">Partner app</span></div>
+    <div class="tile"><span class="n" style="font-size:20px">Mostly connected</span><span class="l">Rider app</span></div>
+    <div class="tile warn"><span class="n" style="font-size:20px">Not finished</span><span class="l">Manager app</span></div>
+  </div>
+  <p class="note">Found by reading the code. Nothing was run on the live system, and which database updates are live is not known.</p>` +
+  group('Money and accounts: fix first', [
+    ['Pay riders','Admin payment stops working once database update 0152 is live, and admin has no screen for rider pay requests.'],
+    ['Refunds','Only the newest 50 show, so older open refunds can vanish and totals come out low.'],
+    ['Delete a shop','Also deletes the owner\'s login, even if that person is a customer too.'],
+    ['Partner printed statement','Still says the shop holds the cash. That is the old wrong rule.'],
+    ['Home','Shop payments can show 0 while shops are owed money.'],
+    ['Settlements','Can say every shop is paid while payments are unfinished.'],
+    ['Paid orders','Undo always fails for orders paid with the normal Pay button.'],
+  ]) +
+  group('Things you cannot do today', [
+    ['Shops','Admin cannot set a map pin, and a shop with no pin cannot go live.'],
+    ['Riders and managers','Admin cannot stop them or reset their passwords.'],
+    ['Refunds','Admin cannot start a refund from an order, or mark a cash refund as handed back.'],
+    ['Areas','Shops cannot be put in an area, so a manager in a second area probably sees no shops.'],
+    ['Customers, Orders, History','Older records cannot be reached: lists stop at 200, 50 and 100.'],
+    ['One-person payments','With only one admin, payments wait for a second person until a setting is switched on.'],
+  ]) +
+  group('Admin buttons that do nothing or mislead', [
+    ['Banners','5 of 6 placements never show. Cities, zones and customer groups are ignored. The Orders count stays at zero.'],
+    ['Marketing requests','4 of 8 buttons always refuse, and approving makes no campaign.'],
+    ['App switches','One switch does nothing. Navigation only works on the website. Open and close leaves admin with no control.'],
+    ['Alert rules','Fraud and service rules show On, but nothing checks them.'],
+    ['Category pictures','Reset says Saved but changes nothing.'],
+    ['Announcements','The form keeps its text, so a second click sends it again.'],
+  ]) +
+  group('Flutter apps', [
+    ['Manager','Insights is an empty page, and its unfinished work sits on other branches.'],
+    ['Manager','Offer and campaign edits are almost always refused. On and off alert rules cannot be saved.'],
+    ['Manager','Normal words in order search give an error. The report status filter is always empty.'],
+    ['Rider','Stopped or rejected riders are told they are not riders, and cannot fix their documents.'],
+    ['Rider','Reject fails on open offers. Picking up too early looks like a lost job.'],
+    ['Partner','Some alerts open a page that does not exist, like shop approved or dish hidden.'],
+    ['Partner','Turned-off features stay visible until restart. A dish Deligro hid still looks live.'],
+    ['Customer','Order again drops dishes added in the Partner app. Customers get no announcements.'],
+    ['All apps','Version numbers have not gone up since 27 Oct, so recent fixes cannot be offered to phones.'],
+  ]);
+},
 
 'all-pages': () => `<h1>Where every old page went</h1>` + table([{t:'Old page',k:'a'},{t:'New place',k:'b',b:1},{t:'',r:1,f:r=>`<a class="btn sm" href="#${r.g}">Open</a>`}], [
   ['Dashboard','Home','home'],['Orders','Orders › Live, All orders','orders-live'],['Refunds','Orders › Refunds','orders-refunds'],
@@ -333,13 +384,13 @@ customers: () => table([{t:'Customer',k:'n',b:1},{t:'Phone',k:'p'},{t:'Orders',k
   ['Support','Messages › Help requests','messages-help'],['Alerts','Messages › Alerts','messages-alerts'],['Alert settings','Messages › Alerts › Alert rules','set-alerts'],['Announcements','Messages › Announcements','messages-news'],
   ['Marketing requests','Offers › Shop requests','offers-requests'],['Campaigns','Offers › Banners','offers-banners'],['Promo codes','Offers › Promo codes','offers-codes'],
   ['Vendors','Shops › All shops, New shops','shops-all'],['Add vendor','Shops › Add a shop','shop-add'],['Featured slots','Shops › Home page order','shops-order'],['Storage, Food images','Shops › Photos','shops-photos'],['Categories (two old pages)','Shops › Categories','shops-cats'],
-  ['Customers','Customers','customers'],['Riders','Riders › All riders','riders-all'],['Rider incentives','Riders › Rewards','riders-rewards'],
+  ['Customers','Customers','customers'],['Riders','Riders › All riders','riders-all'],['Rider incentives','Riders › Rewards','riders-rewards'],['Rider money tab','Money › Pay riders','money-riders'],
   ['Settings','Settings','set-home'],['Team','Settings › Team','set-team'],['Zones','Settings › Areas','set-areas'],['Platform config','Settings › Prices and rules','set-prices'],['Feature access','Settings › App switches','set-switches'],['Vendor SMS','Settings › Shop text messages','set-texts'],['Audit log','Settings › History','set-history'],
 ].map(([a,b,g])=>({a,b,g}))),
 };
 
 const TITLES = {home:'Home',customers:'Customers','set-home':'Settings','set-team':'Team','set-areas':'Areas','set-prices':'Prices and rules','set-switches':'App switches','set-texts':'Shop text messages','set-history':'History'};
-const HEADLESS = /-view$|^shop-add$|^pay-|^set-alerts$|^all-pages$/;
+const HEADLESS = /-view$|^shop-add$|^pay-|^set-alerts$|^all-pages$|^problems-found$/;
 const SECTION_OF = {'order-view':'orders','shop-view':'shops','shop-add':'shops','customer-view':'customers','rider-view':'riders','pay-shop':'money','pay-confirm':'money','help-view':'messages','set-alerts':'messages'};
 
 function sectionFor(route) {
