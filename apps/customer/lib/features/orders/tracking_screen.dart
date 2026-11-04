@@ -18,6 +18,7 @@ import '../../theme/app_theme.dart';
 import '../../widgets/cart_widgets.dart';
 import '../../widgets/common.dart';
 import 'orders_screen.dart';
+import 'wallet_code_card.dart';
 
 /// Past this, a countdown is fiction (CUSTOMER_LATE_CAP_MINUTES on the web).
 const _lateCapMinutes = 180;
@@ -319,6 +320,13 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen> {
                 const SizedBox(height: 14),
               ],
               _BillCard(order: order, delivered: delivered),
+              if (status == OrderStatus.onTheWay &&
+                  order.paymentMethod != 'online' &&
+                  order.cashDue > 0 &&
+                  ref.watch(walletProvider).value?.enabled == true) ...[
+                const SizedBox(height: 14),
+                WalletCodeCard(orderId: order.id),
+              ],
               const SizedBox(height: 16),
               if (status.customerCanCancel && _cancelLeft > 0 && features.can(cancelFeature)) ...[
                 OutlinedButton.icon(
@@ -1382,6 +1390,8 @@ class _CourierCard extends StatelessWidget {
 
 /// What to call the total — never "(Cash)" on an order paid online.
 String _totalLabel(Order o, bool delivered) {
+  // With points on it, the figure is the bill, and the rows below say how it was paid.
+  if (o.pointsUsed > 0) return 'Bill total';
   if (o.paymentStatus == 'refunded') return 'Total refunded';
   if (o.paymentStatus == 'paid') return 'Total paid';
   if (o.paymentMethod == 'online') return 'Total (online, unpaid)';
@@ -1398,7 +1408,7 @@ class _BillCard extends StatelessWidget {
     final c = context.colors;
     final o = order;
     final payState = switch (o.paymentStatus) {
-      'paid' => ('Paid', c.green),
+      'paid' => (o.pointsUsed > 0 ? 'Paid with points' : 'Paid', c.green),
       'refunded' => ('Refunded', c.blue),
       'failed' => ('Failed', c.deal),
       _ => (o.paymentMethod == 'online' ? 'Unpaid' : (delivered ? 'Paid' : 'Pay at the door'), c.muted),
@@ -1445,6 +1455,14 @@ class _BillCard extends StatelessWidget {
             ),
           const Divider(height: 22),
           BillRow(_totalLabel(o, delivered), rupees(o.total), bold: true),
+          if (o.pointsUsed > 0) ...[
+            if (o.status == OrderStatus.cancelled)
+              BillRow('Points returned to your wallet', rupees(o.pointsUsed), highlight: true)
+            else ...[
+              BillRow('Paid with points', rupees(o.pointsUsed), negative: true),
+              BillRow(delivered ? 'Paid in cash' : 'Pay the rider in cash', rupees(o.cashDue), bold: true),
+            ],
+          ],
           const SizedBox(height: 10),
           Row(
             children: [

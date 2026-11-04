@@ -234,7 +234,9 @@ class _CollectionRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final c = context.colors;
-    final chip = item.online
+    final chip = item.paidWithPoints
+        ? StatusChip('Paid with points', fg: c.blue, bg: c.surface2)
+        : item.online
         ? StatusChip('Paid online', fg: c.blue, bg: c.surface2)
         : item.notRecorded
         ? StatusChip('Not recorded', fg: c.deal, bg: c.dealSoft)

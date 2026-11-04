@@ -49,6 +49,8 @@ export interface KitchenOrder {
    */
   paymentMethod?: PaymentMethod;
   paymentStatus?: PaymentStatus;
+  /** Wallet points on the order (0198). `total` stays the bill; cash due = total − this. */
+  pointsUsed?: number;
   /** When the kitchen accepted / packed it (0026) — drives the late badge. */
   acceptedAt?: string | null;
   readyAt?: string | null;
@@ -224,6 +226,8 @@ export interface AdminOrderRow {
   placedAtIso?: string;
   paymentMethod?: PaymentMethod;
   paymentStatus?: PaymentStatus;
+  /** Wallet points on the order (0198). `total` stays the bill; cash due = total − this. */
+  pointsUsed?: number;
   /** Minutes past the expected handover, when the order is running late. */
   lateByMinutes?: number | null;
   /**

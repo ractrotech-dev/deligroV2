@@ -94,8 +94,13 @@ class OrderRepository {
     /// The total on screen. If the server's differs, nothing is placed: 409
     /// `total_changed` with the real `bill` (a question, not an amount).
     int? expectedTotal,
+
+    /// Wallet points to use. A request: the server checks them against the balance and
+    /// the bill, and takes them under a lock.
+    int walletPoints = 0,
   }) async {
     final res = await _api.post('/api/orders', {
+      if (walletPoints > 0) 'walletPoints': walletPoints,
       'restaurantSlug': restaurantSlug,
       'lines': [
         for (final l in lines)

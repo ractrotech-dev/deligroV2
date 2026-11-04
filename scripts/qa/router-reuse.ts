@@ -89,6 +89,8 @@ console.log("\n═══ no unclassified customer mutation ═══");
 const NOT_VISIBLE = new Set([
   "src/lib/marketing/track-client.ts",
   "src/components/orders/rider-rating-card.tsx",
+  // Asks for a code and shows it in its own state: no cached page shows it.
+  "src/components/orders/wallet-code-card.tsx",
   "src/lib/obs/client.ts",
   "src/components/home/promo-banner-carousel.tsx",
   "src/components/notifications/onesignal-init.tsx",

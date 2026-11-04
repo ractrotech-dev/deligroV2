@@ -104,6 +104,8 @@ export interface UiOrder extends Order {
   /** From migration 0025; undefined on a database that predates it (all COD). */
   paymentMethod?: PaymentMethod;
   paymentStatus?: PaymentStatus;
+  /** Wallet points on this order (0198). `total` stays the bill; cash due = total − this. */
+  pointsUsed?: number;
   /** Raw `created_at`. `placedAt` is a human label and can't be computed from. */
   createdAt?: string;
   /**
@@ -233,6 +235,7 @@ export function mapDbOrderRow(row: DbOrder): UiOrder {
       (restaurant as { eta_min?: number } | null)?.eta_min ?? undefined,
     paymentMethod: row.payment_method,
     paymentStatus: row.payment_status,
+    pointsUsed: row.wallet_points_used ?? 0,
     cancelledBy: asCancelledBy(row.cancelled_by),
     cancellationReason: row.cancellation_reason ?? null,
     address: row.address,

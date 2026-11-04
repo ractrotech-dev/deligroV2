@@ -253,6 +253,11 @@ export function CashNotice({
           >
             {formatINR(payment.collectAmount)}
           </p>
+          {(payment.pointsUsed ?? 0) > 0 ? (
+            <p className="mt-1 text-xs font-semibold text-deal">
+              The customer used {payment.pointsUsed} points on this order.
+            </p>
+          ) : null}
         </div>
       </div>
     );
@@ -263,11 +268,13 @@ export function CashNotice({
         <ShieldCheck className="size-5 shrink-0 text-green" />
         <div className="min-w-0">
           <p className="text-sm font-bold text-green">
-            Prepaid, collect nothing
+            {payment.paidWithPoints ? "Paid with points, collect nothing" : "Prepaid, collect nothing"}
           </p>
           {compact ? null : (
             <p className="text-xs text-muted">
-              Already paid online. Do not ask for money.
+              {payment.paidWithPoints
+                ? "The customer used their wallet. Do not ask for money."
+                : "Already paid online. Do not ask for money."}
             </p>
           )}
         </div>

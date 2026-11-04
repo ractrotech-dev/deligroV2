@@ -39,7 +39,8 @@ export interface OrderListItem {
   customerName: string | null;
   total: number;
   itemCount: number;
-  payment: { method: string | null; status: string | null };
+  /** `pointsUsed`: wallet points on the order (0198). `total` stays the bill. */
+  payment: { method: string | null; status: string | null; pointsUsed?: number };
   rider: { id: string; name: string; code: string | null } | null;
   deliveryStatus: DeliveryStatus | null;
   byPhone: boolean;
@@ -93,7 +94,7 @@ export interface AllowedActions {
 
 export interface OrderDetail extends OrderListItem {
   items: { id: string; name: string; qty: number; price: number; lineTotal: number }[];
-  money: { subtotal: number; discount: number; deliveryFee: number; tax: number; tip: number; total: number };
+  money: { subtotal: number; discount: number; deliveryFee: number; tax: number; tip: number; total: number; pointsUsed?: number };
   pickup: { name: string; address: string | null; lat: number | null; lng: number | null; phone: string | null };
   /** `note`: the delivery note ops added for the rider (orders.ops_address_note), or null. */
   drop: { label: string | null; address: string | null; landmark: string | null; lat: number | null; lng: number | null; note: string | null };

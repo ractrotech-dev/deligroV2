@@ -423,6 +423,7 @@ export function SettingsForm({
   commissionCoverage = { inheriting: 0, overridden: 0, migrated: true },
   cashLimitsReady = true,
   cashLimitReady = true,
+  walletReady = true,
   docsSettingReady = true,
 }: Readonly<{
   settings: PlatformSettings;
@@ -446,6 +447,8 @@ export function SettingsForm({
   cashLimitsReady?: boolean;
   /** False until migration 0194 adds the platform cash switch and limit. */
   cashLimitReady?: boolean;
+  /** False before 0198: the wallet switch and limit can't be saved. */
+  walletReady?: boolean;
   /** False until migration 0086 adds `block_dispatch_on_expired_docs`. */
   docsSettingReady?: boolean;
 }>) {
@@ -604,6 +607,51 @@ export function SettingsForm({
               placeholder="We're briefly down for maintenance — back soon."
             />
           </Stacked>
+        </Card>
+
+        <Card
+          className="order-5"
+          title="Customer wallet"
+          desc="A rider with no change can add the leftover to the customer's wallet as points. 1 point = ₹1."
+        >
+          {walletReady ? null : (
+            <p
+              role="status"
+              className="rounded-lg border border-pop/40 bg-pop/10 px-3 py-2 text-[12px] font-medium leading-snug text-ink"
+            >
+              The wallet needs migration 0198. Until then it stays off.
+            </p>
+          )}
+          <Row
+            label="Wallet"
+            hint="Off: riders can't add points and customers can't use them. Balances stay as they are."
+            htmlFor="featureWallet"
+          >
+            {walletReady ? <input type="hidden" name="featureWalletShown" value="1" /> : null}
+            <Switch
+              id="featureWallet"
+              label="Wallet"
+              name="featureWallet"
+              disabled={!walletReady}
+              defaultChecked={settings.featureWallet}
+            />
+          </Row>
+          <Row
+            label="Most a rider can add per order"
+            hint="In rupees, from 1 to 10,000. A rider can't add more than this on one order."
+            htmlFor="walletChangeMaxPerOrder"
+          >
+            {/* A disabled input posts nothing, so the action keeps the stored value. */}
+            <Num
+              id="walletChangeMaxPerOrder"
+              name="walletChangeMaxPerOrder"
+              disabled={!walletReady}
+              defaultValue={settings.walletChangeMaxPerOrder}
+              min={1}
+              max={10000}
+              step={10}
+            />
+          </Row>
         </Card>
 
         <Card

@@ -5,6 +5,7 @@ import { getOrderForTracking } from "@/lib/orders-ui";
 import { getOrderEta } from "@/lib/data-access/order-tracking";
 import { TrackingView } from "@/components/orders/tracking-view";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
+import { getSettings } from "@/lib/settings";
 
 const MOCK_ORDERS = [ACTIVE_ORDER, ...PAST_ORDERS];
 
@@ -31,11 +32,12 @@ export default async function OrderTrackingPage({
   // backend fault used to 404 a real order the customer was waiting on. Letting
   // it throw hands the case to the route's error boundary — an "something went
   // wrong, retry" screen — instead of asserting the order does not exist.
-  const [order, initialEta] = await Promise.all([
+  const [order, initialEta, settings] = await Promise.all([
     getOrderForTracking(id),
     isSupabaseConfigured
       ? getOrderEta(id).catch(() => null)
       : Promise.resolve(null),
+    getSettings().catch(() => null),
   ]);
   if (!order) notFound();
 
@@ -44,6 +46,7 @@ export default async function OrderTrackingPage({
       <TrackingView
         order={order}
         initialEta={initialEta}
+        walletOn={settings?.featureWallet === true}
       />
     </Suspense>
   );

@@ -17,6 +17,7 @@ import 'features/profile/addresses_screen.dart';
 import 'features/profile/favorites_screen.dart';
 import 'features/profile/help_screen.dart';
 import 'features/profile/profile_screen.dart';
+import 'features/profile/wallet_screen.dart';
 import 'features/restaurant/restaurant_screen.dart';
 import 'features/search/search_screen.dart';
 import 'features/shell/home_shell.dart';
@@ -135,6 +136,11 @@ final routerProvider = Provider<GoRouter>((ref) {
               path: '/profile',
               builder: (_, _) => const ProfileScreen(),
               routes: [
+                GoRoute(
+                  path: 'wallet',
+                  parentNavigatorKey: rootNavigatorKey,
+                  builder: (_, _) => const WalletScreen(),
+                ),
                 GoRoute(
                   path: 'addresses',
                   parentNavigatorKey: rootNavigatorKey,

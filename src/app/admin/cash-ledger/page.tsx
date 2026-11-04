@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { requireRole } from "@/lib/auth";
 import type { ManagerScope } from "@/lib/auth/manager-scope";
 
@@ -11,6 +12,8 @@ import {
   StatusText,
   Tabs,
   type MetricItem,
+  Figure,
+  FigureRow,
 } from "@/components/admin/console";
 import { DataTable, type Column } from "@/components/admin/data-table";
 import { SelectFilter } from "@/components/admin/select-filter";
@@ -40,6 +43,7 @@ import {
   type RecentDeposit,
 } from "@/lib/data-access/rider-cash";
 import { isRiderSchemaPending } from "@/lib/data-access/rider-status";
+import { getWalletSummary } from "@/lib/data-access/admin-wallets";
 
 /** A list that loaded, or why it did not: 0085 missing is a known state, anything else is a fault. */
 type Loaded<T> = { rows: T[]; state: "ok" } | { rows: T[]; state: "pending" | "failed" };
@@ -495,6 +499,15 @@ export default async function AdminCashLedgerPage({
     load(() => listCashDisputes(30)),
   ]);
 
+  // Read on its own too: null is a database without 0198, and a failed read says so.
+  let walletSummary: Awaited<ReturnType<typeof getWalletSummary>> = null;
+  let walletFailed = false;
+  try {
+    walletSummary = await getWalletSummary();
+  } catch {
+    walletFailed = true;
+  }
+
   const monthTotal = Object.values(monthTotals).reduce((sum, v) => sum + v, 0);
   const ridersWithOutstanding = outstanding.byRider.filter(
     (r) => r.outstanding !== 0
@@ -578,6 +591,28 @@ export default async function AdminCashLedgerPage({
           withRiders={outstanding.outstandingWithRiders}
           withManagers={outstanding.outstandingWithManagers}
         />
+      </Section>
+
+      <Section
+        title="Held in customer wallets"
+        description="When a rider has no change, they hand over all the cash and the leftover goes to the customer's wallet as points. This much of the cash Deligro holds is the customers', to be used on their orders."
+        actions={
+          <Link href="/admin/customer-wallets" className="text-[12px] font-semibold text-ink underline">
+            Customer wallets
+          </Link>
+        }
+      >
+        {walletSummary ? (
+          <FigureRow>
+            <Figure label="Held for customers" value={formatINR(walletSummary.held)} note={`${walletSummary.customers} customers with points`} />
+            <Figure label="Added this month" value={formatINR(walletSummary.addedThisMonth)} note="Change added by riders" />
+            <Figure label="Used this month" value={formatINR(walletSummary.usedThisMonth)} note="On orders, less anything returned" />
+          </FigureRow>
+        ) : (
+          <p className="text-sm text-muted">
+            {walletFailed ? "Could not load these figures. Refresh to try again." : "The wallet needs migration 0198."}
+          </p>
+        )}
       </Section>
 
       <Section

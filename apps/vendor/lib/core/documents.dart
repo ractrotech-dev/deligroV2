@@ -43,7 +43,8 @@ String _when(DateTime? d) => d == null ? '—' : _date.format(d);
 String paymentLabel(String? method, String? status) {
   final m = method == 'online' ? 'Paid online' : 'Cash on delivery';
   if (method == 'online') return status == 'refunded' ? 'Online · refunded' : m;
-  return status == 'paid' ? 'Cash · collected' : m;
+  // Paid and still a cash order: the customer's wallet points covered the bill.
+  return status == 'paid' ? 'Paid in full' : m;
 }
 
 /// GST on the order, split evenly into its central and state halves (intra-state supply).

@@ -184,6 +184,7 @@ class _CustomerDetailBodyState extends ConsumerState<CustomerDetailBody> with Wi
               fig(count(x.orders), 'Orders'),
               fig(rupees(x.spent), 'Spent'),
               fig(rupees(x.aov), 'Average order'),
+              fig(rupees(x.walletBalance), 'Wallet'),
               fig(count(x.cancelledOrders), 'Cancelled'),
               fig(x.avgRatingGiven == null ? '—' : x.avgRatingGiven!.toStringAsFixed(1), 'Avg rating given'),
             ]),

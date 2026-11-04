@@ -191,6 +191,15 @@ export const ADMIN_NAV: AdminNavItem[] = [
     match: (p) => p.startsWith("/admin/customers"),
   },
   {
+    // What Deligro holds for customers as wallet points (0198).
+    href: "/admin/customer-wallets",
+    label: "Customer wallets",
+    icon: Wallet,
+    group: "People",
+    tone: "green",
+    match: (p) => p.startsWith("/admin/customer-wallets"),
+  },
+  {
     href: "/admin/riders",
     label: "Riders",
     icon: Bike,

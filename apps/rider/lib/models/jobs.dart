@@ -83,23 +83,79 @@ enum CashInstruction {
       };
 }
 
+/// Adding change to the customer's wallet, for the delivery the rider holds.
+class WalletChangeInfo {
+  const WalletChangeInfo({required this.allowed, required this.maxPerOrder, this.addedChange, this.addedReceived});
+
+  /// The wallet is on and this rider's `driver.cod_change` is on: the server decided.
+  final bool allowed;
+  final int maxPerOrder;
+
+  /// Already done on this delivery.
+  final int? addedChange;
+  final int? addedReceived;
+
+  bool get added => addedChange != null;
+
+  factory WalletChangeInfo.fromJson(Map<String, dynamic> j) {
+    final added = j['added'] is Map ? Map<String, dynamic>.from(j['added'] as Map) : null;
+    return WalletChangeInfo(
+      allowed: j['allowed'] == true,
+      maxPerOrder: (_double(j['maxPerOrder']) ?? 0).round(),
+      addedChange: added == null ? null : (_double(added['change']) ?? 0).round(),
+      addedReceived: added == null ? null : (_double(added['received']) ?? 0).round(),
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+        'allowed': allowed,
+        'maxPerOrder': maxPerOrder,
+        if (added) 'added': {'change': addedChange, 'received': addedReceived},
+      };
+}
+
 class RiderPayment {
-  const RiderPayment({required this.instruction, this.collectAmount = 0});
+  const RiderPayment({
+    required this.instruction,
+    this.collectAmount = 0,
+    this.pointsUsed = 0,
+    this.paidWithPoints = false,
+    this.walletChange,
+  });
 
   final CashInstruction instruction;
 
-  /// Rupees to take at the door; zero unless [instruction] is collect.
+  /// Rupees to take at the door; zero unless [instruction] is collect. The bill less
+  /// any wallet points the customer used.
   final double collectAmount;
+
+  /// Wallet points on this order.
+  final int pointsUsed;
+
+  /// Points cover the whole bill: nothing to collect, and it wasn't paid online.
+  final bool paidWithPoints;
+
+  /// Null on an offer, and on a server older than the wallet.
+  final WalletChangeInfo? walletChange;
 
   factory RiderPayment.fromJson(Map<String, dynamic> j) {
     final instruction = CashInstruction.parse(j['instruction']);
     return RiderPayment(
       instruction: instruction,
       collectAmount: instruction == CashInstruction.collect ? (_double(j['collectAmount']) ?? 0) : 0,
+      pointsUsed: (_double(j['pointsUsed']) ?? 0).round(),
+      paidWithPoints: j['paidWithPoints'] == true,
+      walletChange: j['walletChange'] is Map ? WalletChangeInfo.fromJson(Map<String, dynamic>.from(j['walletChange'] as Map)) : null,
     );
   }
 
-  Map<String, dynamic> toJson() => {'instruction': instruction.name, 'collectAmount': collectAmount};
+  Map<String, dynamic> toJson() => {
+        'instruction': instruction.name,
+        'collectAmount': collectAmount,
+        'pointsUsed': pointsUsed,
+        'paidWithPoints': paidWithPoints,
+        if (walletChange != null) 'walletChange': walletChange!.toJson(),
+      };
 }
 
 class RiderOffer {

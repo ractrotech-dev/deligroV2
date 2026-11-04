@@ -28,6 +28,7 @@ import { operatorSurfaces, surfacesForRole } from "@/lib/auth/surfaces";
 // import { LanguageSwitch } from "@/components/shared/language-switch";
 import { getLang } from "@/lib/i18n/server";
 import { customerFeatures } from "@/lib/features/guards.server";
+import { readWalletBalance } from "@/lib/data-access/wallet";
 import { pick, translator, type Bi } from "@/lib/i18n/lang";
 
 // Per-request: reads the auth cookie to show the signed-in user's own data.
@@ -91,7 +92,11 @@ const DEVELOPER_EMAIL = "gauravm7722@gmail.com";
 export default async function ProfilePage() {
   // Profile is per-account — guests are bounced to /login by the proxy; this
   // backstops it server-side.
-  await requireUser();
+  const user = await requireUser();
+  // A failed read shows 0 here, and the wallet screen itself says what went wrong.
+  const walletBalance = isSupabaseConfigured
+    ? Math.floor(await readWalletBalance(user.id).catch(() => 0))
+    : 0;
   const lang = await getLang();
   const t = translator(lang);
   // Admin → App features: what this person has no row for here.
@@ -234,6 +239,23 @@ export default async function ProfilePage() {
       </Link>
       </>
       ) : null}
+
+      {/* The wallet: balance and history on their own screen. */}
+      <SectionHead title={t("Wallet", "वॉलेट")} />
+      <Link
+        href="/profile/wallet"
+        className="press flex items-center gap-4 rounded-2xl border border-line bg-surface p-4"
+      >
+        <div className="min-w-0 flex-1">
+          <p className="text-[15px] font-bold">
+            {t(`${walletBalance} points`, `${walletBalance} पॉइंट`)}
+          </p>
+          <p className="mt-0.5 text-[13px] text-muted">
+            {t("Change from cash orders. 1 point = ₹1.", "नकद ऑर्डर के बचे पैसे। 1 पॉइंट = ₹1।")}
+          </p>
+        </div>
+        <ChevronRight className="size-5 shrink-0 text-muted" />
+      </Link>
 
       {/* Payment. "Edit" and "Change" used to sit here as affordances for a
           picker that doesn't exist — Cash on Delivery is the only method, so the

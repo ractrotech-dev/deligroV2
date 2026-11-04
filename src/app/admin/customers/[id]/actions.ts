@@ -5,8 +5,45 @@ import { revalidatePath } from "next/cache";
 import { requireRole } from "@/lib/auth";
 import { rateLimit } from "@/lib/rate-limit";
 import { setCustomerAccount } from "@/lib/data-access/manager-customers";
+import { correctWallet } from "@/lib/data-access/wallet";
+import { checkCorrection, correctionMessage } from "@/lib/wallet/money";
 
 export type AccountActionResult = { ok: true } | { ok: false; error: string };
+
+export type WalletCorrectionResult = { ok: true; balance: number } | { ok: false; error: string };
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * Admin → correct a customer's wallet balance, with a written reason. Only an admin can
+ * (rule book): the database checks the actor too, and writes the ledger row and the
+ * audit row with the balance change, in one transaction.
+ */
+export async function correctWalletAction(
+  id: string,
+  _prev: WalletCorrectionResult | null,
+  form: FormData
+): Promise<WalletCorrectionResult> {
+  const admin = await requireRole("admin");
+  if (!(await rateLimit(`admin-wallet-correct:${admin.id}`, 20, 60_000)).ok) {
+    return { ok: false, error: "Too many changes. Wait a minute." };
+  }
+  if (!UUID.test(id)) return { ok: false, error: "That customer isn't there any more." };
+  const checked = checkCorrection(form.get("delta"), form.get("reason"));
+  if (!checked.ok) return checked;
+  const actionId = String(form.get("actionId") ?? "");
+  const r = await correctWallet(
+    admin.id,
+    id,
+    checked.delta,
+    checked.reason,
+    UUID.test(actionId) ? actionId : randomUUID()
+  ).catch(() => ({ ok: false as const, error: "server_error" }));
+  if (!r.ok) return { ok: false, error: correctionMessage(r.error) };
+  revalidatePath(`/admin/customers/${id}`);
+  revalidatePath("/admin/customer-wallets");
+  return { ok: true, balance: r.balance };
+}
 
 /**
  * Admin → suspend, restrict or reactivate a customer, with a reason — the

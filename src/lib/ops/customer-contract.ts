@@ -28,6 +28,8 @@ export interface CustomerSummary {
 }
 
 export interface CustomerDetail extends CustomerSummary {
+  /** Wallet points held (0198). Read-only here: only an admin corrects a balance. */
+  walletBalance: number;
   statusReason: string | null;
   statusChangedAt: string | null;
   statusChangedBy: Ref | null;

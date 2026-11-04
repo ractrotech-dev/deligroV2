@@ -613,6 +613,18 @@ void main() {
       expect(find.byKey(const Key('cant-deliver')), findsOneWidget);
     });
 
+    testWidgets('no change: the wallet step is at the door only, and Delivered stays where it was', (tester) async {
+      await _pump(tester, scenario: 'on_the_way');
+      expect(find.byKey(const Key('wallet-change')), findsNothing);
+
+      await _pump(tester, scenario: 'arrived_drop');
+      expect(_primaryText(tester), 'Delivered');
+      expect(find.byKey(const Key('wallet-change')), findsOneWidget);
+      await _tap(tester, find.byKey(const Key('wallet-change')));
+      expect(find.text('Add the change to the wallet'), findsOneWidget);
+      expect(find.byKey(const Key('wallet-received')), findsOneWidget);
+    });
+
     testWidgets('a photo-required delivery blocks Delivered until a photo is attached; no code is sent',
         (tester) async {
       final h = await _pump(tester, scenario: 'arrived_drop');

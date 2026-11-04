@@ -16,6 +16,9 @@ import { riderWorkBlock } from "@/lib/data-access/rider-work";
 import { maybeSweepDispatch } from "@/lib/dispatch/sweep";
 import { deferNotify } from "@/lib/notifications/defer";
 import { notifyVendorRiderAssigned, stopRiderRing } from "@/lib/notifications/order-events";
+import { addWalletChange } from "@/lib/data-access/wallet";
+import { isFeatureOn } from "@/lib/features/flags.server";
+import { walletChangeMessage } from "@/lib/wallet/money";
 
 async function requireDriver() {
   const profile = await getProfile();
@@ -48,6 +51,33 @@ export async function acceptDeliveryAction(orderId: string) {
   }
   revalidatePath("/driver");
   return result;
+}
+
+/**
+ * The web board's "No change? Add to wallet". The same database function as the app's
+ * route: the rider types what they received and the customer's code, and the server
+ * works out the change. Then Delivered is tapped as usual.
+ */
+export async function addWalletChangeAction(
+  orderId: string,
+  input: { received: number; code: string; actionId: string }
+): Promise<{ ok: true; change: number; received: number } | { ok: false; message: string }> {
+  const driver = await requireDriver();
+  if (!(await isFeatureOn("driver.cod_change", driver.id))) {
+    return { ok: false, message: "This isn't switched on for you. Give the change in cash." };
+  }
+  const limit = await rateLimit(`rider-wallet-change:${driver.id}`, 20, 60_000);
+  if (!limit.ok) return { ok: false, message: "Too many tries. Wait a minute." };
+  if (!Number.isInteger(input.received) || input.received <= 0 || input.received > 1_000_000) {
+    return { ok: false, message: "Enter the amount received in whole rupees." };
+  }
+  if (typeof input.code !== "string" || input.code.length > 12) {
+    return { ok: false, message: "Enter the customer's code." };
+  }
+  const result = await addWalletChange(driver.id, orderId, input);
+  if (!result.ok) return { ok: false, message: walletChangeMessage(result.error, result) };
+  revalidatePath("/driver");
+  return { ok: true, change: result.change, received: result.received };
 }
 
 export async function advanceDeliveryAction(orderId: string) {

@@ -70,6 +70,7 @@ List<({String title, String sub})> trackingSteps({
 
 /// How the order was paid, as the receipt words it.
 String paymentLabel(Order o) {
+  if (o.pointsUsed > 0) return o.cashDue > 0 ? 'Points and cash' : 'Wallet points';
   if (o.paymentMethod != 'online') return 'Cash on delivery';
   return switch (o.paymentStatus) {
     'paid' => 'Paid online',

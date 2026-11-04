@@ -30,11 +30,15 @@ import {
 } from "@/lib/data-access/column-fallback";
 import type { RiderAvailability } from "@/lib/rider/availability";
 import {
+  isCashOrder,
   performDeliveryAction,
   recordCodCollection,
 } from "@/lib/data-access/rider-delivery-actions";
 import type { PaymentMethod, PaymentStatus } from "@/types";
 import { riderBlockedByDocuments } from "@/lib/data-access/rider-document-block";
+import { readOrderPoints, walletChangeState, type WalletChangeState } from "@/lib/data-access/wallet";
+import { getFeatures } from "@/lib/features/flags.server";
+import { cashDue } from "@/lib/wallet/money";
 
 /**
  * Driver marketplace + active delivery, on live data.
@@ -65,9 +69,38 @@ export interface DriverPayment {
   /**
    * Rupees to take at the door — zero unless the instruction is "collect", so
    * that a screen which renders this without checking still cannot invent a
-   * demand for money.
+   * demand for money. Since 0198 this is the cash due: the bill less any points.
    */
   collectAmount: number;
+  /** Wallet points on this order (0198). 0 for most orders. */
+  pointsUsed?: number;
+  /** Points cover the whole bill: nothing to collect, and it wasn't paid online. */
+  paidWithPoints?: boolean;
+  /** Adding change to the customer's wallet (0198). Only on the active delivery. */
+  walletChange?: WalletChangeState;
+}
+
+/**
+ * The one sum from `paymentInstruction` to what the rider sees. An order the points
+ * cover entirely is `prepaid` with `paidWithPoints`, so an older app that doesn't know
+ * the flag still says "nothing to collect", which is the part that matters.
+ */
+export function driverPaymentFor(
+  detail: ActiveOrderDetail,
+  total: number | null | undefined,
+  pointsUsed: number = detail.pointsUsed ?? 0
+): DriverPayment {
+  const due = cashDue(total, pointsUsed);
+  let instruction = paymentInstruction(detail);
+  // A row caught mid-update, with the points on it and the status not yet moved.
+  if (instruction === "collect" && pointsUsed > 0 && due === 0) instruction = "prepaid";
+  return {
+    instruction,
+    // orders.total is the authoritative bill (recompute_order_total) and includes the
+    // tip, which on a cash order the rider also collects.
+    collectAmount: instruction === "collect" ? due : 0,
+    ...(pointsUsed > 0 ? { pointsUsed, paidWithPoints: due === 0 } : {}),
+  };
 }
 
 interface DriverActive {
@@ -330,6 +363,8 @@ export interface ActiveOrderDetail {
   paymentColumns: boolean;
   /** False when the order row could not be read back. */
   found: boolean;
+  /** Wallet points on this order (0198). */
+  pointsUsed?: number;
 }
 
 /**
@@ -349,11 +384,13 @@ export async function activeOrderDetail(
       .maybeSingle()
       .overrideTypes<ActiveOrderRow>();
 
+  const pointsUsed = (await readOrderPoints(supabase, [orderId])).get(orderId) ?? 0;
   const shape = (row: ActiveOrderRow | null, paymentColumns: boolean) => ({
     method: row?.payment_method ?? null,
     status: row?.payment_status ?? null,
     paymentColumns,
     found: row !== null,
+    pointsUsed,
   });
 
   if (!columnKnownMissing(PAYMENT_COLUMNS)) {
@@ -456,15 +493,19 @@ export async function readPoolPayments(
   orders: { id: string; total?: number }[]
 ): Promise<Map<string, DriverPayment>> {
   const out = new Map<string, DriverPayment>();
-  const fromDetail = (o: { id: string; total?: number }, detail: ActiveOrderDetail): DriverPayment => {
-    const instruction = paymentInstruction(detail);
-    return {
-      instruction,
-      collectAmount: instruction === "collect" ? (o.total ?? 0) : 0,
-    };
-  };
   if (orders.length === 0) return out;
   const ids = orders.map((o) => o.id);
+  // A read that fails here says "unconfirmed" below rather than a wrong amount.
+  let points: Map<string, number> | null = null;
+  try {
+    points = await readOrderPoints(supabase, ids);
+  } catch {
+    points = null;
+  }
+  const fromDetail = (o: { id: string; total?: number }, detail: ActiveOrderDetail): DriverPayment =>
+    points
+      ? driverPaymentFor(detail, o.total, points.get(o.id) ?? 0)
+      : { instruction: "unconfirmed", collectAmount: 0 };
 
   type PayRow = {
     id: string;
@@ -538,7 +579,8 @@ export async function getDriverBoard(driverId: string): Promise<DriverJobsBoard>
         activeOrderDetail(supabase, order.id),
         activeCustomerPhone(supabase, order.id),
       ]);
-      const instruction = paymentInstruction(detail);
+      const riderSwitch = (await getFeatures("driver", driverId))["driver.cod_change"] !== false;
+      const walletChange = await walletChangeState(supabase, order.id, settings, riderSwitch);
 
       const job = toJob(order);
       const opsNote = await readOpsAddressNote(supabase, order.id);
@@ -546,12 +588,7 @@ export async function getDriverBoard(driverId: string): Promise<DriverJobsBoard>
       active = {
         job,
         leg,
-        payment: {
-          instruction,
-          // orders.total is the authoritative sum (recompute_order_total) and
-          // includes the tip, which on a cash order the rider also collects.
-          collectAmount: instruction === "collect" ? (order.total ?? 0) : 0,
-        },
+        payment: { ...driverPaymentFor(detail, order.total), walletChange },
         customerPhone,
       };
     }
@@ -1511,10 +1548,15 @@ export async function recordCodForStaffDelivery(
 
     const { data: order } = await supabase
       .from("orders")
-      .select("total, payment_method")
+      .select("total, payment_method, payment_status")
       .eq("id", orderId)
       .maybeSingle()
-      .overrideTypes<{ total: number | null; payment_method: PaymentMethod | null } | null>();
+      .overrideTypes<{
+        total: number | null;
+        payment_method: PaymentMethod | null;
+        payment_status: PaymentStatus | null;
+      } | null>();
+    const pointsUsed = (await readOrderPoints(supabase, [orderId])).get(orderId) ?? 0;
 
     const { data: delivery } = await supabase
       .from("deliveries")
@@ -1529,11 +1571,17 @@ export async function recordCodForStaffDelivery(
       } | null>();
 
     // No rider on it: no one is holding cash against the ledger to record.
-    if (!delivery?.driver_id || delivery.cod_collected_at) return;
+    if (!delivery?.driver_id) return;
+    // Already closed by the rider. A row still `picked_up` with its cash recorded is a
+    // rider who added change to the wallet (0198) and never tapped Delivered: the cash
+    // stays as they recorded it, and the row is closed below.
+    if (delivery.cod_collected_at && delivery.status !== "picked_up") return;
 
     if (delivery.status === "picked_up") {
-      await recordCodCollection(supabase, delivery.id, order);
-    } else if (delivery.status === "assigned" && order?.payment_method === "cod") {
+      if (!delivery.cod_collected_at) {
+        await recordCodCollection(supabase, delivery.id, order ? { ...order, wallet_points_used: pointsUsed } : null);
+      }
+    } else if (delivery.status === "assigned" && isCashOrder(order) && cashDue(order?.total, pointsUsed) > 0) {
       captureError(new Error("cod_not_booked_never_picked_up"), {
         source: "driver-orders/staff-delivered",
         orderId,

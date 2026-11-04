@@ -134,6 +134,7 @@ class CashCollection {
     required this.amount,
     required this.online,
     required this.status,
+    this.paidWithPoints = false,
   });
 
   final String orderId;
@@ -144,7 +145,10 @@ class CashCollection {
   final int amount;
   final bool online;
 
-  /// `collected`, `not_recorded` or `paid_online`.
+  /// Wallet points covered the order: no cash was collected.
+  final bool paidWithPoints;
+
+  /// `collected`, `not_recorded`, `paid_online` or `paid_points`.
   final String status;
 
   bool get notRecorded => status == 'not_recorded';
@@ -157,6 +161,8 @@ class CashCollection {
         DateTime.fromMillisecondsSinceEpoch(0),
     amount: _int(j['amount']),
     online: j['method'] == 'online' || j['status'] == 'paid_online',
+    // Wallet points covered it: no cash, and not paid online either.
+    paidWithPoints: j['status'] == 'paid_points',
     status: '${j['status']}',
   );
 }

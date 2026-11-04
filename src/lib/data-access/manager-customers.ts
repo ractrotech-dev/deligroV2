@@ -87,7 +87,7 @@ export async function customerVisible(scope: ManagerScope, id: string): Promise<
 
 export async function getCustomer(scope: ManagerScope, id: string, permissions: Record<string, boolean>): Promise<CustomerDetail | null> {
   const { data, error } = await db().from("profiles")
-    .select("id, full_name, phone, role, account_status, status_reason, status_changed_by, status_changed_at, created_at")
+    .select("id, full_name, phone, role, account_status, status_reason, status_changed_by, status_changed_at, created_at, wallet_balance")
     .eq("id", id).maybeSingle();
   if (error) throw error;
   const p = data as { id: string; full_name: string | null; phone: string | null; role: string; account_status: string | null;
@@ -116,6 +116,7 @@ export async function getCustomer(scope: ManagerScope, id: string, permissions: 
     spent: f.spent,
     lastOrderAt: f.lastOrderAt ? new Date(f.lastOrderAt).toISOString() : null,
     zones: f.zoneIds.map((z) => ({ id: z, name: book.zoneName(z) })),
+    walletBalance: Number((p as { wallet_balance?: number | string | null }).wallet_balance ?? 0),
     statusReason: p.status_reason,
     statusChangedAt: p.status_changed_at,
     statusChangedBy: p.status_changed_by ? { id: p.status_changed_by, name: book.personName(p.status_changed_by) } : null,

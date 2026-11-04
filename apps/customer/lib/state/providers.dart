@@ -7,11 +7,13 @@ import '../data/account_repository.dart';
 import '../data/catalog_repository.dart';
 import '../data/checkout_repository.dart';
 import '../data/order_repository.dart';
+import '../data/wallet_repository.dart';
 import '../models/address.dart';
 import '../models/banner.dart';
 import '../models/order.dart';
 import '../models/restaurant.dart';
 import '../models/settings.dart';
+import '../models/wallet.dart';
 import '../models/weather.dart';
 import 'campaigns.dart';
 
@@ -27,6 +29,10 @@ final orderRepoProvider = Provider(
   (ref) => OrderRepository(ref.watch(supabaseProvider), ref.watch(apiProvider)),
 );
 final checkoutRepoProvider = Provider((ref) => CheckoutRepository(ref.watch(apiProvider)));
+final walletRepoProvider = Provider((ref) => WalletRepository(ref.watch(apiProvider)));
+
+/// The signed-in customer's wallet, read fresh each time a screen asks.
+final walletProvider = FutureProvider.autoDispose<WalletInfo>((ref) => ref.watch(walletRepoProvider).wallet());
 final accountRepoProvider = Provider(
   (ref) => AccountRepository(ref.watch(supabaseProvider), ref.watch(apiProvider)),
 );

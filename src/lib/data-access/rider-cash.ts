@@ -6,6 +6,8 @@ import { readAllRows, readInChunks } from "@/lib/data-access/read-all";
 import { isMissingColumn, isMissingTable } from "@/lib/data-access/schema-probe";
 import { RiderSchemaPendingError, getRiderCode } from "@/lib/data-access/rider-status";
 import { isCashOrder } from "@/lib/data-access/rider-delivery-actions";
+import { readOrderPoints } from "@/lib/data-access/wallet";
+import { cashDue } from "@/lib/wallet/money";
 import {
   notifyOpsCashDispute,
   notifyOpsDepositSubmitted,
@@ -123,22 +125,27 @@ interface OrderJoin {
   payment_status: string | null;
 }
 
-/** COD totals of the deliveries the rider holds right now. Online-paid orders are not cash. */
+/**
+ * Cash still to collect on the deliveries the rider holds right now: each cash order's
+ * cash due, its bill less any wallet points. Online-paid orders are not cash, and
+ * neither is an order whose cash this rider has already recorded (they added change).
+ */
 async function loadToCollect(supabase: AdminClient, driverId: string): Promise<number> {
   const { data, error } = await supabase
     .from("deliveries")
-    .select("id, orders(total, payment_method, payment_status)")
+    .select("id, order_id, cod_collected_at, orders(total, payment_method, payment_status)")
     .eq("driver_id", driverId)
     .in("status", ["assigned", "picked_up"])
     .limit(200)
-    .overrideTypes<{ id: string; orders: OrderJoin | OrderJoin[] | null }[]>();
+    .overrideTypes<{ id: string; order_id: string; cod_collected_at: string | null; orders: OrderJoin | OrderJoin[] | null }[]>();
   if (error) throw error;
+  const points = await readOrderPoints(supabase, (data ?? []).map((d) => d.order_id));
   let total = 0;
   for (const d of data ?? []) {
     const order = one(d.orders);
-    if (!order) continue;
+    if (!order || d.cod_collected_at) continue;
     if (isCashOrder({ payment_method: order.payment_method as never, payment_status: order.payment_status as never })) {
-      total += order.total ?? 0;
+      total += cashDue(order.total, points.get(d.order_id));
     }
   }
   return total;
@@ -242,8 +249,11 @@ export interface CollectionItem {
   /** Rupees: the cash collected for `cod`; the order total for `online` (paid online, not cash). */
   amount: number;
   method: "cod" | "online";
-  /** `collected` (cash recorded), `not_recorded` (a cash order whose collection was never recorded), `paid_online`. */
-  status: "collected" | "not_recorded" | "paid_online";
+  /**
+   * `collected` (cash recorded), `not_recorded` (a cash order whose collection was never
+   * recorded), `paid_online`, or `paid_points` (wallet points covered it: no cash, 0198).
+   */
+  status: "collected" | "not_recorded" | "paid_online" | "paid_points";
 }
 
 const DEFAULT_RANGE_DAYS = 31;
@@ -314,6 +324,7 @@ export async function listRiderCollections(
   );
   if (rows.error) throw rows.error;
 
+  const points = await readOrderPoints(supabase, rows.data.map((r) => r.order_id));
   const items: CollectionItem[] = [];
   for (const r of rows.data) {
     if (!r.delivered_at) continue;
@@ -322,13 +333,20 @@ export async function listRiderCollections(
     const cash =
       r.cod_collected_amount !== null ||
       isCashOrder(order ? { payment_method: order.payment_method as never, payment_status: order.payment_status as never } : null);
+    const pointsUsed = points.get(r.order_id) ?? 0;
+    // Points paid the whole bill: no cash, and not "paid online" either.
+    const coveredByPoints = !cash && pointsUsed > 0 && cashDue(order?.total, pointsUsed) === 0;
     items.push({
       orderId: r.order_id,
       code: `#${shortOrderId(r.order_id)}`,
       at: r.delivered_at,
-      amount: cash ? (r.cod_collected_amount ?? order?.total ?? 0) : (order?.total ?? 0),
-      method: cash ? "cod" : "online",
-      status: !cash ? "paid_online" : r.cod_collected_amount !== null ? "collected" : "not_recorded",
+      amount: cash
+        ? (r.cod_collected_amount ?? cashDue(order?.total, pointsUsed))
+        : coveredByPoints
+          ? 0
+          : (order?.total ?? 0),
+      method: cash || coveredByPoints ? "cod" : "online",
+      status: coveredByPoints ? "paid_points" : !cash ? "paid_online" : r.cod_collected_amount !== null ? "collected" : "not_recorded",
     });
   }
   items.sort((a, b) => {

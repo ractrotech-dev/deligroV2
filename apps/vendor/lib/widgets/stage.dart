@@ -71,6 +71,8 @@ class PaymentChip extends ConsumerWidget {
     if (method == null) return const SizedBox.shrink();
     final c = context.colors;
     final (label, fg) = switch ((method, status)) {
+      // The customer's wallet points covered the whole bill.
+      ('cod', 'paid') => ('Paid', c.green),
       ('cod', _) => ('Cash', c.ink),
       (_, 'paid') => ('Paid online', c.green),
       (_, 'refunded') => ('Refunded', c.muted),

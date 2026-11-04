@@ -105,7 +105,7 @@ class _PartnerShellState extends ConsumerState<PartnerShell> with WidgetsBinding
             title: (_) => 'New order 🔔',
             body: (o) =>
                 'Order ${o.code} · ${o.itemCount} items · ${rupees(o.total)}'
-                '${o.isCod ? ' · Cash on delivery' : ''}. Tap to open.',
+                '${o.isCod && !o.paidInFull ? ' · Cash on delivery' : ''}. Tap to open.',
           );
       // ...and the oldest of them is offered on screen, on whichever tab.
       _offerIncoming(orders);
