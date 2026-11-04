@@ -367,7 +367,9 @@ class AlertRuleChange {
   final String kind;
   final String? zoneId;
   final bool enabled;
-  final num threshold;
+
+  /// Null for an on/off alert: it has no threshold, and the server refuses one.
+  final num? threshold;
   final int? windowMinutes;
   final String clientActionId;
 
