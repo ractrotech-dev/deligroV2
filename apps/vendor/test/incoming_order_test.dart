@@ -1,6 +1,7 @@
 import 'package:deligro_partner/features/orders/incoming_order.dart';
 import 'package:deligro_partner/models/vendor_me.dart';
 import 'package:deligro_partner/state/orders.dart';
+import 'package:deligro_partner/state/session.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -49,6 +50,8 @@ void main() {
         child: Consumer(
           builder: (context, ref, _) {
             ref.watch(boardProvider);
+            // In the app the gate has loaded this long before any popup.
+            ref.watch(vendorMeProvider);
             return Scaffold(
               body: Builder(
                 builder: (ctx) => TextButton(

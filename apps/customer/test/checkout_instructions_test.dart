@@ -216,12 +216,76 @@ void main() {
       await tester.pumpWidget(const SizedBox());
       await tester.pump(const Duration(seconds: 6));
     });
+
+    Future<_RecordingOrders> checkoutWithChangedTotal(WidgetTester tester) async {
+      tester.view.physicalSize = const Size(1080, 2340);
+      tester.view.devicePixelRatio = 3;
+      addTearDown(tester.view.reset);
+      final prefs = await SharedPreferences.getInstance();
+      final api = ApiClient(_client.auth);
+      final orders = _RecordingOrders(_client, api, placed)
+        ..answers.add(ApiException(409, 'total_changed', body: const {
+          'bill': {'subtotal': 300, 'deliveryFee': 39, 'taxes': 15, 'tip': 0, 'discount': 0, 'total': 354},
+        }));
+      await tester.pumpWidget(ProviderScope(
+        overrides: [
+          prefsProvider.overrideWithValue(prefs),
+          supabaseProvider.overrideWithValue(_client),
+          userIdProvider.overrideWithValue('u1'),
+          settingsProvider.overrideWith((_) async => _settings),
+          restaurantProvider.overrideWith((_, _) async => _shop),
+          addressesProvider.overrideWith(_FakeAddresses.new),
+          checkoutRepoProvider.overrideWithValue(_FakeCheckout(api)),
+          orderRepoProvider.overrideWithValue(orders),
+        ],
+        child: MaterialApp(theme: buildTheme(Brightness.light), home: const CheckoutScreen()),
+      ));
+      for (var i = 0; i < 6; i++) {
+        await tester.pump(const Duration(milliseconds: 100));
+      }
+      await tester.tap(find.textContaining('Place order'));
+      await tester.pump(const Duration(milliseconds: 300));
+      return orders;
+    }
+
+    Future<void> leave(WidgetTester tester) async {
+      await tester.pumpWidget(const SizedBox());
+      await tester.pump(const Duration(seconds: 6));
+    }
+
+    testWidgets('a changed total is shown before anything is placed; agreeing sends the new one', (tester) async {
+      await checkoutWithChangedTotal(tester);
+      expect(find.byKey(const Key('total-changed')), findsOneWidget);
+      expect(find.textContaining('₹354'), findsWidgets);
+      expect(placed, hasLength(1));
+      final shown = placed.single['expectedTotal'];
+      expect(shown, isA<int>());
+      expect(shown, isNot(354));
+
+      await tester.tap(find.byKey(const Key('total-changed-place')));
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(placed, hasLength(2));
+      expect(placed.last['expectedTotal'], 354);
+      await leave(tester);
+    });
+
+    testWidgets('Not now places nothing more', (tester) async {
+      await checkoutWithChangedTotal(tester);
+      await tester.tap(find.text('Not now'));
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(find.byKey(const Key('total-changed')), findsNothing);
+      expect(placed, hasLength(1));
+      await leave(tester);
+    });
   });
 }
 
 class _RecordingOrders extends OrderRepository {
   _RecordingOrders(super.db, super.api, this.placed);
   final List<Map<String, Object?>> placed;
+
+  /// What the next tries are answered, before the usual refusal.
+  final answers = <ApiException>[];
 
   @override
   Future<Order> place({
@@ -239,6 +303,7 @@ class _RecordingOrders extends OrderRepository {
     int? expectedTotal,
   }) async {
     placed.add({'addressLine': addressLine, 'instructions': instructions, 'expectedTotal': expectedTotal});
+    if (answers.isNotEmpty) throw answers.removeAt(0);
     // Stop the flow here: what was sent is the whole point of this test.
     throw ApiException(400, 'invalid_items');
   }

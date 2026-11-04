@@ -12,6 +12,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:mocktail/mocktail.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'support/fakes.dart';
 
@@ -119,6 +120,9 @@ void main() {
       c = ProviderContainer(
         overrides: [
           signedInProvider.overrideWithValue(true),
+          supabaseProvider.overrideWithValue(
+            SupabaseClient('http://localhost:1', 'test-key', authOptions: const AuthClientOptions(autoRefreshToken: false)),
+          ),
           activeShopSlugProvider.overrideWith(_NoSlug.new),
           vendorRepoProvider.overrideWithValue(repo),
         ],
@@ -146,6 +150,13 @@ void main() {
       verify(repo.me).called(1);
       await notifier.refresh(force: true);
       verify(repo.me).called(1);
+    });
+
+    test('a route saying a switch is off rereads them at once', () async {
+      when(repo.me).thenAnswer((_) async => off);
+      c.read(apiProvider).onFeatureOff!();
+      await pumpEventQueue();
+      expect(c.read(vendorMeProvider).value!.can(earningsFeature), isFalse);
     });
 
     test('no signal or a server fault changes nothing', () async {
