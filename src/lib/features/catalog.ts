@@ -97,7 +97,7 @@ export const FEATURES = [
   { key: "manager.marketing.manage", role: "manager", group: "Growth", label: "Marketing", offMeans: "Cannot see or decide marketing requests and campaigns." },
   { key: "manager.offers.manage", role: "manager", group: "Growth", label: "Offers", offMeans: "Cannot create or change offers and promo codes." },
   { key: "manager.customers.view", role: "manager", group: "Customers", label: "Customers", offMeans: "Customer accounts are hidden." },
-  { key: "manager.vendors.status", role: "manager", group: "Vendors", label: "Vendor status", offMeans: "Cannot approve, reject, suspend or reactivate vendors." },
+  { key: "manager.vendors.status", role: "manager", group: "Vendors", label: "Vendor status", offMeans: "Cannot suspend or reactivate vendors." },
   { key: "manager.riders.status", role: "manager", group: "Riders", label: "Rider status", offMeans: "Cannot approve, reject, suspend or reactivate riders." },
   { key: "manager.exceptions.decide", role: "manager", group: "Orders", label: "Decide delivery exceptions", offMeans: "Cannot approve, reject or acknowledge a rider's delivery exception." },
   { key: "manager.products.moderate", role: "manager", group: "Products", label: "Moderate listings", offMeans: "Cannot hide or approve product listings. Flagging one still works." },

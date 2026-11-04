@@ -38,6 +38,15 @@ For when a rider has no change, for example an order of ₹150 paid with a ₹20
   its normal amount.
 - Every point added, used or corrected is recorded with who, when and which order.
 
+## Adding vendors
+
+- **Only the admin panel and managers can add a vendor.** Vendors and customers cannot
+  create a vendor account or sign themselves up.
+- **There is no review or approval step.** A shop is live as soon as it is added.
+- **A shop needs a map pin to go live.** Without one it stays off until someone pins it
+  and switches it on, because the app cannot check its delivery area.
+- Vendor documents are kept on file. Nobody verifies or rejects them.
+
 ## Controlling features
 
 The admin panel decides which features customers, shops, riders and managers can use,

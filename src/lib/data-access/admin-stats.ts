@@ -1,5 +1,4 @@
 import "server-only";
-import { setVendorStatus } from "@/lib/data-access/admin-vendors";
 import { createClient } from "@/lib/supabase/server";
 import { requireRole } from "@/lib/auth";
 import { loadMetricOrders } from "@/lib/data-access/ops-metrics";
@@ -36,7 +35,6 @@ export interface AdminDashboard {
     orders: number;
     gmv: number;
     activeRiders: number;
-    pendingApprovals: number;
     /**
      * The orders read behind today's revenue, orders and the order/revenue
      * trends failed. The page shows "—" and says so: ₹0 would be a figure
@@ -109,7 +107,6 @@ export async function getAdminDashboard(): Promise<AdminDashboard> {
     users,
     drivers,
     orders,
-    pendingApprovals,
     shopsCurr,
     shopsPrev,
     usersCurr,
@@ -140,15 +137,6 @@ export async function getAdminDashboard(): Promise<AdminDashboard> {
         .from("orders")
         .select("id", { count: "exact", head: true })
         .neq("status", "cancelled")
-    ),
-    // Shops nobody has ruled on yet. Not `approved = false`: the 0017 trigger
-    // un-approves anything that leaves 'active', so a disabled or rejected
-    // vendor would sit in this count with no action left that could clear it.
-    countOf(() =>
-      supabase
-        .from("restaurants")
-        .select("id", { count: "exact", head: true })
-        .eq("status", "pending")
     ),
     // Restaurants onboarded this week vs last.
     countOf(() =>
@@ -212,7 +200,7 @@ export async function getAdminDashboard(): Promise<AdminDashboard> {
 
   return {
     totals: { shops, users, drivers, orders },
-    today: { orders: ordersToday, gmv: gmvToday, activeRiders, pendingApprovals, salesUnavailable },
+    today: { orders: ordersToday, gmv: gmvToday, activeRiders, salesUnavailable },
     trends: {
       shops: trend(shopsCurr, shopsPrev),
       users: trend(usersCurr, usersPrev),
@@ -233,7 +221,6 @@ export async function getAdminDashboard(): Promise<AdminDashboard> {
  * Runs on every admin page render, so both are head-only counts.
  */
 export interface AdminNavCounts {
-  pendingApprovals: number;
   liveOrders: number;
 }
 
@@ -243,25 +230,14 @@ const IN_FLIGHT = ["placed", "kitchen", "ready", "on_the_way"];
 export async function getAdminNavCounts(): Promise<AdminNavCounts> {
   const supabase = await createClient();
 
-  const [pendingApprovals, liveOrders] = await Promise.all([
-    // Shops nobody has ruled on yet. Not `approved = false`: the 0017 trigger
-    // un-approves anything that leaves 'active', so a disabled or rejected
-    // vendor would sit in this count with no action left that could clear it.
-    countOf(() =>
-      supabase
-        .from("restaurants")
-        .select("id", { count: "exact", head: true })
-        .eq("status", "pending")
-    ),
-    countOf(() =>
-      supabase
-        .from("orders")
-        .select("id", { count: "exact", head: true })
-        .in("status", IN_FLIGHT)
-    ),
-  ]);
+  const liveOrders = await countOf(() =>
+    supabase
+      .from("orders")
+      .select("id", { count: "exact", head: true })
+      .in("status", IN_FLIGHT)
+  );
 
-  return { pendingApprovals, liveOrders };
+  return { liveOrders };
 }
 
 /**
@@ -272,7 +248,7 @@ export async function getAdminNavCounts(): Promise<AdminNavCounts> {
  * and could not — rather than a payment still in flight. That makes it a queue
  * somebody has to work, which is why the dashboard's attention centre lists it.
  *
- * Deliberately *not* part of `getAdminNavCounts`. Those three counts are read
+ * Deliberately *not* part of `getAdminNavCounts`. That count is read
  * by the layout on every single admin page render because the rail badges need
  * them; this one is read by one screen, and adding it there would buy a fourth
  * count query on forty-five pages to serve one.
@@ -298,44 +274,3 @@ export async function getFailedPaymentCount(): Promise<number> {
   }
 }
 
-/**
- * Restaurants waiting on an admin — the real queue, not a hardcoded list.
- *
- * 'pending' is the undecided state; approving makes a shop active and rejecting
- * suspends it, and both leave this list. See `listAwaitingApproval`.
- */
-export async function listPendingRestaurants(): Promise<PendingRestaurant[]> {
-  const supabase = await createClient();
-  const { data, error } = await supabase
-    .from("restaurants")
-    .select("id, name, slug, created_at")
-    .eq("status", "pending")
-    .order("created_at", { ascending: true });
-
-  if (error) throw error;
-
-  return (data ?? []).map((r) => {
-    const row = r as { id: string; name: string; slug: string; created_at: string };
-    return {
-      id: row.id,
-      name: row.name,
-      slug: row.slug,
-      createdAt: row.created_at,
-    };
-  });
-}
-
-/**
- * Approve a restaurant so its storefront goes live. Admin-only via RLS.
- *
- * The second door into "live": `approved` and `status` are kept in step by the
- * 0017 trigger, so setting one activates the shop as surely as setting the
- * other. It carries the same pin requirement for that reason — guarding only
- * `setVendorStatus` would have been a detour rather than a gate. See
- * `lib/vendors/readiness.ts`.
- */
-export async function approveRestaurant(id: string, reason: string): Promise<void> {
-  // The audited status change (0145): active + approved together, the decision
-  // and its reason on the shop and in the audit log. It checks the map pin.
-  await setVendorStatus(id, "active", reason);
-}

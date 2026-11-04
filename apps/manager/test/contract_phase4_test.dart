@@ -92,7 +92,6 @@ void main() {
       final full = VendorDetail.fromJson((_gen('vendor_detail')['vendor'] as Map).cast<String, dynamic>());
       expect(full.finance, isNotNull);
       expect(full.documents.map((d) => d.type), isNot(contains(DocType.unknown)));
-      expect(full.documents.map((d) => d.status), isNot(contains(DocStatus.unknown)));
       expect(full.openComplaints, isNotEmpty);
       final bare = VendorDetail.fromJson((_gen('vendor_detail_no_finance')['vendor'] as Map).cast<String, dynamic>());
       expect(bare.finance, isNull);

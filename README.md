@@ -79,7 +79,7 @@ and reuse the same design tokens, `Button`, `cn`, `formatINR`, and domain types.
 | `/restaurant` | Restaurant — live orders board: **Accept/Reject** → **Food ready**; today's counts |
 | `/restaurant/menu` | Restaurant — menu with live availability toggles |
 | `/restaurant/earnings` | Restaurant — weekly revenue + payouts |
-| `/admin` | Admin — KPIs, alerts (coupon abuse, failed-login spike), pending approvals |
+| `/admin` | Admin — KPIs, alerts (coupon abuse, failed-login spike) |
 | `/admin/orders` | Admin — all-orders table (audited) |
 
 > The vendor dashboard lives at `/vendor` (kept separate from the customer's

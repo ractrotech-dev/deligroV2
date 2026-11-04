@@ -19,9 +19,9 @@ void main() {
       final p = VendorPage.fromJson(apiFixture('vendors_list'));
       expect(p.items, hasLength(4));
       expect(p.nextCursor, 'c-2');
-      expect(p.counts.pending, 3);
+      expect(p.counts.suspended, 2);
       expect(p.counts.online, 31);
-      expect(p.items[3].status, VendorStatus.rejected);
+      expect(p.items[3].status, VendorStatus.inactive);
       expect(p.items[2].openState, OpenState.temporarilyClosed);
     });
 
@@ -30,7 +30,7 @@ void main() {
       final withFinance = VendorDetail.fromJson(j);
       expect(withFinance.finance, isNotNull);
       expect(withFinance.finance!.settlements, hasLength(2));
-      expect(withFinance.documents.map((d) => d.status), [DocStatus.verified, DocStatus.pending, DocStatus.rejected]);
+      expect(withFinance.documents.map((d) => d.type), [DocType.fssai, DocType.bankProof, DocType.gst]);
       expect(withFinance.performance.ratingDistribution[5], 65);
       expect(withFinance.address.pinned, isTrue);
       expect(withFinance.allowed.suspend, isTrue);
@@ -109,9 +109,9 @@ void main() {
       expect(f.filter, VendorQuickFilter.online);
       expect(VendorFilters.fromUri(Uri(queryParameters: f.toQuery())), f);
 
-      final g = VendorFilters.fromUri(Uri.parse('/more/vendors?status=suspended,pending&q=spi&zone=z-1'));
-      expect(g.statuses, {VendorStatus.suspended, VendorStatus.pending});
-      expect(g.toQuery(), {'q': 'spi', 'status': 'pending,suspended', 'zone': 'z-1'});
+      final g = VendorFilters.fromUri(Uri.parse('/more/vendors?status=suspended,inactive&q=spi&zone=z-1'));
+      expect(g.statuses, {VendorStatus.suspended, VendorStatus.inactive});
+      expect(g.toQuery(), {'q': 'spi', 'status': 'inactive,suspended', 'zone': 'z-1'});
       expect(VendorFilters.fromUri(Uri(queryParameters: g.toQuery())), g);
     });
 
@@ -127,13 +127,10 @@ void main() {
   });
 
   group('actions', () {
-    test('an approval keeps its id on retry and on "approve anyway"', () {
-      final a = ApproveVendor(expected: VendorStatus.pending, reason: 'Documents verified');
-      final again = a.anyway();
-      expect(again.clientActionId, a.clientActionId);
-      expect(again.toJson()['override'], isTrue);
-      expect(a.toJson(), containsPair('expected', 'pending'));
-      expect(a.toJson()['action'], 'approve');
+    test('suspending sends its reason and the status it expects', () {
+      final a = SuspendVendor(expected: VendorStatus.active, reason: 'Owner request');
+      expect(a.toJson(), containsPair('expected', 'active'));
+      expect(a.toJson()['action'], 'suspend');
     });
 
     test('stock adjustment sends null to stop tracking', () {
@@ -141,18 +138,16 @@ void main() {
       expect(AdjustStock(stockQty: 25, expectedStockQty: 3, reason: 'Recount').toJson()['stockQty'], 25);
     });
 
-    test('ApiVendorsRepository maps 409 documents_unverified to Refused with the missing types', () async {
+    test('ApiVendorsRepository maps 409 needs_map_pin to Refused', () async {
       final client = MockClient((req) async {
         expect(req.url.path, '/api/manager/vendors/v-1/actions');
         expect(jsonDecode(req.body)['clientActionId'], isNotEmpty);
-        return http.Response(jsonEncode({'error': 'documents_unverified', 'missing': ['fssai']}), 409);
+        return http.Response(jsonEncode({'error': 'needs_map_pin'}), 409);
       });
       final repo = ApiVendorsRepository(ApiClient(GoTrueClient(url: 'http://x'), client: client));
-      final out = await repo.act('v-1', ApproveVendor(expected: VendorStatus.pending, reason: 'ok ok'));
+      final out = await repo.act('v-1', ReactivateVendor(expected: VendorStatus.inactive, reason: 'ok ok'));
       expect(out, isA<Refused<VendorDetail>>());
-      final r = out as Refused<VendorDetail>;
-      expect(r.code, 'documents_unverified');
-      expect(r.reasons, ['fssai']);
+      expect((out as Refused<VendorDetail>).code, 'needs_map_pin');
     });
 
     test('a server fault is thrown, not refused', () async {

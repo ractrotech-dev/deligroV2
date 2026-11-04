@@ -23,7 +23,7 @@ void main() {
     expect(fake.listCalls.first.cursor, isNull);
     expect(find.text('Spice Hub'), findsOneWidget);
     expect(find.text('Open now'), findsWidgets);
-    expect(find.text('Pending (3)'), findsOneWidget);
+    expect(find.text('Active (52)'), findsOneWidget);
     expect(find.text('Suspended (2)'), findsOneWidget);
   });
 
@@ -45,13 +45,20 @@ void main() {
     expect(fake.listCalls.where((c) => c.cursor == 'c2'), hasLength(1));
   });
 
+  testWidgets('there is no Pending or Rejected tab', (tester) async {
+    await pumpVp(tester, const VendorsScreen(), vendors: FakeVendorsRepository());
+    expect(find.byKey(const Key('vendor-tab-pending')), findsNothing);
+    expect(find.byKey(const Key('vendor-tab-rejected')), findsNothing);
+    expect(find.byKey(const Key('vendor-tab-active')), findsOneWidget);
+  });
+
   testWidgets('a status tab asks for that status', (tester) async {
     final fake = FakeVendorsRepository();
     await pumpVp(tester, const VendorsScreen(), vendors: fake);
-    await tester.tap(find.text('Pending (3)'));
+    await tester.tap(find.text('Active (52)'));
     await tester.pump();
     await tester.pump();
-    expect(fake.listCalls.last.filters.toQuery()['status'], 'pending');
+    expect(fake.listCalls.last.filters.toQuery()['status'], 'active');
   });
 
   testWidgets('the dashboard link opens with "Open now" on', (tester) async {

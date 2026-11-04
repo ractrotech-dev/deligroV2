@@ -1,6 +1,6 @@
 /**
  * QA — vendor and product rules (pure): status transitions, allowed actions,
- * required documents, cancellation / rejection rates, rating distribution,
+ * cancellation / rejection rates, rating distribution,
  * availability history at the range edges, restricted categories, price change
  * percentages and seller ranking.
  *
@@ -8,7 +8,6 @@
  */
 import {
   allowedVendorActions,
-  missingRequiredDocuments,
   nextVendorStatus,
   ratingDistribution,
   vendorRates,
@@ -40,40 +39,25 @@ const eq = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
 const near = (a: number | null, b: number) => a !== null && Math.abs(a - b) < 1e-6;
 
 console.log("\n── vendor transitions ──");
-check("approve pending → active", nextVendorStatus("pending", "approve") === "active");
-check("approve rejected → active", nextVendorStatus("rejected", "approve") === "active");
-check("approve active → null", nextVendorStatus("active", "approve") === null);
-check("reject pending → rejected", nextVendorStatus("pending", "reject") === "rejected");
-check("reject active → null", nextVendorStatus("active", "reject") === null);
 check("suspend active → suspended", nextVendorStatus("active", "suspend") === "suspended");
 check("suspend inactive → suspended", nextVendorStatus("inactive", "suspend") === "suspended");
-check("suspend pending → null", nextVendorStatus("pending", "suspend") === null);
+check("suspend suspended → null", nextVendorStatus("suspended", "suspend") === null);
 check("reactivate suspended → active", nextVendorStatus("suspended", "reactivate") === "active");
 check("reactivate inactive → active", nextVendorStatus("inactive", "reactivate") === "active");
-check("reactivate pending → null", nextVendorStatus("pending", "reactivate") === null);
+check("reactivate active → null", nextVendorStatus("active", "reactivate") === null);
 
 console.log("\n── allowed vendor actions ──");
 const all = { "manager.vendors.status": true, "manager.vendors.onboard": true };
 check("nothing without manager.vendors.status",
-  eq(allowedVendorActions({ status: "pending" }, {}),
-    { approve: false, reject: false, suspend: false, reactivate: false, reviewDocuments: false, uploadDocuments: false, menuSheet: false }));
-check("pending: approve, reject, review documents",
-  eq(allowedVendorActions({ status: "pending" }, all),
-    { approve: true, reject: true, suspend: false, reactivate: false, reviewDocuments: true, uploadDocuments: true, menuSheet: false }));
+  eq(allowedVendorActions({ status: "active" }, {}),
+    { suspend: false, reactivate: false, uploadDocuments: false, menuSheet: false }));
 check("active: suspend only", eq(allowedVendorActions({ status: "active" }, { "manager.vendors.status": true }),
-  { approve: false, reject: false, suspend: true, reactivate: false, reviewDocuments: true, uploadDocuments: false, menuSheet: false }));
+  { suspend: true, reactivate: false, uploadDocuments: false, menuSheet: false }));
+check("inactive: suspend or reactivate", eq(allowedVendorActions({ status: "inactive" }, all),
+  { suspend: true, reactivate: true, uploadDocuments: true, menuSheet: false }));
 check("suspended: reactivate", allowedVendorActions({ status: "suspended" }, all).reactivate === true);
 check("uploads need manager.vendors.onboard",
   allowedVendorActions({ status: "active" }, { "manager.vendors.onboard": true }).uploadDocuments === true);
-
-console.log("\n── required documents ──");
-check("fssai verified, bank_proof rejected → bank_proof missing",
-  eq(missingRequiredDocuments([{ type: "fssai", status: "verified" }, { type: "bank_proof", status: "rejected" }]), ["bank_proof"]));
-check("none uploaded → both, in order", eq(missingRequiredDocuments([]), ["fssai", "bank_proof"]));
-check("a verified copy among rejected ones counts",
-  eq(missingRequiredDocuments([
-    { type: "fssai", status: "rejected" }, { type: "fssai", status: "verified" }, { type: "bank_proof", status: "verified" },
-  ]), []));
 
 console.log("\n── vendor rates ──");
 const T0 = "2026-10-01T10:00:00.000Z";

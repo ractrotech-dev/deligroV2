@@ -151,7 +151,7 @@ A shop / restaurant listing. Vendor account = `profiles` where `role = 'restaura
 | `name` | `text` | — | Display name |
 | `tagline` | `text` | null | |
 | `is_open` | `boolean` | `true` | Vendor toggle (`/vendor` header) |
-| `approved` | `boolean` | `false` | Must be true for customer browse (unless owner) |
+| `approved` | `boolean` | `false` | Means "live": always equal to `status = 'active'` (trigger, `0017`). Must be true for customer browse (unless owner). There is no approval step since `0197` |
 | `image_url` | `text` | null | Cover image (`0002`) |
 | `accent_tint` | `text` | null | CSS gradient fallback |
 | `cuisines` | `text[]` | `{}` | e.g. `{"Fast Food","North Indian"}` |
@@ -1498,6 +1498,7 @@ so 0064 must be applied before 0143.
 | `0194_platform_cash_limit.sql` | Platform cash limit and cash switch; the order guard judges the stricter of shop and platform limit. **Pending approval**, not applied |
 | `0195_rider_cash_owner_confirms.sql` | `rider_to_owner` leg, `confirmed_by`, owner confirmation functions, rollups. **Pending approval**, not applied |
 | `0196_riders_fixed_salary_only.sql` | Drops the incentive award trigger, retires rules, refuses new bonuses. **Pending approval**, not applied |
+| `0197_vendors_no_approval.sql` | No review or approval for vendors: moves `pending` and `rejected` shops to `active` (with a map pin) or `inactive`, CHECK keeps those two states out, `ops_onboard_vendor` creates a live shop, drops `ops_review_vendor_document`. **Pending approval, not applied** |
 | `0198_customer_wallet.sql` | Customer wallet: `wallet_change_codes`, ledger columns on `wallet_transactions` (kind, actor_id, actor_role, balance_after, client_action_id), `orders.wallet_points_used` (cash due = total minus this), `platform_settings.feature_wallet` and `wallet_change_max_per_order`. **Pending approval**, not applied |
 | `0200_customer_feature_switches.sql` | `role_feature_flags` accepts `customer`; `customer_feature_on()`. **Pending approval**, not applied |
 | `0201_customer_switches_in_the_database.sql` | Restrictive RLS on favorites, addresses, reviews and tips; promo and cancel functions read the switches. **Pending approval**, not applied |

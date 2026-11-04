@@ -85,7 +85,7 @@ class OnboardReview extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        const StepTitle('Check and add', 'The shop is created as Pending. Approve it once documents are verified.'),
+        const StepTitle('Check and add', 'The shop goes live on Deligro as soon as you add it.'),
         InfoSection(title: 'Shop', children: [
           FactRow('Name', d.shopName),
           FactRow('Zone', or(zoneName)),
@@ -185,10 +185,10 @@ class _OnboardDoneState extends ConsumerState<OnboardDone> {
       children: [
         Icon(Icons.check_circle_rounded, color: c.green, size: 40),
         const SizedBox(height: 8),
-        Text('${widget.shopName} is added as Pending.',
+        Text('${widget.shopName} is live.',
             style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800, color: c.ink)),
         const SizedBox(height: 4),
-        Text('Verify its documents and approve it from the vendor screen.', style: TextStyle(color: c.muted)),
+        Text('Customers can see it now. Add its dishes and documents from the vendor screen.', style: TextStyle(color: c.muted)),
         if (r.hasCredentials)
           InfoSection(title: 'Sign-in for the owner', children: [
             Container(

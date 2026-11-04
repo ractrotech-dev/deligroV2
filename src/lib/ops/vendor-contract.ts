@@ -12,8 +12,8 @@ import { isUuid } from "@/lib/auth/manager-scope";
 import { orderShortCode } from "./order-contract";
 import type { AllowedVendorActions, VendorStatus } from "./vendor-rules";
 
-export const VENDOR_STATUSES: readonly VendorStatus[] = ["pending", "active", "inactive", "suspended", "rejected"];
-export const VENDOR_FILTERS = ["active", "online", "pending", "needs_attention"] as const;
+export const VENDOR_STATUSES: readonly VendorStatus[] = ["active", "inactive", "suspended"];
+export const VENDOR_FILTERS = ["active", "online", "needs_attention"] as const;
 export type VendorFilter = (typeof VENDOR_FILTERS)[number];
 
 export const OPEN_STATES = ["open", "closed", "temporarily_closed", "holiday", "weekly_off", "outside_hours"] as const;
@@ -40,17 +40,14 @@ export interface VendorListItem {
   rating: number;
   ratingCount: number;
   todayOrders: number;
-  pendingDocuments: number;
   openComplaints: number;
   createdAt: string;
 }
 
 export interface VendorCounts {
   all: number;
-  pending: number;
   active: number;
   suspended: number;
-  rejected: number;
   inactive: number;
   online: number;
 }
@@ -59,10 +56,6 @@ export interface VendorDocumentItem {
   id: string;
   type: DocType;
   fileName: string;
-  status: "pending" | "verified" | "rejected";
-  remarks: string | null;
-  reviewedBy: PersonRef | null;
-  reviewedAt: string | null;
   uploadedAt: string;
 }
 
@@ -263,7 +256,6 @@ export interface VendorListRow {
 export interface VendorListExtras {
   openState: OpenState;
   todayOrders: number;
-  pendingDocuments: number;
   openComplaints: number;
 }
 
@@ -273,7 +265,7 @@ export function toVendorListItem(r: VendorListRow, x: VendorListExtras): VendorL
     id: r.id,
     name: r.name?.trim() || "Shop",
     slug: r.slug,
-    status: (VENDOR_STATUSES.includes(r.status as VendorStatus) ? r.status : "pending") as VendorStatus,
+    status: (VENDOR_STATUSES.includes(r.status as VendorStatus) ? r.status : "inactive") as VendorStatus,
     openState: x.openState,
     category: r.category ?? null,
     zone: { id: r.zone_id, name: r.zone_name?.trim() || "Zone" },
@@ -281,7 +273,6 @@ export function toVendorListItem(r: VendorListRow, x: VendorListExtras): VendorL
     rating: rating === null ? 0 : Math.round(rating * 10) / 10,
     ratingCount: r.rating_count ?? 0,
     todayOrders: x.todayOrders,
-    pendingDocuments: x.pendingDocuments,
     openComplaints: x.openComplaints,
     createdAt: r.created_at,
   };
@@ -291,23 +282,14 @@ export interface DocumentRow {
   id: string;
   doc_type: string;
   file_name: string;
-  status: string | null;
-  remarks: string | null;
-  reviewed_by: string | null;
-  reviewed_at: string | null;
   created_at: string;
 }
 
-export function toVendorDocument(r: DocumentRow, names: Map<string, string>): VendorDocumentItem {
-  const status = r.status === "verified" || r.status === "rejected" ? r.status : "pending";
+export function toVendorDocument(r: DocumentRow): VendorDocumentItem {
   return {
     id: r.id,
     type: (DOC_TYPES.includes(r.doc_type as DocType) ? r.doc_type : "other") as DocType,
     fileName: r.file_name,
-    status,
-    remarks: r.remarks ?? null,
-    reviewedBy: r.reviewed_by ? { id: r.reviewed_by, name: names.get(r.reviewed_by) ?? "Staff" } : null,
-    reviewedAt: r.reviewed_at ?? null,
     uploadedAt: r.created_at,
   };
 }

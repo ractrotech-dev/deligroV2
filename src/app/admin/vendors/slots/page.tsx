@@ -119,7 +119,7 @@ export default async function VendorSlotsPage() {
             <EmptyState
               icon={Store}
               title="No shops to feature"
-              description="Add and approve a vendor first — then pin it to a slot here."
+              description="Add a vendor first — then pin it to a slot here."
               action={
                 <Link href="/admin/vendors" className="c-btn c-btn-dark">
                   Go to vendors

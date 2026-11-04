@@ -16,7 +16,7 @@ function ok(name: string, cond: boolean) {
 }
 const read = (p: string) => readFileSync(join(__dirname, "..", "..", p), "utf8");
 const stats = read("src/lib/data-access/admin-stats.ts");
-const page = read("src/app/admin/page.tsx");
+const page = read("src/app/admin/reports/overview/page.tsx");
 
 ok("a failed sales read is not turned into an empty list", !/\.catch\(\(\) => \[\] as MetricOrder\[\]\)/.test(stats));
 ok("the overview data says when the sales figures are unavailable", /salesUnavailable/.test(stats));

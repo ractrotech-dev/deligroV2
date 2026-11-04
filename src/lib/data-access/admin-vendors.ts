@@ -57,9 +57,7 @@ export interface VendorCounts {
   total: number;
   active: number;
   inactive: number;
-  pending: number;
   suspended: number;
-  rejected: number;
   categories: number;
   /**
    * Shops with no map pin, across the whole roster. Counted separately from the
@@ -524,12 +522,6 @@ export async function listVendors(
   return { items, total: count ?? 0, page, pageSize };
 }
 
-// `listAwaitingApproval` lived here: it re-queried `status = 'pending'` with
-// the full list columns to feed a separate card grid above the catalogue. The
-// Approvals tab is now `listVendors({ status: "pending" })` — same predicate,
-// same mapper, paged and sorted like every other tab — so the second query and
-// the second layout are both gone. `counts.pending` is what the badge reads.
-
 /** The six dashboard cards. A failing sub-count reads as 0, never blank. */
 export async function getVendorCounts(): Promise<VendorCounts> {
   const supabase = await createClient();
@@ -557,16 +549,14 @@ export async function getVendorCounts(): Promise<VendorCounts> {
   // two go through the service role. Every caller is admin-gated.
   const admin = createAdminClient();
 
-  const [total, active, inactive, pending, suspended, rejected, categories, unpinned, incomplete, noEmail] =
+  const [total, active, inactive, suspended, categories, unpinned, incomplete, noEmail] =
     await Promise.all([
       countOf(() =>
         supabase.from("restaurants").select("id", { count: "exact", head: true })
       ),
       byStatus("active"),
       byStatus("inactive"),
-      byStatus("pending"),
       byStatus("suspended"),
-      byStatus("rejected"),
       countOf(() =>
         supabase
           .from("vendor_categories")
@@ -600,7 +590,7 @@ export async function getVendorCounts(): Promise<VendorCounts> {
       ),
     ]);
 
-  return { total, active, inactive, pending, suspended, rejected, categories, unpinned, incomplete, noEmail };
+  return { total, active, inactive, suspended, categories, unpinned, incomplete, noEmail };
 }
 
 export async function getVendorDetail(id: string): Promise<VendorDetail | null> {

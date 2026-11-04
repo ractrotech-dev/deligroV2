@@ -62,7 +62,7 @@ export interface VendorRankRow extends VendorMetric {
  * can. Lives beside the `eligible` flag it explains so the two cannot disagree.
  */
 export function ineligibleReason(row: VendorRankRow): string | null {
-  if (!row.approved) return "Not approved — never appears on the feed";
+  if (!row.approved) return "Switched off — never appears on the feed";
   if (row.status !== "active") return `Status is ${row.status}`;
   return null;
 }

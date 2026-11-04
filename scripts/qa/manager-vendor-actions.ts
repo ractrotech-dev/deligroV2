@@ -46,20 +46,10 @@ p = parseVendorActionBody({ action: "suspend", expected: "active", reason: "ok",
 check("a 2-character reason → reason_required", !p.ok && p.error === "reason_required");
 p = parseVendorActionBody({ action: "suspend", reason: "Hygiene issue", clientActionId: CID });
 check("a status action without expected → 400 expected", !p.ok && p.error === "bad_request" && p.field === "expected");
-p = parseVendorActionBody({ action: "approve", expected: "pending", reason: "All good", clientActionId: CID, override: "yes" });
-check("override must be a boolean", !p.ok && p.field === "override");
-p = parseVendorActionBody({ action: "approve", expected: "pending", reason: "All good", clientActionId: CID, override: true });
-check("approve with override", p.ok && p.action.action === "approve" && p.action.override === true);
-p = parseVendorActionBody({ action: "verify_document", documentId: "x", clientActionId: CID });
-check("a non-uuid documentId → 400 documentId", !p.ok && p.field === "documentId");
-p = parseVendorActionBody({ action: "verify_document", documentId: "11111111-1111-4111-8111-111111111111", note: "Checked the original", clientActionId: CID });
-check("verify_document takes an optional note", p.ok && p.action.action === "verify_document" && p.action.reason === "Checked the original");
-p = parseVendorActionBody({ action: "verify_document", documentId: "11111111-1111-4111-8111-111111111111", clientActionId: CID });
-check("verify_document needs no note", p.ok && p.action.action === "verify_document" && p.action.reason === null);
-p = parseVendorActionBody({ action: "verify_document", documentId: randomUUID(), clientActionId: CID });
-check("verify needs no reason", p.ok && p.action.action === "verify_document");
-p = parseVendorActionBody({ action: "reject_document", documentId: randomUUID(), reason: "", clientActionId: CID });
-check("rejecting a document needs remarks", !p.ok && p.error === "reason_required");
+for (const gone of ["approve", "reject", "verify_document", "reject_document"]) {
+  p = parseVendorActionBody({ action: gone, expected: "inactive", documentId: randomUUID(), reason: "All good", clientActionId: CID });
+  check(`${gone} is no longer an action`, !p.ok && p.field === "action");
+}
 p = parseVendorActionBody({ action: "delete", clientActionId: CID });
 check("an unknown action → 400 action", !p.ok && p.field === "action");
 p = parseVendorActionBody({ action: "suspend", expected: "active", reason: "Hygiene issue" });
@@ -69,8 +59,7 @@ check("an unknown expected status → 400 expected", !p.ok && p.field === "expec
 
 console.log("\n── permissions ──");
 check("permissions match the plan", eq(VENDOR_ACTION_PERMISSION, {
-  approve: "manager.vendors.status", reject: "manager.vendors.status", suspend: "manager.vendors.status",
-  reactivate: "manager.vendors.status", verify_document: "manager.vendors.status", reject_document: "manager.vendors.status",
+  suspend: "manager.vendors.status", reactivate: "manager.vendors.status",
 }));
 check("ticket replies and status need manager.support.manage", TICKET_MESSAGE_PERMISSION === "manager.support.manage");
 
@@ -144,9 +133,6 @@ check("forbidden → 404", eq(mapVendorRpcError({ message: "forbidden", code: "4
 check("stale → 409", eq(mapVendorRpcError({ message: "stale" }), { ok: false, status: 409, error: "stale" }));
 check("invalid_transition → 409", eq(mapVendorRpcError({ message: "invalid_transition" }), { ok: false, status: 409, error: "invalid_transition" }));
 check("needs_map_pin → 409", eq(mapVendorRpcError({ message: "needs_map_pin" }), { ok: false, status: 409, error: "needs_map_pin" }));
-check("documents_unverified → 409 with the missing list",
-  eq(mapVendorRpcError({ message: "documents_unverified", details: "fssai,bank_proof" }),
-    { ok: false, status: 409, error: "documents_unverified", extra: { missing: ["fssai", "bank_proof"] } }));
 check("reason_required → 400", eq(mapVendorRpcError({ message: "reason_required" }), { ok: false, status: 400, error: "reason_required" }));
 check("anything else → 500", eq(mapVendorRpcError({ message: "boom" }), { ok: false, status: 500, error: "action_failed" }));
 
@@ -162,19 +148,16 @@ check("admin status changes carry a reason (no optional reason, no default)",
   && !adminVendors.includes("p_reason: reason ?? null"));
 {
   const stats = readFileSync("src/lib/data-access/admin-stats.ts", "utf8");
-  check("approving a signup is the audited status change, not a direct approved flip",
-    !/\.update\(\{\s*approved:\s*true\s*\}\)/.test(stats) && /setVendorStatus\(id,\s*"active",\s*reason\)/.test(stats));
+  check("the admin stats no longer approve anything", !/approveRestaurant|listPendingRestaurants|pendingApprovals/.test(stats));
   const vActions = readFileSync("src/app/admin/vendors/actions.ts", "utf8");
-  const aActions = readFileSync("src/app/admin/actions.ts", "utf8");
-  check("the admin status, reject and approve actions all require a reason",
+  check("the admin status action requires a reason",
     /setVendorStatusAction\(id: string, status: VendorStatus, reason: string\)/.test(vActions)
-    && /rejectVendorAction\(id: string, reason: string\)/.test(vActions)
-    && /approveRestaurantAction\(id: string, reason: string\)/.test(aActions)
-    && (vActions.match(/statusReason\(/g) ?? []).length >= 2 && aActions.includes("statusReason("));
+    && vActions.includes("statusReason(reason)"));
+  check("there is no approve or reject action", !/rejectVendorAction/.test(vActions)
+    && !/approveRestaurantAction/.test(readFileSync("src/app/admin/actions.ts", "utf8")));
   check("statusReason: 3–300 characters, trimmed", statusReason("  ok ") === null && statusReason(" Licence verified ") === "Licence verified" && statusReason("x".repeat(301)) === null);
-  const ui = ["src/components/admin/reject-vendor-button.tsx", "src/components/admin/approve-restaurant-button.tsx", "src/app/admin/vendors/vendor-row-actions.tsx"]
-    .map((f) => readFileSync(f, "utf8"));
-  check("the admin UI asks for the reason (reject, approve, enable/disable)", ui.every((src) => /reason/i.test(src) && (src.includes("<textarea") || src.includes("window.prompt("))));
+  const ui = readFileSync("src/app/admin/vendors/vendor-row-actions.tsx", "utf8");
+  check("the admin UI asks for the reason (enable/disable)", /reason/i.test(ui) && ui.includes("window.prompt("));
 }
 for (const f of ["src/app/api/manager/tickets/[id]/route.ts", "src/app/api/manager/tickets/[id]/messages/route.ts",
   "src/app/api/manager/tickets/[id]/status/route.ts"]) {
@@ -211,7 +194,7 @@ async function live() {
     console.log("  skip (QA_MANAGER_COOKIE / QA_VENDOR_ID unset)");
     return;
   }
-  const body = { action: "suspend", expected: "pending", reason: "QA stale check", clientActionId: randomUUID() };
+  const body = { action: "suspend", expected: "suspended", reason: "QA stale check", clientActionId: randomUUID() };
   const r = await fetch(`${BASE}/api/manager/vendors/${vendor}/actions`, {
     method: "POST", headers: { cookie, "content-type": "application/json" }, body: JSON.stringify(body),
   });

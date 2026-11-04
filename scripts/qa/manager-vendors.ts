@@ -79,10 +79,10 @@ const listRow = {
   id, name: "Spice Hub", slug: "spice-hub", status: "active", category: "Restaurant", zone_id: ZONE,
   zone_name: "Bemetara", image_url: null, rating: "4.26", rating_count: 120, created_at: "2026-09-01T10:00:00Z",
 };
-const item = toVendorListItem(listRow, { openState: "open", todayOrders: 14, pendingDocuments: 1, openComplaints: 0 });
+const item = toVendorListItem(listRow, { openState: "open", todayOrders: 14, openComplaints: 0 });
 check("list item shape", item.id === id && item.zone.name === "Bemetara" && item.rating === 4.3 && item.ratingCount === 120
   && item.openState === "open" && item.todayOrders === 14 && item.logoUrl === null);
-check("no rating → 0", toVendorListItem({ ...listRow, rating: null, rating_count: null }, { openState: "closed", todayOrders: 0, pendingDocuments: 0, openComplaints: 0 }).rating === 0);
+check("no rating → 0", toVendorListItem({ ...listRow, rating: null, rating_count: null }, { openState: "closed", todayOrders: 0, openComplaints: 0 }).rating === 0);
 check("first name of a full name", firstName("Asha Verma") === "Asha" && firstName("  ") === null && firstName(null) === null);
 const review = toReviewItem({
   id, rating: 4, comment: "Nice", created_at: "2026-10-01T10:00:00Z", status: "hidden_by_admin", order_id: id,
@@ -97,9 +97,9 @@ check("review reply carried", review.reply?.text === "Thanks");
 check("a removed reply is not shown", toReviewItem({ ...{ id, rating: 4, comment: null, created_at: "x", status: "published", order_id: null,
   food_quality: null, packaging: null, delivery_experience: null, value_for_money: null, profiles: null,
   review_replies: [{ reply_text: "x", created_at: "x", removed_at: "y" }] } }).reply === null);
-const doc = toVendorDocument({ id, doc_type: "fssai", file_name: "f.pdf", status: "verified", remarks: null,
-  reviewed_by: id, reviewed_at: "2026-10-01T10:00:00Z", created_at: "2026-09-01T10:00:00Z" }, new Map([[id, "Mona"]]));
-check("document with reviewer name", doc.type === "fssai" && doc.reviewedBy?.name === "Mona" && doc.uploadedAt === "2026-09-01T10:00:00Z");
+const doc = toVendorDocument({ id, doc_type: "fssai", file_name: "f.pdf", created_at: "2026-09-01T10:00:00Z" });
+check("document carries its type, name and date", doc.type === "fssai" && doc.fileName === "f.pdf" && doc.uploadedAt === "2026-09-01T10:00:00Z");
+check("a document says nothing about review", !("status" in doc) && !("reviewedBy" in doc));
 const ticket = toTicketSummary({ id, number: 17, subject: "Late", category: "order_issue", priority: "high", status: "escalated",
   requester_role: "customer", order_id: null, created_at: "a", updated_at: "b" });
 check("ticket summary", ticket.number === 17 && ticket.requesterRole === "customer" && ticket.status === "escalated");
@@ -112,7 +112,7 @@ const input: VendorDetailInput = {
     self_pickup: false, prep_minutes: 20, fssai_number: "123", tc_accepted_at: null, tc_version: null,
     bank_account_number: "999", pan_number: "ABCDE", gst_number: "22AAA", upi_id: "v@upi",
   } as VendorDetailInput["row"],
-  extras: { openState: "open", todayOrders: 3, pendingDocuments: 0, openComplaints: 1 },
+  extras: { openState: "open", todayOrders: 3, openComplaints: 1 },
   statusChangedBy: null,
   documents: [doc],
   holidays: [{ starts_on: "2026-11-01", ends_on: "2026-11-02", note: null }],
@@ -121,7 +121,7 @@ const input: VendorDetailInput = {
   finance: { commissionPct: 12, commissionGstPct: 18, otherChargesPerOrder: 0, settlementCycle: "weekly", pendingPayment: 100,
     recoverable: 0, commissionThisPeriod: 50, settlements: [] },
   openComplaints: [ticket],
-  allowed: { approve: false, reject: false, suspend: true, reactivate: false, reviewDocuments: true, uploadDocuments: false },
+  allowed: { suspend: true, reactivate: false, uploadDocuments: false, menuSheet: false },
 };
 const withFinance = buildVendorDetail(input, { "manager.finance.view": true });
 const without = buildVendorDetail(input, {});

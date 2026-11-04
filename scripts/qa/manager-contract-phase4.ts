@@ -68,19 +68,18 @@ const vRow = (n: number, status: string, over: Partial<VendorDetailRow> = {}): V
   ...over,
 });
 
-const vendorRows: VendorListRow[] = [vRow(90, "active"), vRow(91, "pending"), vRow(92, "suspended")];
+const vendorRows: VendorListRow[] = [vRow(90, "active"), vRow(91, "inactive"), vRow(92, "suspended")];
 
 export const vendorsList = {
   items: vendorRows.map((r, i) =>
     toVendorListItem(r, {
       openState: i === 0 ? "open" : "closed",
       todayOrders: 14 - i,
-      pendingDocuments: i,
       openComplaints: i === 0 ? 1 : 0,
     })
   ),
   nextCursor: null,
-  counts: { all: 3, pending: 1, active: 1, suspended: 1, rejected: 0, inactive: 0, online: 1 },
+  counts: { all: 3, active: 1, suspended: 1, inactive: 1, online: 1 },
 };
 
 const ticketRow = (n: number, over: Partial<TicketRow> = {}): TicketRow => ({
@@ -101,23 +100,11 @@ const staffNames = new Map([[uuid(60), "Ravi Kumar"]]);
 
 const vendorDetailInput = (status: string) => ({
   row: vRow(90, status),
-  extras: { openState: "open" as const, todayOrders: 14, pendingDocuments: 1, openComplaints: 1 },
+  extras: { openState: "open" as const, todayOrders: 14, openComplaints: 1 },
   statusChangedBy: status === "suspended" ? { id: uuid(60), name: "Ravi Kumar" } : null,
   documents: [
-    toVendorDocument(
-      {
-        id: uuid(50), doc_type: "fssai", file_name: "fssai.pdf", status: "verified", remarks: null,
-        reviewed_by: uuid(60), reviewed_at: ago(600), created_at: ago(900),
-      },
-      staffNames
-    ),
-    toVendorDocument(
-      {
-        id: uuid(51), doc_type: "bank_proof", file_name: "cheque.jpg", status: null, remarks: null,
-        reviewed_by: null, reviewed_at: null, created_at: ago(300),
-      },
-      staffNames
-    ),
+    toVendorDocument({ id: uuid(50), doc_type: "fssai", file_name: "fssai.pdf", created_at: ago(900) }),
+    toVendorDocument({ id: uuid(51), doc_type: "bank_proof", file_name: "cheque.jpg", created_at: ago(300) }),
   ],
   holidays: [{ starts_on: "2026-11-01", ends_on: "2026-11-02", note: "Diwali" }],
   performance: {

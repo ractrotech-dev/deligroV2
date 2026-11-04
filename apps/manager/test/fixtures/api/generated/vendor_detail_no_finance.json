@@ -14,7 +14,6 @@
     "rating": 4.4,
     "ratingCount": 120,
     "todayOrders": 14,
-    "pendingDocuments": 1,
     "openComplaints": [
       {
         "id": "3f2c1a30-1111-4222-8333-000000000030",
@@ -79,23 +78,12 @@
         "id": "3f2c1a50-1111-4222-8333-000000000050",
         "type": "fssai",
         "fileName": "fssai.pdf",
-        "status": "verified",
-        "remarks": null,
-        "reviewedBy": {
-          "id": "3f2c1a60-1111-4222-8333-000000000060",
-          "name": "Ravi Kumar"
-        },
-        "reviewedAt": "2026-10-20T22:00:00.000Z",
         "uploadedAt": "2026-10-20T17:00:00.000Z"
       },
       {
         "id": "3f2c1a51-1111-4222-8333-000000000051",
         "type": "bank_proof",
         "fileName": "cheque.jpg",
-        "status": "pending",
-        "remarks": null,
-        "reviewedBy": null,
-        "reviewedAt": null,
         "uploadedAt": "2026-10-21T03:00:00.000Z"
       }
     ],
@@ -120,11 +108,8 @@
       }
     },
     "allowed": {
-      "approve": false,
-      "reject": false,
       "suspend": false,
       "reactivate": true,
-      "reviewDocuments": true,
       "uploadDocuments": true,
       "menuSheet": false
     }

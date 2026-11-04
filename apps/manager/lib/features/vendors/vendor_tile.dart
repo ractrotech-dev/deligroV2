@@ -7,8 +7,7 @@ import '../orders/order_labels.dart' show StatusText;
 
 Color vendorStatusColor(AppColors c, VendorStatus s) => switch (s) {
       VendorStatus.active => c.green,
-      VendorStatus.pending => c.amberText,
-      VendorStatus.suspended || VendorStatus.rejected => c.deal,
+      VendorStatus.suspended => c.deal,
       VendorStatus.inactive || VendorStatus.unknown => c.muted,
     };
 
@@ -161,17 +160,12 @@ class VendorTile extends StatelessWidget {
                         Text(' today', style: TextStyle(fontSize: 12.5, color: c.muted)),
                       ],
                     ),
-                    if (v.pendingDocuments > 0 || v.openComplaints > 0) ...[
+                    if (v.openComplaints > 0) ...[
                       const SizedBox(height: 8),
                       Wrap(
                         spacing: 6,
                         runSpacing: 6,
                         children: [
-                          if (v.pendingDocuments > 0)
-                            CountBadge(
-                              icon: Icons.description_outlined,
-                              text: '${v.pendingDocuments} document${v.pendingDocuments == 1 ? '' : 's'} to review',
-                            ),
                           if (v.openComplaints > 0)
                             CountBadge(
                               icon: Icons.report_outlined,

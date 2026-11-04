@@ -895,14 +895,8 @@ const ROLE_MILESTONES: Record<Exclude<BuildTab, "customer">, Milestone[]> = {
       tasks: [
         {
           title: "Live platform metrics",
-          detail: "Orders today, GMV, riders on job, pending approvals from DB",
+          detail: "Orders today, GMV, riders on job from DB",
           db: "orders · restaurants · profiles",
-          status: "done",
-        },
-        {
-          title: "Restaurant approval queue",
-          detail: "Toggle restaurants.approved for new vendors",
-          db: "restaurants.approved",
           status: "done",
         },
         {

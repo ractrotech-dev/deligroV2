@@ -1,19 +1,14 @@
 /**
  * Vendor rules for the Manager app (§4): the status transitions a manager may
- * make, what the detail screen offers, which documents an approval needs, and
- * the cancellation / rejection / speed figures. Pure; the database enforces the
- * same transitions (ops_set_vendor_status, migration 0145).
+ * make, what the detail screen offers, and the cancellation / rejection / speed
+ * figures. Pure; the database enforces the same transitions (ops_set_vendor_status,
+ * migration 0197). There is no approval: a shop is live when it is added.
  */
 
-export type VendorStatus = "pending" | "active" | "inactive" | "suspended" | "rejected";
-export type VendorAction = "approve" | "reject" | "suspend" | "reactivate";
-
-/** What an approval needs verified (0145: `documents_unverified` otherwise). */
-export const REQUIRED_DOCUMENTS = ["fssai", "bank_proof"] as const;
+export type VendorStatus = "active" | "inactive" | "suspended";
+export type VendorAction = "suspend" | "reactivate";
 
 const TRANSITIONS: Record<VendorAction, { from: readonly VendorStatus[]; to: VendorStatus }> = {
-  approve: { from: ["pending", "rejected"], to: "active" },
-  reject: { from: ["pending"], to: "rejected" },
   suspend: { from: ["active", "inactive"], to: "suspended" },
   reactivate: { from: ["suspended", "inactive"], to: "active" },
 };
@@ -25,11 +20,8 @@ export function nextVendorStatus(from: VendorStatus, action: VendorAction): Vend
 }
 
 export interface AllowedVendorActions {
-  approve: boolean;
-  reject: boolean;
   suspend: boolean;
   reactivate: boolean;
-  reviewDocuments: boolean;
   uploadDocuments: boolean;
   /** Upload a menu sheet for this shop (manager.products.bulk_menu). */
   menuSheet: boolean;
@@ -39,19 +31,11 @@ export function allowedVendorActions(v: { status: VendorStatus }, perms: Record<
   const decide = perms["manager.vendors.status"] === true;
   const can = (a: VendorAction) => decide && nextVendorStatus(v.status, a) !== null;
   return {
-    approve: can("approve"),
-    reject: can("reject"),
     suspend: can("suspend"),
     reactivate: can("reactivate"),
-    reviewDocuments: decide,
     uploadDocuments: perms["manager.vendors.onboard"] === true,
     menuSheet: perms["manager.products.view"] === true && perms["manager.products.bulk_menu"] === true,
   };
-}
-
-/** Required document types with no verified copy, in REQUIRED_DOCUMENTS order. */
-export function missingRequiredDocuments(docs: { type: string; status: string }[]): string[] {
-  return REQUIRED_DOCUMENTS.filter((t) => !docs.some((d) => d.type === t && d.status === "verified"));
 }
 
 export interface VendorRateOrder {

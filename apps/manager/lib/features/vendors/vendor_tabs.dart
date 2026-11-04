@@ -16,7 +16,6 @@ import '../../theme/app_theme.dart';
 import '../../widgets/async_view.dart';
 import '../../widgets/contact_buttons.dart';
 import '../../widgets/document_picker.dart';
-import '../orders/order_labels.dart' show StatusText;
 import '../orders/order_mini_map.dart';
 import '../orders/reason_dialog.dart';
 import '../support/ticket_labels.dart';
@@ -304,13 +303,6 @@ class RatingDistribution extends StatelessWidget {
 
 // ── Documents ─────────────────────────────────────────────────────────────
 
-Color docStatusColor(AppColors c, DocStatus s) => switch (s) {
-  DocStatus.verified => c.green,
-  DocStatus.pending => c.amberText,
-  DocStatus.rejected => c.deal,
-  DocStatus.unknown => c.muted,
-};
-
 class VendorDocumentsTab extends ConsumerStatefulWidget {
   const VendorDocumentsTab({super.key, required this.vendor});
   final VendorDetail vendor;
@@ -364,25 +356,6 @@ class _VendorDocumentsTabState extends ConsumerState<VendorDocumentsTab> {
           ],
         ),
       ),
-    );
-  }
-
-  Future<void> _review(VendorDocument d, {required bool verify}) async {
-    final reason = await showReasonDialog(
-      context,
-      title: verify ? 'Verify ${d.type.label}?' : 'Reject ${d.type.label}?',
-      quickPicks: verify ? VendorPicks.verifyDocument : VendorPicks.rejectDocument,
-      hint: verify ? 'Note (optional)' : 'What is wrong with it (the vendor sees this)',
-      submitLabel: verify ? 'Verify' : 'Reject',
-      required: !verify,
-    );
-    if (reason == null || !mounted) return;
-    await sendVendorAction(
-      context,
-      ref,
-      v.id,
-      verify ? VerifyDocument(documentId: d.id, note: reason) : RejectDocument(documentId: d.id, reason: reason),
-      doneText: verify ? 'Document verified.' : 'Document rejected. The vendor has been told.',
     );
   }
 
@@ -473,21 +446,12 @@ class _VendorDocumentsTabState extends ConsumerState<VendorDocumentsTab> {
                         ],
                       ),
                     ),
-                    StatusText(d.status.label, color: docStatusColor(c, d.status)),
                   ],
                 ),
-                if (d.remarks != null) ...[
-                  const SizedBox(height: 6),
-                  Text(d.remarks!, style: TextStyle(color: c.ink, fontSize: 13)),
-                ],
-                if (d.reviewedBy != null || d.uploadedAt != null) ...[
+                if (d.uploadedAt != null) ...[
                   const SizedBox(height: 4),
                   Text(
-                    [
-                      if (d.uploadedAt != null) 'Uploaded ${_day.format(d.uploadedAt!.toLocal())}',
-                      if (d.reviewedBy != null)
-                        'reviewed by ${d.reviewedBy!.name}${d.reviewedAt == null ? '' : ' on ${_day.format(d.reviewedAt!.toLocal())}'}',
-                    ].join(' · '),
+                    'Uploaded ${_day.format(d.uploadedAt!.toLocal())}',
                     style: TextStyle(color: c.muted, fontSize: 12),
                   ),
                 ],
@@ -502,19 +466,6 @@ class _VendorDocumentsTabState extends ConsumerState<VendorDocumentsTab> {
                       icon: const Icon(Icons.open_in_new, size: 16),
                       label: const Text('Open'),
                     ),
-                    if (v.allowed.reviewDocuments && d.status != DocStatus.verified)
-                      FilledButton.tonal(
-                        key: Key('doc-verify-${d.id}'),
-                        onPressed: () => _review(d, verify: true),
-                        child: const Text('Verify'),
-                      ),
-                    if (v.allowed.reviewDocuments && d.status != DocStatus.rejected)
-                      OutlinedButton(
-                        key: Key('doc-reject-${d.id}'),
-                        style: OutlinedButton.styleFrom(foregroundColor: c.deal),
-                        onPressed: () => _review(d, verify: false),
-                        child: const Text('Reject'),
-                      ),
                   ],
                 ),
               ],

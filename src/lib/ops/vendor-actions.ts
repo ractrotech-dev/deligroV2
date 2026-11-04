@@ -9,24 +9,22 @@ import { DOC_TYPES, VENDOR_STATUSES, type DocType } from "./vendor-contract";
 import type { VendorAction, VendorStatus } from "./vendor-rules";
 import { EMAIL_SHAPE, stripTrailingSlashes } from "@/lib/utils/text-shape";
 
-export type VendorActionName = VendorAction | "verify_document" | "reject_document";
+export type VendorActionName = VendorAction;
 
 /** The switch each vendor action needs (plan, Global Constraints). */
 export const VENDOR_ACTION_PERMISSION: Record<VendorActionName, string> = {
-  approve: "manager.vendors.status",
-  reject: "manager.vendors.status",
   suspend: "manager.vendors.status",
   reactivate: "manager.vendors.status",
-  verify_document: "manager.vendors.status",
-  reject_document: "manager.vendors.status",
 };
 
 export const TICKET_MESSAGE_PERMISSION = "manager.support.manage";
 
-export type ParsedVendorAction =
-  | { action: VendorAction; expected: VendorStatus; reason: string; override: boolean; clientActionId: string }
-  | { action: "verify_document"; documentId: string; reason: string | null; clientActionId: string }
-  | { action: "reject_document"; documentId: string; reason: string; clientActionId: string };
+export interface ParsedVendorAction {
+  action: VendorAction;
+  expected: VendorStatus;
+  reason: string;
+  clientActionId: string;
+}
 
 type Fail = { ok: false; status: 400; error: "bad_request" | "reason_required"; field?: string };
 const bad = (field: string): Fail => ({ ok: false, status: 400, error: "bad_request", field });
@@ -45,27 +43,13 @@ export function parseVendorActionBody(body: Record<string, unknown> | null): { o
   const clientActionId = body.clientActionId;
   if (typeof clientActionId !== "string" || !isUuid(clientActionId)) return bad("clientActionId");
 
-  if (action === "verify_document" || action === "reject_document") {
-    if (typeof body.documentId !== "string" || !isUuid(body.documentId)) return bad("documentId");
-    if (action === "reject_document") {
-      const reason = reasonOf(body.reason, 3, 500);
-      if (!reason) return needReason;
-      return { ok: true, action: { action, documentId: body.documentId.toLowerCase(), reason, clientActionId } };
-    }
-    // Verifying takes an optional `note`; `reason` is accepted from older clients.
-    const note = text(body.note ?? body.reason);
-    if (note && note.length > 500) return needReason;
-    return { ok: true, action: { action, documentId: body.documentId.toLowerCase(), reason: note, clientActionId } };
-  }
-
   const expected = body.expected;
   if (typeof expected !== "string" || !VENDOR_STATUSES.includes(expected as VendorStatus)) return bad("expected");
-  if (body.override !== undefined && typeof body.override !== "boolean") return bad("override");
   const reason = reasonOf(body.reason);
   if (!reason) return needReason;
   return {
     ok: true,
-    action: { action: action as VendorAction, expected: expected as VendorStatus, reason, override: body.override === true, clientActionId },
+    action: { action: action as VendorAction, expected: expected as VendorStatus, reason, clientActionId },
   };
 }
 
@@ -73,10 +57,6 @@ export function parseVendorActionBody(body: Record<string, unknown> | null): { o
 export function mapVendorRpcError(e: { code?: string; message?: string; details?: string | null }): OpsResult {
   const message = (e.message ?? "").trim();
   if (message === "needs_map_pin") return { ok: false, status: 409, error: "needs_map_pin" };
-  if (message === "documents_unverified") {
-    const missing = (e.details ?? "").split(",").map((s) => s.trim()).filter(Boolean);
-    return { ok: false, status: 409, error: "documents_unverified", extra: { missing } };
-  }
   return mapRpcError(e);
 }
 

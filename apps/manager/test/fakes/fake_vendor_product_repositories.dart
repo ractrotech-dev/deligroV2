@@ -131,7 +131,7 @@ class FakeVendorsRepository implements VendorsRepository {
     final r = _pop(uploadResults);
     if (r is Exception || r is Error) throw r!;
     if (r is Outcome<VendorDocument>) return r;
-    return Applied(VendorDocument(id: 'd-new', type: DocType.parse(type), fileName: file.name, status: DocStatus.pending));
+    return Applied(VendorDocument(id: 'd-new', type: DocType.parse(type), fileName: file.name));
   }
 }
 

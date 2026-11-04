@@ -139,7 +139,7 @@ class _Header extends ConsumerWidget {
               runSpacing: 8,
               children: [
                 for (final d in decisions)
-                  d == VendorDecision.approve || d == VendorDecision.reactivate
+                  d == VendorDecision.reactivate
                       ? FilledButton(
                           key: Key('vendor-action-${d.name}'),
                           onPressed: () => decideVendor(context, ref, v, d),
@@ -147,7 +147,7 @@ class _Header extends ConsumerWidget {
                         )
                       : OutlinedButton(
                           key: Key('vendor-action-${d.name}'),
-                          style: d == VendorDecision.suspend || d == VendorDecision.reject
+                          style: d == VendorDecision.suspend
                               ? OutlinedButton.styleFrom(foregroundColor: c.deal)
                               : null,
                           onPressed: () => decideVendor(context, ref, v, d),

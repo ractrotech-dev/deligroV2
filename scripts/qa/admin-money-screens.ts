@@ -98,7 +98,7 @@ ok("0186 writes its change to the audit log", /insert into public\.ops_audit_log
 console.log("\n── Home ──");
 const home = read("src/app/admin/page.tsx");
 ok("'Failed payments' opens a list of exactly that", home.includes('"/admin/orders?payment=failed"') && !home.includes("status=PLACED"));
-ok("'Orders with no rider' opens a list of exactly that", home.includes('"/admin/orders?rider=none"'));
+ok("'No rider' filters the board to exactly that", home.includes('show: "norider"') && /o\.noRider/.test(home));
 ok("what's owed is an amount, from the one dues rollup, not a scan of every order", /totalShopDues\(\)/.test(home) && !/getSettlementStats|listVendorSettlementQueue/.test(home));
 ok("a failed sum is not a green zero", /figure: "—"/.test(home) && /tone: "amber"/.test(home));
 const adminOrders = read("src/lib/data-access/admin-orders.ts");

@@ -8,7 +8,7 @@ import type { TrendMetric } from "./chart-theme";
  * Recharts, off the critical path of every screen that plots something.
  *
  * The library is roughly 400KB and was imported statically into pages that also
- * carry the metric strip, the live board and the approval queue — all of which
+ * carry the metric strip, and the live board — all of which
  * are what an operator actually opens the page for, and all of which waited on
  * it to hydrate. The chart sits below them, and the totals it plots are already
  * readable in the header above it.

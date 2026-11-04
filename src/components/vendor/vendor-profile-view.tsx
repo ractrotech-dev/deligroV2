@@ -167,14 +167,9 @@ export function VendorProfileView({
                   Accepting orders
                 </span>
               ) : null}
-              {r?.approved ? (
-                <span className="inline-flex items-center gap-1 rounded-full bg-black/60 px-2.5 py-1 text-[11px] font-bold text-white backdrop-blur-sm">
-                  <ShieldCheck className="size-3" />
-                  Approved
-                </span>
-              ) : r ? (
+              {r && !r.approved ? (
                 <span className="rounded-full bg-black/60 px-2.5 py-1 text-[11px] font-bold text-white/90 backdrop-blur-sm">
-                  Pending approval
+                  Switched off by Deligro
                 </span>
               ) : null}
               {r?.promoted ? (

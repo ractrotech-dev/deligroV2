@@ -50,6 +50,8 @@
     "test:service-area": "tsx scripts/qa/service-area.ts",
     "test:tracking-origin": "tsx scripts/qa/tracking-origin.ts",
     "test:vendor-readiness": "tsx scripts/qa/vendor-readiness.ts",
+    "test:vendor-creation": "tsx scripts/qa/vendor-creation-roles.ts",
+    "test:order-desk": "tsx scripts/qa/admin-order-desk.ts",
     "test:driver-app": "tsx scripts/qa/driver-app.ts",
     "test:rider-availability": "tsx scripts/qa/rider-availability.ts",
     "test:rider-api": "tsx scripts/qa/rider-api.ts",

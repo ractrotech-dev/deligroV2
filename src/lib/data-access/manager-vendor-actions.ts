@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { scopeAllows, type ManagerScope } from "@/lib/auth/manager-scope";
 import { deferNotify } from "@/lib/notifications/defer";
-import { documentDecisionText, notifyVendorOps, vendorStatusText } from "@/lib/notifications/vendor-ops";
+import { notifyVendorOps, vendorStatusText } from "@/lib/notifications/vendor-ops";
 import {
   createVendorAccount,
   EmailTakenError,
@@ -24,8 +24,8 @@ import type { OpsActor } from "@/lib/data-access/manager-ops-actions";
 export { mapVendorRpcError } from "@/lib/ops/vendor-actions";
 
 /**
- * Manager vendor actions (§4.2, §4.4, §4.5): status decisions, document review,
- * onboarding and document uploads. Each change and its audit row are one
+ * Manager vendor actions (§4.2, §4.4, §4.5): status decisions, onboarding and
+ * document uploads. Each change and its audit row are one
  * 0145 RPC that re-checks the actor's zone in the database; pushes to the shop
  * go after the response (deferNotify). Callers authorise first
  * (managerApiContext + the action's switch).
@@ -60,7 +60,6 @@ export async function opsVendorStatus(
   action: VendorAction,
   expected: VendorStatus,
   reason: string,
-  override: boolean,
   clientActionId: string
 ): Promise<OpsResult> {
   if (!(await scopedVendorRow(scope, id))) return NOT_FOUND;
@@ -71,44 +70,12 @@ export async function opsVendorStatus(
     p_action: action,
     p_expected: expected,
     p_reason: reason,
-    p_override: override,
+    p_override: false,
     p_client_action_id: clientActionId,
   });
   if (error) return mapVendorRpcError(error);
   if (!replay) {
     deferNotify(() => notifyVendorOps(id, "status", vendorStatusText(action, reason), "/more/store"));
-  }
-  return { ok: true };
-}
-
-export async function opsReviewDocument(
-  actor: OpsActor,
-  scope: ManagerScope,
-  vendorId: string,
-  documentId: string,
-  decision: "verified" | "rejected",
-  remarks: string | null,
-  clientActionId: string
-): Promise<OpsResult> {
-  if (!(await scopedVendorRow(scope, vendorId))) return NOT_FOUND;
-  const { data: doc } = await createAdminClient()
-    .from("vendor_documents")
-    .select("id, doc_type")
-    .eq("id", documentId)
-    .eq("restaurant_id", vendorId)
-    .maybeSingle<{ id: string; doc_type: string }>();
-  if (!doc) return NOT_FOUND;
-  const replay = await alreadyDone(actor.id, clientActionId);
-  const { error } = await rpc("ops_review_vendor_document", {
-    p_actor: actor.id,
-    p_document: documentId,
-    p_decision: decision,
-    p_remarks: remarks,
-    p_client_action_id: clientActionId,
-  });
-  if (error) return mapVendorRpcError(error);
-  if (!replay) {
-    deferNotify(() => notifyVendorOps(vendorId, "document", documentDecisionText(doc.doc_type, decision, remarks), "/more/store"));
   }
   return { ok: true };
 }

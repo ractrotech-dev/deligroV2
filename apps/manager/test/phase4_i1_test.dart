@@ -1,7 +1,6 @@
 import 'package:deligro_manager/features/products/products_screen.dart';
 import 'package:deligro_manager/features/products/restricted_categories_screen.dart';
 import 'package:deligro_manager/models/products.dart';
-import 'package:deligro_manager/models/vendors.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -22,15 +21,6 @@ void main() {
       expect(bare.containsKey('reason'), isFalse);
     });
 
-    test('verifying a document takes an optional note', () {
-      final bare = VerifyDocument(documentId: 'd1').toJson();
-      expect(bare, containsPair('action', 'verify_document'));
-      expect(bare.containsKey('note'), isFalse);
-      expect(bare.containsKey('reason'), isFalse);
-      expect(VerifyDocument(documentId: 'd1', note: 'Checked the original').toJson()['note'], 'Checked the original');
-      // Rejecting still needs a reason.
-      expect(RejectDocument(documentId: 'd1', reason: 'Blurry scan').toJson()['reason'], 'Blurry scan');
-    });
   });
 
   testWidgets('product filters offer every shop in the directory, not only loaded ones', (tester) async {
