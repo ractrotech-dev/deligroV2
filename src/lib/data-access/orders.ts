@@ -77,7 +77,7 @@ export interface Order {
   /** Present once 0031 is applied. Rupees off the grand total; 0 when no coupon. */
   discount?: number;
   coupon_code?: string | null;
-  /** Present once 0197 is applied. Wallet points on this order; cash due = total − this. */
+  /** Present once 0198 is applied. Wallet points on this order; cash due = total − this. */
   wallet_points_used?: number;
   /** Present once 0051 is applied. Null on a row cancelled before it. */
   cancelled_by?: string | null;
@@ -103,7 +103,7 @@ const COUPON_COLUMNS = "orders.discount";
 /** `cancelled_by` / `cancellation_reason` arrive together in 0051. */
 const CANCELLATION_COLUMNS = "orders.cancelled_by";
 const OPTIONS_COLUMN = "order_items.options";
-/** `wallet_points_used` arrives in 0197. */
+/** `wallet_points_used` arrives in 0198. */
 const WALLET_COLUMN = "orders.wallet_points_used";
 /** `idempotency_key` arrives in 0049. */
 const IDEMPOTENCY_COLUMN = "orders.idempotency_key";
@@ -121,7 +121,7 @@ interface SelectFlags {
   cancellation: boolean;
   /** `order_items.options` (chosen size and add-ons) only exists from 0062. */
   options: boolean;
-  /** `wallet_points_used` only exists from 0197. */
+  /** `wallet_points_used` only exists from 0198. */
   wallet: boolean;
 }
 
@@ -332,7 +332,7 @@ export interface CreateOrderInput {
    */
   instructions?: string;
   /**
-   * Wallet points to use on this order, whole rupees (0197). A request: the amount is
+   * Wallet points to use on this order, whole rupees (0198). A request: the amount is
    * checked against the customer's balance and the bill under a row lock by
    * `wallet_spend_on_order`. `orders.total` stays the full bill; cash due is the rest.
    */
@@ -416,7 +416,7 @@ export type OrderRefusalCode =
   | "out_of_stock"
   | "item_unavailable"
   | "invalid_options"
-  // 0197: the customer's points can't be used as asked.
+  // 0198: the customer's points can't be used as asked.
   | "wallet_refused";
 
 /**
@@ -760,7 +760,7 @@ export async function createOrder(
     }
   }
 
-  // The cash limit is judged on the cash the rider will actually collect (0194, 0197).
+  // The cash limit is judged on the cash the rider will actually collect (0194, 0198).
   const refusal = refusePayment(rules, paymentMethod, cashDue(payable, walletPoints));
   if (refusal) throw new PaymentRefused(refusal, rules, lang);
 

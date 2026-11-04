@@ -10,7 +10,7 @@ import { captureError } from "@/lib/obs/emit";
  * newest first. The customer is the session and nothing in the request: there is no
  * parameter with which to ask for anyone else's.
  *
- * The balance column isn't granted to `authenticated` (0197), so this is how a customer
+ * The balance column isn't granted to `authenticated` (0198), so this is how a customer
  * reads it. Writes aren't here: points move only through the delivery and order paths.
  *
  *   200 { wallet: { enabled, balance, moves[], nextCursor } }

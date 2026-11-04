@@ -1,7 +1,7 @@
 /**
  * The customer wallet's arithmetic and words. Pure and client-safe: the checkout,
  * the rider's screens and the server all decide from these, so what a person is
- * shown can't drift from what runs. The database decides for real (0197).
+ * shown can't drift from what runs. The database decides for real (0198).
  *
  * `orders.total` stays the full bill. Everything that means "cash at the door" is
  * `cashDue(total, pointsUsed)`, not `total`.

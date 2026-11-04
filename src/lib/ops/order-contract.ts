@@ -39,7 +39,7 @@ export interface OrderListItem {
   customerName: string | null;
   total: number;
   itemCount: number;
-  /** `pointsUsed`: wallet points on the order (0197). `total` stays the bill. */
+  /** `pointsUsed`: wallet points on the order (0198). `total` stays the bill. */
   payment: { method: string | null; status: string | null; pointsUsed?: number };
   rider: { id: string; name: string; code: string | null } | null;
   deliveryStatus: DeliveryStatus | null;

@@ -21,7 +21,7 @@ export interface WalletSummary {
   usedThisMonth: number;
 }
 
-/** The headline figures, or null on a database without 0197. */
+/** The headline figures, or null on a database without 0198. */
 export async function getWalletSummary(): Promise<WalletSummary | null> {
   const { data, error } = await createAdminClient().rpc("ops_wallet_summary");
   if (error) {

@@ -447,7 +447,7 @@ export function SettingsForm({
   cashLimitsReady?: boolean;
   /** False until migration 0194 adds the platform cash switch and limit. */
   cashLimitReady?: boolean;
-  /** False before 0197: the wallet switch and limit can't be saved. */
+  /** False before 0198: the wallet switch and limit can't be saved. */
   walletReady?: boolean;
   /** False until migration 0086 adds `block_dispatch_on_expired_docs`. */
   docsSettingReady?: boolean;
@@ -619,7 +619,7 @@ export function SettingsForm({
               role="status"
               className="rounded-lg border border-pop/40 bg-pop/10 px-3 py-2 text-[12px] font-medium leading-snug text-ink"
             >
-              The wallet needs migration 0197. Until then it stays off.
+              The wallet needs migration 0198. Until then it stays off.
             </p>
           )}
           <Row

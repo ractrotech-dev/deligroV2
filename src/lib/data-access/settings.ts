@@ -147,7 +147,7 @@ const OPTIONAL_GROUPS = [
     }),
   },
   {
-    /** Migration 0197. The wallet switch and the per-order limit arrive together. */
+    /** Migration 0198. The wallet switch and the per-order limit arrive together. */
     key: "platform_settings.feature_wallet",
     select: "feature_wallet, wallet_change_max_per_order",
     write: (input: PlatformSettings): Record<string, unknown> => ({
@@ -373,7 +373,7 @@ function mapSettings(row: SettingsRow): PlatformSettings {
       0,
       Math.round(Number(row.cash_limit_per_order ?? DEFAULT_SETTINGS.cashLimitPerOrder)) || 0,
     ),
-    // Absent columns (pre-0197) read as wallet off: no points can move.
+    // Absent columns (pre-0198) read as wallet off: no points can move.
     featureWallet: row.feature_wallet ?? DEFAULT_SETTINGS.featureWallet,
     walletChangeMaxPerOrder: Math.max(
       1,
@@ -585,7 +585,7 @@ export async function cashLimitAvailable(): Promise<boolean> {
   return !columnKnownMissing("platform_settings.cash_limit_per_order");
 }
 
-/** Are the 0197 wallet columns in this database? False only when the probe found them missing. */
+/** Are the 0198 wallet columns in this database? False only when the probe found them missing. */
 export async function walletSettingsAvailable(): Promise<boolean> {
   const supabase = await createClient();
   await availableGroups(supabase);

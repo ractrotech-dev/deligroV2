@@ -104,7 +104,7 @@ export interface UiOrder extends Order {
   /** From migration 0025; undefined on a database that predates it (all COD). */
   paymentMethod?: PaymentMethod;
   paymentStatus?: PaymentStatus;
-  /** Wallet points on this order (0197). `total` stays the bill; cash due = total − this. */
+  /** Wallet points on this order (0198). `total` stays the bill; cash due = total − this. */
   pointsUsed?: number;
   /** Raw `created_at`. `placedAt` is a human label and can't be computed from. */
   createdAt?: string;

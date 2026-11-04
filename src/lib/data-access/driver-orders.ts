@@ -69,14 +69,14 @@ export interface DriverPayment {
   /**
    * Rupees to take at the door — zero unless the instruction is "collect", so
    * that a screen which renders this without checking still cannot invent a
-   * demand for money. Since 0197 this is the cash due: the bill less any points.
+   * demand for money. Since 0198 this is the cash due: the bill less any points.
    */
   collectAmount: number;
-  /** Wallet points on this order (0197). 0 for most orders. */
+  /** Wallet points on this order (0198). 0 for most orders. */
   pointsUsed?: number;
   /** Points cover the whole bill: nothing to collect, and it wasn't paid online. */
   paidWithPoints?: boolean;
-  /** Adding change to the customer's wallet (0197). Only on the active delivery. */
+  /** Adding change to the customer's wallet (0198). Only on the active delivery. */
   walletChange?: WalletChangeState;
 }
 
@@ -364,7 +364,7 @@ export interface ActiveOrderDetail {
   paymentColumns: boolean;
   /** False when the order row could not be read back. */
   found: boolean;
-  /** Wallet points on this order (0197). */
+  /** Wallet points on this order (0198). */
   pointsUsed?: number;
 }
 
@@ -1574,7 +1574,7 @@ export async function recordCodForStaffDelivery(
     // No rider on it: no one is holding cash against the ledger to record.
     if (!delivery?.driver_id) return;
     // Already closed by the rider. A row still `picked_up` with its cash recorded is a
-    // rider who added change to the wallet (0197) and never tapped Delivered: the cash
+    // rider who added change to the wallet (0198) and never tapped Delivered: the cash
     // stays as they recorded it, and the row is closed below.
     if (delivery.cod_collected_at && delivery.status !== "picked_up") return;
 

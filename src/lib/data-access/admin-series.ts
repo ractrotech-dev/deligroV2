@@ -282,7 +282,7 @@ export async function getPaymentMix(
   const wallet: PaymentSlice = { method: "wallet", label: "Wallet points", count: 0, gmv: 0 };
 
   // The cash slice is the cash the rider collects. Points are their own slice: nobody
-  // handed that money over for this order (0197). Its row shows only once it has any.
+  // handed that money over for this order (0198). Its row shows only once it has any.
   let rows: { payment_method: string | null; total: number | null; wallet_points_used?: number | null }[] = [];
   try {
     const supabase = await createClient();

@@ -1,4 +1,4 @@
-// Proves migration 0197 on the real migration chain (chain-lib.mjs): every money path of
+// Proves migration 0198 on the real migration chain (chain-lib.mjs): every money path of
 // the customer wallet, with a customer, a rider, a shop and an admin acting as themselves.
 //
 //   1. adding change: credit, cash recorded as the full amount, the limit, the wrong rider,
@@ -15,7 +15,7 @@
 // test sends both at once and they run in turn; the row lock itself is checked by reading
 // the function's body. The real race is on the "needs a live system" list.
 //
-// Needs: npm i --no-save @electric-sql/pglite@0.2.17     Usage: node scripts/qa/sql/migration-0197.mjs
+// Needs: npm i --no-save @electric-sql/pglite@0.2.17     Usage: node scripts/qa/sql/migration-0198.mjs
 import { freshChain, one } from "./chain-lib.mjs";
 
 let fails = 0;
@@ -33,7 +33,7 @@ if (err) {
   process.exit(1);
 }
 
-const uuid = (n) => `00000000-0000-4000-8000-0000000197${String(n).padStart(2, "0")}`;
+const uuid = (n) => `00000000-0000-4000-8000-0000000198${String(n).padStart(2, "0")}`;
 const [ADMIN, CUST, CUST2, RIDER, RIDER2, VEND, MGR, SHOP, DISH] = [1, 2, 3, 4, 5, 6, 7, 8, 9].map(uuid);
 const IN_TOWN = `'{"label":"Home","line":"1 Main Rd","lat":21.72,"lng":81.54}'::jsonb`;
 
@@ -606,7 +606,7 @@ const position = async (rider) => (await one(db, `select public.ops_rider_cash_p
   const { readFileSync } = await import("node:fs");
   const { migDir, adapt } = await import("./chain-lib.mjs");
   const path = await import("node:path");
-  const sql = adapt(readFileSync(path.join(migDir, "0197_customer_wallet.sql"), "utf8"));
+  const sql = adapt(readFileSync(path.join(migDir, "0198_customer_wallet.sql"), "utf8"));
   // The odd old balances the 0056 guard allowed an admin session to write by hand.
   await db.exec(`alter table public.profiles drop constraint profiles_wallet_balance_whole;
     alter table public.profiles drop constraint profiles_wallet_balance_nonneg;
@@ -627,5 +627,5 @@ const position = async (rider) => (await one(db, `select public.ops_rider_cash_p
 }
 
 await db.close();
-console.log(fails ? `\n${fails} check(s) failed` : "\nAll 0197 checks passed.");
+console.log(fails ? `\n${fails} check(s) failed` : "\nAll 0198 checks passed.");
 process.exit(fails ? 1 : 0);

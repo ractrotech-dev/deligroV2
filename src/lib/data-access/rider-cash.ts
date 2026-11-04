@@ -251,7 +251,7 @@ export interface CollectionItem {
   method: "cod" | "online";
   /**
    * `collected` (cash recorded), `not_recorded` (a cash order whose collection was never
-   * recorded), `paid_online`, or `paid_points` (wallet points covered it: no cash, 0197).
+   * recorded), `paid_online`, or `paid_points` (wallet points covered it: no cash, 0198).
    */
   status: "collected" | "not_recorded" | "paid_online" | "paid_points";
 }

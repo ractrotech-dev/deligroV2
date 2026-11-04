@@ -375,11 +375,11 @@ export interface PlatformSettings {
    */
   cashLimitPerOrder: number;
   /**
-   * The customer wallet for the whole platform (0197). Off on a database without
+   * The customer wallet for the whole platform (0198). Off on a database without
    * the column, or when the settings can't be read: no points can move then.
    */
   featureWallet: boolean;
-  /** The most a rider can add to a customer's wallet on one order, whole rupees (0197). */
+  /** The most a rider can add to a customer's wallet on one order, whole rupees (0198). */
   walletChangeMaxPerOrder: number;
 
   // ---- Ops defaults ----

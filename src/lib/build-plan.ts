@@ -764,7 +764,7 @@ const ROLE_MILESTONES: Record<Exclude<BuildTab, "customer">, Milestone[]> = {
         },
         {
           title: "Server computes excess only",
-          detail: "excess = cash_received − cash due (the bill less any points); reject if ≤ 0, non-COD, not this rider's active job, or above the admin's per-order limit. 0197.",
+          detail: "excess = cash_received − cash due (the bill less any points); reject if ≤ 0, non-COD, not this rider's active job, or above the admin's per-order limit. 0198.",
           db: "wallet_add_change · orders.total · orders.wallet_points_used",
           status: "done",
         },

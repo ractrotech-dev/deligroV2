@@ -236,7 +236,11 @@ class FixtureData {
         {'name': 'Butter naan', 'qty': 4},
         {'name': 'Gulab jamun (2 pc)', 'qty': 1},
       ],
-      'payment': {'instruction': 'collect', 'collectAmount': 485},
+      'payment': {
+        'instruction': 'collect',
+        'collectAmount': 485,
+        'walletChange': {'allowed': true, 'maxPerOrder': 100},
+      },
       'pickupCodeRequired': false,
       'distanceKm': 2.6,
       'etaMinutes': reached >= 5 ? null : 12,

@@ -25,7 +25,7 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
  *
  * Who holds this delivery is the session against `deliveries.driver_id`, decided in the
  * database. Every refusal is 409 with a sentence for the rider, so a wrong try stays
- * counted (0197).
+ * counted (0198).
  *
  *   200 { ok: true, change, received, replayed }
  *   400 invalid_order | invalid_body

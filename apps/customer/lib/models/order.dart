@@ -246,7 +246,7 @@ class Order {
       'restaurants(slug, name, image_url, accent_tint, eta_min, eta_max)';
 
   /// [columns] plus each line's chosen size and add-ons (0062) and the wallet points
-  /// used (0197). Falls back to [columns] on a database that hasn't got them.
+  /// used (0198). Falls back to [columns] on a database that hasn't got them.
   static final columnsWithOptions = columns
       .replaceFirst('order_items(name, qty, price,', 'order_items(name, qty, price, options,')
       .replaceFirst('cancellation_reason, ', 'cancellation_reason, wallet_points_used, ');

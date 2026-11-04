@@ -11,7 +11,7 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 /**
  * POST /api/orders/:id/wallet-code — the customer gets the code they read out to a
  * rider with no change. Only for their own order, only while it is out for delivery
- * with cash due; the database decides (wallet_issue_change_code, 0197).
+ * with cash due; the database decides (wallet_issue_change_code, 0198).
  *
  * The answer is the only place the code exists: it is stored as a hash. Asking again
  * makes a new code and kills the old one, and does not reset the wrong tries.

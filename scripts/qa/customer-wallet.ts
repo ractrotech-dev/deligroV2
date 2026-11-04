@@ -1,7 +1,7 @@
 /**
  * The customer wallet's pure rules, and the structural promises around it.
  * The money paths themselves are proved on the real migration chain:
- *   node scripts/qa/sql/migration-0197.mjs
+ *   node scripts/qa/sql/migration-0198.mjs
  *
  * Usage: npm run test:wallet
  */
@@ -129,12 +129,12 @@ for (const page of ["src/app/admin/customer-wallets/page.tsx", "src/app/admin/cu
   check(`${page}: admin only`, /await requireRole\("admin"\)/.test(read(page)));
 }
 
-const sql = read("supabase/migrations/0197_customer_wallet.sql");
+const sql = read("supabase/migrations/0198_customer_wallet.sql");
 for (const fn of ["wallet_issue_change_code", "wallet_add_change", "wallet_spend_on_order", "wallet_admin_correct", "ops_wallet_summary"]) {
-  check(`0197: ${fn} is closed to anon and authenticated`, new RegExp(`revoke all on function public\\.${fn}\\([^)]*\\) from public, anon, authenticated`).test(sql));
-  check(`0197: ${fn} is open to the service role only`, new RegExp(`grant execute on function public\\.${fn}\\([^)]*\\) to service_role;`).test(sql));
+  check(`0198: ${fn} is closed to anon and authenticated`, new RegExp(`revoke all on function public\\.${fn}\\([^)]*\\) from public, anon, authenticated`).test(sql));
+  check(`0198: ${fn} is open to the service role only`, new RegExp(`grant execute on function public\\.${fn}\\([^)]*\\) to service_role;`).test(sql));
 }
-check("0197: orders.wallet_points_used is granted per column (AGENTS.md rule 1)", /grant select \(wallet_points_used\) on public\.orders to authenticated/.test(sql));
+check("0198: orders.wallet_points_used is granted per column (AGENTS.md rule 1)", /grant select \(wallet_points_used\) on public\.orders to authenticated/.test(sql));
 
 const nav = read("src/components/admin/admin-nav.ts");
 check("sidebar: Customer wallets is under People", /label: "Customer wallets",[\s\S]{0,60}group: "People"/.test(nav));

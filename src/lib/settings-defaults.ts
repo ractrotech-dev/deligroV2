@@ -38,7 +38,7 @@ export const DEFAULT_SETTINGS: PlatformSettings = {
   featureCashPayment: true,
   cashLimitPerOrder: 0,
   // What an un-migrated or unreadable settings row falls back to: no points move.
-  // The 0197 column itself defaults to on.
+  // The 0198 column itself defaults to on.
   featureWallet: false,
   walletChangeMaxPerOrder: 100,
 

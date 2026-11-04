@@ -1,9 +1,9 @@
 -- ============================================================
--- 0197 — Customer wallet (docs/RULE-BOOK.md, "Customer wallet")
+-- 0198 — Customer wallet (docs/RULE-BOOK.md, "Customer wallet")
 -- ------------------------------------------------------------
 -- STATUS: PENDING APPROVAL — not applied to any database.
--- Deploy order: … → 0191 → 0194 → 0195 → 0196 → 0197. Apply BEFORE the app code: the
--- app reads the new columns with a fallback (no 0197 = wallet off, nothing else moves).
+-- Deploy order: … → 0191 → 0194 → 0195 → 0196 → 0198. Apply BEFORE the app code: the
+-- app reads the new columns with a fallback (no 0198 = wallet off, nothing else moves).
 --
 -- A rider with no change adds the leftover to the customer's wallet as points, proved
 -- by a code only the customer can see. 1 point = ₹1, whole rupees. Points pay for later
@@ -150,7 +150,7 @@ begin
     target := ceil(greatest(r.wallet_balance, 0));
     if target <> r.ledger then
       insert into public.wallet_transactions (user_id, amount, reason, kind, balance_after)
-      values (r.id, target - r.ledger, 'Opening balance brought in by migration 0197', 'legacy', target);
+      values (r.id, target - r.ledger, 'Opening balance brought in by migration 0198', 'legacy', target);
     end if;
     if target <> r.wallet_balance or target <> r.ledger then
       fixed := fixed + 1;
@@ -161,7 +161,7 @@ begin
       update public.profiles set wallet_balance = target where id = r.id;
     end if;
   end loop;
-  raise notice '0197: % wallet balance(s) needed reconciling', fixed;
+  raise notice '0198: % wallet balance(s) needed reconciling', fixed;
 end $$;
 
 -- Now every balance is whole, not negative, and equal to its ledger.
@@ -207,15 +207,15 @@ create index if not exists wallet_tx_order_idx on public.wallet_transactions (or
 create index if not exists profiles_wallet_balance_idx on public.profiles (wallet_balance desc) where wallet_balance > 0;
 
 comment on table public.wallet_transactions is
-  'The customer wallet ledger. Append-only: written only by _wallet_apply (0197). For every profile, the sum of amount equals profiles.wallet_balance.';
+  'The customer wallet ledger. Append-only: written only by _wallet_apply (0198). For every profile, the sum of amount equals profiles.wallet_balance.';
 comment on column public.wallet_transactions.kind is
-  'change_credit: a rider added change. order_spend: points used on an order. order_return: an order paid with points was cancelled. order_adjust: a bill fell below the points on it. admin_correction: an admin corrected it. legacy: before 0197.';
+  'change_credit: a rider added change. order_spend: points used on an order. order_return: an order paid with points was cancelled. order_adjust: a bill fell below the points on it. admin_correction: an admin corrected it. legacy: before 0198.';
 comment on column public.wallet_transactions.actor_id is
   'Who did it. Null only for legacy rows and a system action with no person behind it.';
 comment on column public.wallet_transactions.balance_after is
   'The customer''s balance straight after this row.';
 comment on column public.profiles.wallet_balance is
-  'Wallet points, whole rupees. Equal to the sum of this customer''s wallet_transactions. Moves only through _wallet_apply (0197). Not granted to anon/authenticated: read through /api/wallet.';
+  'Wallet points, whole rupees. Equal to the sum of this customer''s wallet_transactions. Moves only through _wallet_apply (0198). Not granted to anon/authenticated: read through /api/wallet.';
 
 -- A customer's ledger survives everything: a profile with wallet history can't vanish.
 alter table public.wallet_transactions drop constraint if exists wallet_transactions_user_id_fkey;

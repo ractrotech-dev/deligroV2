@@ -43,7 +43,7 @@ export interface ManagerOrderRow {
   itemCount: number;
   /** Undefined when the column is absent — not "cash". See slice A/D. */
   paymentMethod?: PaymentMethod;
-  /** Wallet points on the order (0197). `total` stays the bill. */
+  /** Wallet points on the order (0198). `total` stays the bill. */
   pointsUsed?: number;
   paymentStatus?: PaymentStatus;
   /**
@@ -91,7 +91,7 @@ interface SelectFlags {
   payment: boolean;
   /** `channel` — migration 0029. */
   channel: boolean;
-  /** `wallet_points_used` — migration 0197. */
+  /** `wallet_points_used` — migration 0198. */
   wallet: boolean;
 }
 

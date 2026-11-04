@@ -35,7 +35,7 @@ Both have a log table at the bottom. Fill it in; the history is the point.
    authenticated`, and no screen may `select("*")` from it. The two codes are
    read only through `my_delivery_otp()` / `kitchen_pickup_otps()` (see
    `lib/data-access/handover.ts`).
-   `profiles` joined them in 0197: SELECT is granted per column, everything
+   `profiles` joined them in 0198: SELECT is granted per column, everything
    except `wallet_balance` (RLS lets a shop read a customer who ordered from it).
    A migration that adds a column to `profiles` must also grant it, and a
    customer's balance is read through `/api/wallet`.

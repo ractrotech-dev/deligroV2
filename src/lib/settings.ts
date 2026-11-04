@@ -139,7 +139,7 @@ export async function cashLimitReady(): Promise<boolean> {
   }
 }
 
-/** Can the wallet switch and limit be saved here? False before 0197; as above otherwise. */
+/** Can the wallet switch and limit be saved here? False before 0198; as above otherwise. */
 export async function walletSettingsReady(): Promise<boolean> {
   if (!isSupabaseConfigured) return true;
   try {

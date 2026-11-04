@@ -124,7 +124,7 @@ interface SelectFlags {
   options: boolean;
   /** `invoice_no` / `invoice_at` only exist from 0063. */
   invoice: boolean;
-  /** `wallet_points_used` only exists from 0197. */
+  /** `wallet_points_used` only exists from 0198. */
   wallet: boolean;
 }
 

@@ -222,7 +222,7 @@ interface OrderRow {
   total: number | null;
   payment_method?: PaymentMethod | null;
   payment_status?: PaymentStatus | null;
-  /** Wallet points on the order (0197). Cash due = total − this. */
+  /** Wallet points on the order (0198). Cash due = total − this. */
   wallet_points_used?: number;
 }
 
@@ -276,7 +276,7 @@ function machineState(row: DeliveryRow, order: OrderRow | null): MachineState {
 export function isCashOrder(
   order: { payment_method?: PaymentMethod | null; payment_status?: PaymentStatus | null } | null
 ): boolean {
-  // A fully covered wallet order is `paid` (0197), so it stops here too.
+  // A fully covered wallet order is `paid` (0198), so it stops here too.
   if (order?.payment_status === "paid" || order?.payment_status === "refunded") return false;
   return order?.payment_method == null || order.payment_method === "cod";
 }
@@ -859,7 +859,7 @@ async function deliveryStatus(
  * collect and is left alone; with no payment columns at all (pre-0025) every
  * order was cash by construction.
  *
- * The amount is the cash due: the bill less any wallet points (0197). Fully covered,
+ * The amount is the cash due: the bill less any wallet points (0198). Fully covered,
  * the status is `paid` and there is nothing to record. A rider who added change has
  * already recorded the full amount received, in the same transaction as the credit:
  * this write finds the stamp set and leaves it alone.

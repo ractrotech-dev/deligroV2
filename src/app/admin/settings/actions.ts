@@ -144,7 +144,7 @@ function parse(
     cashLimitPerOrder: form.has("cashLimitPerOrder")
       ? int(form.get("cashLimitPerOrder"), current.cashLimitPerOrder)
       : current.cashLimitPerOrder,
-    // 0197. Read only when the form rendered them, like the cash pair above.
+    // 0198. Read only when the form rendered them, like the cash pair above.
     featureWallet: form.has("featureWalletShown")
       ? bool(form, "featureWallet")
       : current.featureWallet,
@@ -375,7 +375,7 @@ export async function saveSettingsAction(
         : "Keep at least one payment method on. With cash and online both off, no one can order.",
     };
   }
-  // A typo is refused, not clamped into a limit nobody chose. The 0197 CHECK agrees.
+  // A typo is refused, not clamped into a limit nobody chose. The 0198 CHECK agrees.
   if (
     !Number.isInteger(parsed.walletChangeMaxPerOrder) ||
     parsed.walletChangeMaxPerOrder < 1 ||

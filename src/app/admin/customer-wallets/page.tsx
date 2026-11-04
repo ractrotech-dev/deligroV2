@@ -231,7 +231,7 @@ export default async function CustomerWalletsPage({
 
       {migrated ? null : (
         <p role="status" className="text-sm text-muted">
-          The wallet needs migration 0197. Until then there is nothing to show here.
+          The wallet needs migration 0198. Until then there is nothing to show here.
         </p>
       )}
 

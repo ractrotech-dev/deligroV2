@@ -9,7 +9,7 @@ import { notifyWalletChangeAdded } from "@/lib/notifications/order-events";
 import type { WalletKind } from "@/lib/wallet/money";
 
 /**
- * The customer wallet's server side (0197). Every balance change is a database
+ * The customer wallet's server side (0198). Every balance change is a database
  * function, one transaction, service role only. This module reads and calls them.
  *
  * ## Authorization
@@ -30,7 +30,7 @@ type AdminClient = ReturnType<typeof createAdminClient>;
 
 export const WALLET_PAGE_SIZE = 30;
 
-/** `orders.wallet_points_used` arrives with 0197. */
+/** `orders.wallet_points_used` arrives with 0198. */
 const POINTS_COLUMN = "orders.wallet_points_used";
 
 export interface WalletMove {
@@ -134,7 +134,7 @@ export async function getMyWallet(
 }
 
 /**
- * Points used on each of these orders. Read on its own so a database without 0197
+ * Points used on each of these orders. Read on its own so a database without 0198
  * costs nothing: every order then has none, which is what it really has. Any other
  * failure throws: the answer decides how much cash a rider asks for, and "none" could
  * charge a customer twice.
@@ -228,7 +228,7 @@ export async function issueChangeCode(customerId: string, orderId: string): Prom
     p_order: orderId,
   });
   if (error) {
-    // Before 0197: the wallet doesn't exist, which is what the customer needs to hear.
+    // Before 0198: the wallet doesn't exist, which is what the customer needs to hear.
     if (isRpcMissing(error)) return { ok: false, error: "wallet_off" };
     throw error;
   }

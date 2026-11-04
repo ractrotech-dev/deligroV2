@@ -230,7 +230,7 @@ function minutesLate(input: LatenessInput): number | null {
 
 /** `payment_method` / `payment_status` arrive together in 0025. */
 const PAYMENT_COLUMNS = "orders.payment_method";
-/** `wallet_points_used` arrives in 0197. */
+/** `wallet_points_used` arrives in 0198. */
 const WALLET_COLUMN = "orders.wallet_points_used";
 /** `accepted_at` / `ready_at` / `cancelled_at` arrive together in 0026. */
 const LIFECYCLE_COLUMNS = "orders.accepted_at";
@@ -1013,7 +1013,7 @@ export interface AdminOrderDetail {
   total: number;
   paymentMethod: PaymentMethod | null;
   paymentStatus: PaymentStatus | null;
-  /** Wallet points on the order (0197). `total` stays the bill. */
+  /** Wallet points on the order (0198). `total` stays the bill. */
   pointsUsed: number;
   /** False when this database predates 0025 and every order is COD by definition. */
   paymentKnown: boolean;

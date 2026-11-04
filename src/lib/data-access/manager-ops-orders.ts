@@ -108,7 +108,7 @@ export function toOpsRow(r: ListRow, riders: Map<string, RiderInfo>): OpsOrderRo
     payment: {
       method: r.payment_method,
       status: r.payment_status,
-      // 0197. `total` stays the bill; cash due = total − this.
+      // 0198. `total` stays the bill; cash due = total − this.
       pointsUsed: r.wallet_points_used ?? 0,
     },
     byPhone: r.channel === "phone",
@@ -122,7 +122,7 @@ export function toOpsRow(r: ListRow, riders: Map<string, RiderInfo>): OpsOrderRo
 }
 
 /**
- * Wallet points on these orders (0197), read on their own so the Manager app keeps
+ * Wallet points on these orders (0198), read on their own so the Manager app keeps
  * working between deploying this code and applying the migration. Shown to staff, never
  * used to ask anyone for money, so a failed read shows none rather than failing the list.
  */

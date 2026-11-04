@@ -38,7 +38,7 @@ export default async function AdminCustomerDetailPage({
 
   const [walletBalance, walletHistory] = await Promise.all([
     getCustomerBalance(id),
-    // A database without 0197 shows the note in the panel, not an error page.
+    // A database without 0198 shows the note in the panel, not an error page.
     listWalletMovements({ customerId: id, pageSize: 20 }).catch(() => ({ rows: [] })),
   ]);
   const walletMoves = walletHistory.rows;
@@ -105,7 +105,7 @@ export default async function AdminCustomerDetailPage({
 
       <Panel
         title="Wallet"
-        subtitle={walletBalance === null ? "Needs migration 0197" : `${formatINR(walletBalance)} held for this customer`}
+        subtitle={walletBalance === null ? "Needs migration 0198" : `${formatINR(walletBalance)} held for this customer`}
         action={
           <Link
             href={`/admin/customer-wallets?view=movements&customer=${customer.id}`}
