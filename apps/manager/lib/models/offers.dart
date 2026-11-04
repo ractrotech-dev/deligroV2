@@ -148,6 +148,7 @@ class OfferSummary {
     this.discountGiven = 0,
     this.createdBy,
     this.updatedAt,
+    this.editToken,
   });
 
   factory OfferSummary.fromJson(Map<String, dynamic> j) => OfferSummary(
@@ -170,6 +171,7 @@ class OfferSummary {
         discountGiven: jInt(j['discountGiven']),
         createdBy: PersonRef.fromJson(j['createdBy']),
         updatedAt: jDate(j['updatedAt']),
+        editToken: jStr(j['updatedAt']),
       );
 
   final String code;
@@ -191,6 +193,11 @@ class OfferSummary {
   final int discountGiven;
   final PersonRef? createdBy;
   final DateTime? updatedAt;
+
+  /// `updatedAt` exactly as the server sent it. An edit sends this back and the
+  /// database compares it to the microsecond, so it stays text: it is never
+  /// parsed or rebuilt.
+  final String? editToken;
 
   /// No vendor and no zone: applies everywhere, which only an admin may change.
   bool get platformWide => vendors.isEmpty && zones.isEmpty;
@@ -227,6 +234,7 @@ class OfferDetail extends OfferSummary {
     super.discountGiven,
     super.createdBy,
     super.updatedAt,
+    super.editToken,
     this.maxPerCustomer,
     this.items = const [],
     this.requestId,
@@ -256,6 +264,7 @@ class OfferDetail extends OfferSummary {
       discountGiven: s.discountGiven,
       createdBy: s.createdBy,
       updatedAt: s.updatedAt,
+      editToken: s.editToken,
       maxPerCustomer: jIntOrNull(j['maxPerCustomer']),
       items: refsOf(j['items']),
       requestId: jStr(j['requestId']),
@@ -501,12 +510,14 @@ class OfferEdit {
   OfferEdit({required this.changes, required this.expectedUpdatedAt, required this.reason, String? clientActionId})
       : clientActionId = clientActionId ?? _uuid.v4();
   final Map<String, dynamic> changes;
-  final DateTime? expectedUpdatedAt;
+
+  /// The offer's [OfferSummary.editToken], untouched.
+  final String? expectedUpdatedAt;
   final String reason;
   final String clientActionId;
 
   Map<String, dynamic> toJson() => {
-        'expectedUpdatedAt': expectedUpdatedAt?.toUtc().toIso8601String(),
+        'expectedUpdatedAt': expectedUpdatedAt,
         'changes': changes,
         'reason': reason,
         'clientActionId': clientActionId,

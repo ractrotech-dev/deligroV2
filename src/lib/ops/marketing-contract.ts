@@ -7,6 +7,7 @@
  * sponsored_product / other; the contract (and campaigns) say featured_store
  * and seasonal for the first and fourth. Translated here, nowhere else.
  */
+import { exactTimestamp } from "@/lib/ops/exact-timestamp";
 import { decodeCursor, encodeCursor } from "@/lib/ops/order-query";
 import { campaignEditable, campaignState, validateCampaignInput, validBannerPatch, type CampaignInput, type CampaignKind,
   type CampaignState, type BannerFields } from "@/lib/marketing/campaign-rules";
@@ -178,7 +179,8 @@ export function serializeCampaignDetail(
     notes: c.notes,
     createdBy: { id: c.created_by, name: names.person(c.created_by).name },
     createdAt: new Date(c.created_at).toISOString(),
-    updatedAt: new Date(c.updated_at).toISOString(),
+    // The edit token: it goes back to ops_update_campaign and is compared exactly.
+    updatedAt: exactTimestamp(c.updated_at),
     cancelledReason: c.cancelled_reason,
     allowed: campaignEditable({ kind: c.kind, status: c.status, startsAt: c.starts_at, endsAt: c.ends_at }, now),
   };
@@ -241,7 +243,7 @@ export function parseCampaignQuery(p: URLSearchParams): { ok: true; q: CampaignQ
 }
 
 export const nextCursor = (rows: { created_at: string; id: string }[], limit: number): string | null =>
-  rows.length > limit ? encodeCursor(new Date(rows[limit - 1].created_at).toISOString(), rows[limit - 1].id) : null;
+  rows.length > limit ? encodeCursor(exactTimestamp(rows[limit - 1].created_at), rows[limit - 1].id) : null;
 
 // ── bodies ───────────────────────────────────────────────────────────────
 

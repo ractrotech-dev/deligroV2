@@ -44,6 +44,58 @@ void main() {
     expect(changes.keys, ['title']);
   });
 
+  group('edits clear what no longer applies', () {
+    final shared = CampaignInput(
+      kind: CampaignKind.seasonal,
+      title: 'Diwali',
+      zoneId: 'z-1',
+      startsAt: DateTime.utc(2026, 11, 1),
+      endsAt: DateTime.utc(2026, 11, 2),
+      fundedBy: Funding.shared,
+      vendorSharePct: 40,
+      offerCode: 'FEAST20',
+      banner: const BannerFields(headline: 'Hi'),
+    );
+
+    test('leaving shared funding sends the share as null', () {
+      final next = shared.copyWith(fundedBy: Funding.deligro, vendorSharePct: null);
+      final changes = campaignChanges(shared, next);
+      expect(changes['fundedBy'], 'deligro');
+      expect(changes.containsKey('vendorSharePct'), isTrue);
+      expect(changes['vendorSharePct'], isNull);
+    });
+
+    test('clearing the offer code sends it as null', () {
+      final changes = campaignChanges(shared, shared.copyWith(offerCode: null));
+      expect(changes.keys, ['offerCode']);
+      expect(changes['offerCode'], isNull);
+    });
+
+    test('nothing changed is nothing sent', () {
+      expect(campaignChanges(shared, shared), isEmpty);
+    });
+
+    test('a started campaign still sends only what may change', () {
+      final next = shared.copyWith(fundedBy: Funding.deligro, vendorSharePct: null, offerCode: null, title: 'New');
+      expect(campaignChanges(shared, next, windowOnly: true), isEmpty);
+    });
+  });
+
+  test('the edit token goes back exactly as it came, microseconds and all', () {
+    const token = '2026-11-03T10:11:12.123456Z';
+    final d = CampaignDetail.fromJson({
+      'id': 'c-1',
+      'kind': 'banner',
+      'title': 'Weekend',
+      'zone': {'id': 'z-1', 'name': 'Zone'},
+      'status': 'approved',
+      'state': 'scheduled',
+      'updatedAt': token,
+    });
+    expect(d.editToken, token);
+    expect(CampaignEdit(changes: const {'title': 'x'}, expectedUpdatedAt: d.editToken).toJson()['expectedUpdatedAt'], token);
+  });
+
   testWidgets('an end before the start disables Save', (tester) async {
     final input = CampaignInput(
       kind: CampaignKind.banner,

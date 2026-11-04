@@ -4,6 +4,7 @@ import { NO_ZONE, scopeZoneIds, type ManagerScope } from "@/lib/auth/manager-sco
 import { loadNameBook, type NameBook } from "@/lib/data-access/ops-names";
 import { addDays, istDayKey, rangeBounds } from "@/lib/metrics/ist";
 import type { DateRange } from "@/lib/metrics/types";
+import { exactTimestamp } from "@/lib/ops/exact-timestamp";
 import { offerUsage, type OfferTerms } from "@/lib/ops/offer-rules";
 import { mapMarketingRpcError } from "@/lib/ops/marketing-contract";
 import {
@@ -69,7 +70,7 @@ export async function listOffers(scope: ManagerScope, q: OfferQuery, now: Date):
   const last = page[page.length - 1];
   return {
     items: page.map((row) => serializeOffer(row, offerNames(book), now)),
-    nextCursor: rows.length > q.limit && last ? encodeOfferCursor(new Date(last.updated_at).toISOString(), last.code) : null,
+    nextCursor: rows.length > q.limit && last ? encodeOfferCursor(exactTimestamp(last.updated_at), last.code) : null,
     counts: r.counts ?? { scheduled: 0, active: 0, expired: 0, inactive: 0, exhausted: 0 },
   };
 }

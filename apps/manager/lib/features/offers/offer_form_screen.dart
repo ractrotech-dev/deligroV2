@@ -137,7 +137,7 @@ class _OfferFormScreenState extends ConsumerState<OfferFormScreen> {
           submitLabel: 'Save changes',
         );
         if (reason == null || !mounted) return;
-        _pendingEdit = OfferEdit(changes: changes, expectedUpdatedAt: widget.edit!.updatedAt, reason: reason);
+        _pendingEdit = OfferEdit(changes: changes, expectedUpdatedAt: widget.edit!.editToken, reason: reason);
       }
       final edit = _pendingEdit!;
       await _run(() => ref.read(offersRepoProvider).update(widget.edit!.code, edit));
@@ -186,7 +186,8 @@ class _OfferFormScreenState extends ConsumerState<OfferFormScreen> {
         _pendingEdit = null;
         if (code == 'stale') ref.invalidate(offerDetailProvider);
         setState(() {
-          _refusal = offerRefusal(code);
+          // This form still holds the old version, so saving again would be refused again.
+          _refusal = code == 'stale' ? 'Someone else changed this offer. Go back, check the latest and edit again.' : offerRefusal(code);
           _errors = {
             if (code == 'code_taken') 'code': 'Already used',
             ?field: 'Check this field',
