@@ -364,6 +364,23 @@ export interface PlatformSettings {
    * that dead-ends. See `onlinePaymentsEnabled()`.
    */
   featureOnlinePayment: boolean;
+  /**
+   * Cash on delivery for the whole platform (0194). On by default and on a
+   * database without the column. Cannot be saved off while online is unavailable.
+   */
+  featureCashPayment: boolean;
+  /**
+   * Highest order total payable in cash, whole rupees, for every shop (0194).
+   * 0 = no limit. A shop's own limit stays and the stricter applies.
+   */
+  cashLimitPerOrder: number;
+  /**
+   * The customer wallet for the whole platform (0198). Off on a database without
+   * the column, or when the settings can't be read: no points can move then.
+   */
+  featureWallet: boolean;
+  /** The most a rider can add to a customer's wallet on one order, whole rupees (0198). */
+  walletChangeMaxPerOrder: number;
 
   // ---- Ops defaults ----
   defaultPrepMinutes: number;
@@ -395,15 +412,6 @@ export interface PlatformSettings {
   riderCashMaxHours: number;
 
   // ---- Rider targets (0084) ----
-  /**
-   * The default delivery targets on the rider Performance screen. 0 = none: the
-   * screen then shows the largest active incentive rule target for that period
-   * (`chooseTargets`), and nothing when there is none. Also 0 on a database
-   * without 0084.
-   */
-  riderDailyTarget: number;
-  riderWeeklyTarget: number;
-
   // ---- Reviews ----
   /**
    * Days after delivery that a customer may still review an order. Enforced in
@@ -496,6 +504,8 @@ export interface PlatformSettings {
   delayAlertMinutes: number;
   /** Base URL of the OSRM-compatible routing server. https only. */
   routingBaseUrl: string;
+  /** Seconds after placing an order that a customer may cancel it (0191). 0 to 600. */
+  customerCancelSeconds: number;
 }
 
 /**

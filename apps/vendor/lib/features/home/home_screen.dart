@@ -95,10 +95,11 @@ class _Body extends ConsumerWidget {
     // Sections the shop's switches turn off: the tiles stay, the way in goes.
     final reportsOn = me?.can(reportsFeature) ?? true;
     final marketingOn = me?.can(marketingFeature) ?? true;
+    final earningsOn = me?.can(earningsFeature) ?? true;
     void toReports() => context.go('/reports');
 
     final tiles = <Widget>[
-      _Tile(
+      if (earningsOn) _Tile(
         icon: Icons.today_rounded,
         tint: c.muted,
         label: 'Today\'s sale',
@@ -107,7 +108,7 @@ class _Body extends ConsumerWidget {
         changeNote: 'vs yesterday',
         onTap: reportsOn ? toReports : null,
       ),
-      _Tile(
+      if (earningsOn) _Tile(
         icon: Icons.storefront_rounded,
         tint: c.muted,
         label: 'Total sale',
@@ -124,26 +125,27 @@ class _Body extends ConsumerWidget {
         highlight: d.liveNew > 0,
         onTap: () => context.go('/orders?filter=new'),
       ),
-      _Tile(
-        icon: Icons.thumb_up_alt_rounded,
-        tint: c.blue,
-        label: 'Accepted',
-        value: '${d.liveAccepted}',
-        onTap: () => context.go('/orders?filter=accepted'),
-      ),
-      _Tile(
-        icon: Icons.soup_kitchen_rounded,
-        tint: popText(context),
-        label: 'Preparing',
-        value: '${d.livePreparing}',
-        onTap: () => context.go('/orders?filter=preparing'),
-      ),
+      if (d.liveInKitchen > 0)
+        _Tile(
+          icon: Icons.soup_kitchen_rounded,
+          tint: popText(context),
+          label: 'In the kitchen',
+          value: '${d.liveInKitchen}',
+          onTap: () => context.go('/orders?filter=${d.livePreparing > 0 ? 'preparing' : 'accepted'}'),
+        ),
       _Tile(
         icon: Icons.shopping_bag_rounded,
         tint: c.green,
         label: 'Ready for pickup',
         value: '${d.liveReady}',
         onTap: () => context.go('/orders?filter=ready'),
+      ),
+      _Tile(
+        icon: Icons.delivery_dining_rounded,
+        tint: c.blue,
+        label: 'Out for delivery',
+        value: '${d.liveOutForDelivery}',
+        onTap: () => context.go('/orders?filter=out'),
       ),
       _Tile(
         icon: Icons.check_circle_rounded,
@@ -200,7 +202,7 @@ class _Body extends ConsumerWidget {
             label: money.paymentDue < 0 ? 'You owe Deligro' : 'Payment due to you',
             value: rupees(money.paymentDue.abs()),
             note: money.paymentDue < 0
-                ? 'Commission on cash orders you collected, not yet settled'
+                ? 'Earlier adjustments came to more than your unpaid orders'
                 : 'Earnings on delivered orders not yet paid to you',
             onTap: () => context.go('/payments'),
           ),
@@ -210,7 +212,7 @@ class _Body extends ConsumerWidget {
             tint: c.green,
             label: 'Total vendor earnings',
             value: rupees(money.totalEarnings),
-            note: 'After Deligro commission and refunds, all delivered orders',
+            note: 'After Deligro commission and adjustments, all delivered orders',
             onTap: () => context.go('/payments'),
           ),
         ] else ...[

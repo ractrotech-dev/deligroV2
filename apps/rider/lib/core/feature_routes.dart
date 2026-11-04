@@ -12,7 +12,6 @@ import '../models/rider_me.dart';
 /// offers, the delivery screen, cash collection on a delivery, SOS, the
 /// incident reports and calling Deligro have no switch.
 const cashFeature = 'driver.cash';
-const incentivesFeature = 'driver.incentives';
 const performanceFeature = 'driver.performance';
 const supportFeature = 'driver.support';
 
@@ -21,7 +20,6 @@ const supportFeature = 'driver.support';
 const _gated = <(String, String, String)>[
   ('/more/cash', cashFeature, '/more'),
   ('/more/performance', performanceFeature, '/more'),
-  ('/earnings/incentives', incentivesFeature, '/earnings'),
   // Help itself stays (Deligro's numbers, the questions); the tickets go.
   ('/more/help/new', supportFeature, '/more/help'),
   ('/more/help/tickets', supportFeature, '/more/help'),

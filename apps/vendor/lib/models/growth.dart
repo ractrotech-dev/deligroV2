@@ -319,7 +319,7 @@ const ticketCategories = {
   'payments': 'Payment or settlement',
   'commission': 'Incorrect commission',
   'orders': 'Order issue',
-  'refunds': 'Cancellation or refund',
+  'refunds': 'Cancellation',
   'products': 'Product or inventory',
   'technical': 'Technical issue',
   'other': 'Other',

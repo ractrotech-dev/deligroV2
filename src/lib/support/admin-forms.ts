@@ -1,4 +1,5 @@
 import { parseAnnouncement, parseStaffReply } from "@/lib/support/rules";
+import { istLocalToIso } from "@/lib/utils/ist-time";
 
 /**
  * The admin support desk's and announcement composer's forms, parsed — what
@@ -34,18 +35,6 @@ const DESK_ERRORS: Record<string, string> = {
 
 export function deskError(code: string): string {
   return DESK_ERRORS[code] ?? "That didn't save. Try again.";
-}
-
-/**
- * A `datetime-local` value typed in IST ("2030-01-05T09:30") as an instant.
- * Blank is null (now / no end); anything unreadable is passed through so the
- * parser refuses it.
- */
-export function istLocalToIso(value: string | null): string | null {
-  if (!value) return null;
-  if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(value)) return value;
-  const t = Date.parse(`${value}:00+05:30`);
-  return Number.isFinite(t) ? new Date(t).toISOString() : value;
 }
 
 /** An announcement from the composer. English only (owner decision). */

@@ -212,27 +212,6 @@ final riderPayoutsProvider =
   retry: (_, _) => null,
 );
 
-typedef RefundArgs = ({FinanceQuery q, RefundStatus? status});
-
-class RefundsNotifier extends _PagedNotifier<RefundItem, int> {
-  RefundsNotifier(this.args);
-  final RefundArgs args;
-
-  @override
-  String idOf(RefundItem x) => x.id;
-
-  @override
-  Future<({List<RefundItem> items, String? next, int counts})> fetch(String? cursor) async {
-    final p = await ref.read(financeRepoProvider).refunds(args.q, status: args.status, cursor: cursor);
-    return (items: p.items, next: p.nextCursor, counts: p.pendingCount);
-  }
-}
-
-final refundsProvider = AsyncNotifierProvider.autoDispose.family<RefundsNotifier, Paged<RefundItem, int>, RefundArgs>(
-  RefundsNotifier.new,
-  retry: (_, _) => null,
-);
-
 typedef ReconArgs = ({FinanceQuery q, ReconSection section, String? state});
 
 /// One reconciliation section, keyset-paged: [loadMore] appends the next page

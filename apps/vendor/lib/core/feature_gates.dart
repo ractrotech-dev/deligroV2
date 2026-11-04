@@ -5,6 +5,9 @@ import '../models/vendor_me.dart';
 /// and its `/api/vendor/*` routes refuse it with 403 feature_disabled, so the
 /// app hiding it is presentation, not the guard.
 ///
+/// Rejecting an order is not a section either: Reject is hidden where it shows
+/// ([rejectOrdersFeature]) and the server refuses it.
+///
 /// Orders are not here and never will be: seeing and accepting orders is the
 /// job, not a feature.
 const earningsFeature = 'vendor.earnings';
@@ -13,6 +16,8 @@ const promotionsFeature = 'vendor.promotions';
 const marketingFeature = 'vendor.marketing';
 const reviewsFeature = 'vendor.reviews';
 const supportFeature = 'vendor.support';
+const menuImportFeature = 'vendor.menu_import';
+const rejectOrdersFeature = 'vendor.reject_orders';
 
 /// Route prefixes and the switch each sits behind.
 const _gated = <(String, String)>[
@@ -22,6 +27,7 @@ const _gated = <(String, String)>[
   ('/more/marketing', marketingFeature),
   ('/more/reviews', reviewsFeature),
   ('/more/support', supportFeature),
+  ('/more/products/bulk', menuImportFeature),
 ];
 
 /// The switch [path] sits behind, or null when no switch governs it.

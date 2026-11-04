@@ -2107,9 +2107,47 @@ a.c-metric:hover {
    The rail is `position: sticky` rather than `fixed` so it participates in the
    flex row and the content column can simply be `flex: 1`; a fixed rail would
    need the content to carry a matching margin, which then has to be unwound at
-   every breakpoint. Below 1024px the rail is hidden and the same nav is served
-   as a slide-over (AdminNavDrawer).
+   every breakpoint.
+
+   The admin panel is desktop only and has no small-screen layout. Below 1080px
+   the whole panel is replaced by "Not made for mobile" (DesktopOnlyGate). That
+   width leaves a full 238px rail, a scrollbar and the page padding with at least
+   768px of content, so every `@3xl:` rule in the admin always applies.
+   `screen` only: a sheet of paper is narrower than this, and printing a statement
+   must still print the statement.
    ------------------------------------------------------------ */
+.admin-desktop-gate {
+  display: none;
+}
+@media screen and (max-width: 1079.98px) {
+  .admin-desktop-gate {
+    display: block;
+  }
+  .admin-desktop-gate ~ * {
+    display: none !important;
+  }
+}
+/* Shared controls (Button, DatePicker, the admin-ui adapters) are sized for the
+   phone apps that also use them. Inside the admin they take desktop sizes, with
+   console corners and no tap-shrink. Other portals are untouched. */
+.admin-shell button.h-10,
+.admin-shell button.h-12,
+.admin-shell button.h-14 {
+  height: 32px;
+  padding-inline: 12px;
+  font-size: 12.5px;
+}
+.admin-shell .h-11,
+.admin-shell .h-12 {
+  height: 36px;
+}
+.admin-shell .rounded-xl,
+.admin-shell .rounded-2xl {
+  border-radius: var(--c-r);
+}
+.admin-shell .press:active {
+  transform: none;
+}
 .admin-shell {
   /* How far down a sticky toolbar has to start to clear the top bar. Declared
      on the shell because that is the only element that owns both. */

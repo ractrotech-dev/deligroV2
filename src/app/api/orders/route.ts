@@ -6,6 +6,7 @@ import {
   createOrder,
   listVisibleOrders,
   OrderRefused,
+  OrderTotalChanged,
   PaymentRefused,
   type CreateOrderInput,
 } from "@/lib/data-access/orders";
@@ -13,6 +14,8 @@ import { recordDomain } from "@/lib/obs/emit";
 import { obsRequestContext } from "@/lib/obs/request";
 import { getLang } from "@/lib/i18n/server";
 import { translator } from "@/lib/i18n/lang";
+import { FeatureDisabledError } from "@/lib/features/flags.server";
+import { featureDef } from "@/lib/features/catalog";
 
 function mapCreateError(message: string) {
   // Coupon refusals are the customer's to act on — retry without the code, or
@@ -185,6 +188,28 @@ function orderFailure(
     body: CreateOrderInput;
   },
 ): NextResponse {
+  // Admin → App features: this customer can't use something the order asked for
+  // (only an old app sends it). Nothing was written. Said by name, so they can
+  // remove it and order.
+  if (err instanceof FeatureDisabledError) {
+    recordDomain("order.refused", "info", `Order refused: ${err.feature} is off`, {
+      ...obs,
+      attrs: { reason: "feature_disabled", refusal: "feature", feature: err.feature },
+    });
+    return NextResponse.json(
+      {
+        ok: false,
+        error: "feature_disabled",
+        feature: err.feature,
+        message: `${featureDef(err.feature).label} is turned off by Deligro admin. Remove it and try again.`,
+      },
+      { status: 403 },
+    );
+  }
+  // Not a failure: the app shows this bill and asks again. Nothing was written.
+  if (err instanceof OrderTotalChanged) {
+    return NextResponse.json({ error: "total_changed", bill: err.bill }, { status: 409 });
+  }
   // The cash ceiling is per vendor, so the sentence the customer needs
   // ("Orders above ₹300 must be paid online") can only be written by the
   // rules that refused the order. Pass it through verbatim rather than

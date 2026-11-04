@@ -1,5 +1,4 @@
 import "server-only";
-import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { RazorpayError, toPaise } from "@/lib/payments/razorpay";
 import { refundRazorpayPayment } from "@/lib/payments/refunds";
@@ -10,74 +9,29 @@ import {
 } from "@/lib/data-access/admin-settlements";
 import { shortOrderId } from "@/lib/utils/order-map";
 import { classifyGatewayFailure } from "@/lib/payments/refund-failure";
-import { isMissingFunction } from "@/lib/data-access/rpc-fallback";
 import { approvalExceedsTotal, gatewayRoomPaise } from "@/lib/refunds/partials";
 import {
   columnKnownMissing,
   isMissingColumn,
   rememberColumn,
 } from "@/lib/data-access/schema-probe";
-import type { PaymentMethod, PaymentStatus } from "@/types";
+import type { PaymentStatus } from "@/types";
 
 /**
- * The refund queue, for real.
+ * What is left of refunds: deciding one through the payment gateway.
  *
- * The admin refunds screen used to render three invented refunds, and its
- * Approve button only set local React state — it rendered "Approved · logged"
- * and nothing was approved, and nothing was logged. An admin could believe they
- * had settled a customer's ₹660 and be wrong.
+ * The rule book says no refunds for customers or vendors, so nothing creates a refund
+ * any more (0191 refuses new rows) and NO route, action or screen calls anything in
+ * this file. It stays because online payment is not live yet and what happens to
+ * online money on a cancel is the owner's open question: this is the tested,
+ * one-call-only path to Razorpay if the answer needs it. Do not wire it to a screen
+ * without a rule from the owner.
  *
- * Two things were still missing after that was fixed, and this file now carries
- * both:
- *
- *   1. Nothing ever WROTE to `refunds`. The table has existed since 0001 with no
- *      request path and no automatic refund, so the queue an admin was asked to
- *      work could only ever be empty. `queueRefundForOrder` (cancellations, a
- *      vendor declining) and `requestRefund` (the customer asking) fill it.
- *   2. Approving returned no money. Now that an order can actually be paid
- *      (0025), approving a refund on an order paid online calls Razorpay and
- *      records what the gateway said — and if the gateway refuses, the request
- *      stays pending rather than being marked settled. A refund the app claims
- *      to have made and hasn't is worse than one it never offered.
- *
- * The status vocabulary is the database's: `refund_status` is
- * ('pending','approved','denied'). This file used to say 'rejected', which no
- * Postgres enum has ever accepted — every deny failed at the database while the
- * UI reported the decision as recorded.
- *
- * Decision writes go through RLS ("refunds — admin decide", 0001), so a non-admin
- * cannot decide a refund even if this code were called from the wrong place.
+ * Old records are read through reports (`ops_report_refunds_adjustments`) and the
+ * settlement maths; neither comes through here.
  */
 
 export type RefundStatus = "pending" | "approved" | "denied";
-
-/** Who or what caused the refund to exist (0026). */
-export type RefundOrigin = "customer" | "vendor_rejected" | "admin" | "manager" | "system";
-
-export interface RefundRow {
-  id: string;
-  orderId: string;
-  amount: number;
-  reason: string | null;
-  status: RefundStatus;
-  createdAt: string;
-  customerName: string | null;
-  restaurantName: string | null;
-  /**
-   * 0026. Reads 'customer' on a database that predates the column, which is
-   * what every row written before it was — there was no other way in.
-   */
-  origin: RefundOrigin;
-  /** The order's own total, so the queue can show the ask against the bill. */
-  orderTotal: number | null;
-  /** 0025. Null when the database predates the payment columns. */
-  paymentMethod: PaymentMethod | null;
-  paymentStatus: PaymentStatus | null;
-  /** Razorpay's refund id — present only once the gateway accepted the refund. */
-  providerRefundId: string | null;
-  /** When Razorpay reported the refund PROCESSED. Null while it is in flight. */
-  settledAt: string | null;
-}
 
 /**
  * `origin`, `requested_by`, `provider_refund_id` and `settled_at` arrive
@@ -89,140 +43,6 @@ const REFUND_PROVENANCE = "refunds.origin";
  * orders queries use, on purpose: one probe, one answer, app-wide.
  */
 const ORDER_PAYMENT = "orders.payment_method";
-
-interface Row {
-  id: string;
-  order_id: string;
-  amount: number;
-  reason: string | null;
-  status: RefundStatus;
-  created_at: string;
-  origin?: string | null;
-  provider_refund_id?: string | null;
-  settled_at?: string | null;
-  orders?: {
-    total?: number | null;
-    payment_method?: string | null;
-    payment_status?: string | null;
-    profiles?: { full_name: string | null } | null;
-    restaurants?: { name: string | null } | null;
-  } | null;
-}
-
-function first<T>(value: T | T[] | null | undefined): T | null {
-  if (Array.isArray(value)) return value[0] ?? null;
-  return value ?? null;
-}
-
-interface SelectFlags {
-  /** refunds.origin & friends — 0026. */
-  provenance: boolean;
-  /** orders.payment_method / payment_status — 0025. */
-  payment: boolean;
-}
-
-function select(flags: SelectFlags): string {
-  return [
-    "id, order_id, amount, reason, status, created_at",
-    flags.provenance ? ", origin, provider_refund_id, settled_at" : "",
-    ", orders ( total",
-    flags.payment ? ", payment_method, payment_status" : "",
-    ", profiles:customer_id ( full_name )",
-    ", restaurants ( name ) )",
-  ].join("");
-}
-
-/**
- * List the queue, narrowing the column list on a database that predates 0025 or
- * 0026.
- *
- * Same shape as the orders queries: each optional group is dropped
- * independently and remembered, so an environment missing one migration still
- * gets everything the other provides. An admin looking at a half-migrated
- * install sees the refunds with less provenance — never an empty screen, which
- * is the failure mode that made the old fake queue believable.
- */
-export async function listRefunds(limit = 50): Promise<RefundRow[]> {
-  const supabase = await createClient();
-
-  const flags: SelectFlags = {
-    provenance: !columnKnownMissing(REFUND_PROVENANCE),
-    payment: !columnKnownMissing(ORDER_PAYMENT),
-  };
-
-  const run = (columns: string) =>
-    supabase
-      .from("refunds")
-      .select(columns)
-      // Pending first — that's the work; decided ones are just history. The
-      // enum orders pending < approved < denied, so ascending is the queue.
-      .order("status", { ascending: true })
-      .order("created_at", { ascending: false })
-      .limit(limit);
-
-  // `isMissingColumn` doesn't say WHICH column is missing, so drop the newest
-  // migration's group first and re-probe rather than guessing.
-  const groups: Array<{ key: keyof SelectFlags; column: string }> = [
-    { key: "provenance", column: REFUND_PROVENANCE },
-    { key: "payment", column: ORDER_PAYMENT },
-  ];
-
-  let rows: unknown[] = [];
-  let answered = false;
-
-  for (const { key, column } of groups) {
-    if (!flags[key]) continue;
-
-    const { data, error } = await run(select(flags));
-    if (!error) {
-      const present = groups.filter((g) => flags[g.key]);
-      for (const g of present) rememberColumn(g.column, true);
-      rows = (data ?? []) as unknown[];
-      answered = true;
-      break;
-    }
-    if (!isMissingColumn(error)) throw error;
-
-    rememberColumn(column, false);
-    flags[key] = false;
-  }
-
-  // Reached when every optional group has been ruled out — the bare query the
-  // schema is guaranteed to support since 0001.
-  if (!answered) {
-    const { data, error } = await run(select(flags));
-    if (error) throw error;
-    rows = (data ?? []) as unknown[];
-  }
-
-  return (rows as unknown as Row[]).map((r) => {
-    const order = first(r.orders);
-    return {
-      id: r.id,
-      orderId: r.order_id,
-      amount: r.amount,
-      reason: r.reason,
-      status: r.status,
-      createdAt: r.created_at,
-      customerName: first(order?.profiles)?.full_name ?? null,
-      restaurantName: first(order?.restaurants)?.name ?? null,
-      origin: (r.origin ?? "customer") as RefundOrigin,
-      orderTotal: order?.total ?? null,
-      paymentMethod: (order?.payment_method as PaymentMethod | null) ?? null,
-      paymentStatus: (order?.payment_status as PaymentStatus | null) ?? null,
-      providerRefundId: r.provider_refund_id ?? null,
-      settledAt: r.settled_at ?? null,
-    };
-  });
-}
-
-/* ============================================================
-   Filling the queue
-   ============================================================ */
-
-function notQueued(): { queued: boolean; amount: number } {
-  return { queued: false, amount: 0 };
-}
 
 interface RefundableOrder {
   total: number;
@@ -282,214 +102,6 @@ async function approvedRefundAmounts(orderId: string): Promise<number[]> {
   return ((data ?? []) as { amount: number | null }[]).map((r) => Number(r.amount ?? 0));
 }
 
-/**
- * Queue a refund for an order that has already been paid for.
- *
- * Called from the transitions that take an order away from a customer who has
- * paid — they cancel it, or the restaurant declines it. Those paths are
- * server-side and have already established who the actor is, which is why this
- * writes with `createAdminClient()`: the refunds INSERT policy is written for a
- * customer requesting their own refund, and a vendor-declined refund is not
- * that. The authorization for every call therefore sits above it in the same
- * path (route handler ownership check / vendor order-ownership check), per the
- * service-role rule in AGENTS.md.
- *
- * Refunds what is left of the order total (with 0142: the total less refunds
- * already approved or open — an open item refund is topped up), and only when
- * there is money to give back:
- *
- *   - `payment_status = 'paid'` is the only state that qualifies. A COD order
- *     nobody has collected on, an online order abandoned at checkout, and an
- *     order already refunded all return queued:false — there is nothing to
- *     return, and a queue full of ₹0 non-refunds is how an operator learns to
- *     stop reading it.
- *   - a database predating 0025 has no payment columns at all, so it cannot
- *     have recorded a payment: queued:false rather than a thrown error.
- *
- * Idempotent. 0026 adds a unique partial index allowing one pending refund per
- * order; a second call loses the race with a 23505 and reports queued:false,
- * which is the truth — this call queued nothing, because a request is already
- * open. `amount` is what THIS call queued, so it is 0 whenever queued is false.
- */
-export async function queueRefundForOrder(
-  orderId: string,
-  opts: {
-    origin: RefundOrigin;
-    reason?: string;
-    requestedBy?: string | null;
-  }
-): Promise<{ queued: boolean; amount: number }> {
-  const admin = createAdminClient();
-
-  // 0142's rule, in one transaction: paid orders only, the rest of the total
-  // (an open item refund is topped up rather than blocking this one, and an
-  // approved one is counted), never more than was paid. The code below is the
-  // same idea for a database without 0142, where a refund is always the whole order.
-  const { data: queued, error: rpcError } = await admin.rpc("queue_order_refund", {
-    p_order: orderId,
-    p_amount: null,
-    p_reason: opts.reason ?? null,
-    p_origin: opts.origin,
-    p_requested_by: opts.requestedBy ?? null,
-  });
-  if (!rpcError) {
-    const amount = Number((queued as { amount?: number } | null)?.amount ?? 0);
-    return amount > 0 ? { queued: true, amount } : notQueued();
-  }
-  if (!isMissingFunction(rpcError)) throw rpcError;
-
-  const order = await readRefundableOrder(admin, orderId);
-  if (!order) return notQueued();
-  if (order.paymentStatus !== "paid") return notQueued();
-  if (order.total <= 0) return notQueued();
-
-  // Cheap pre-check, and it covers more than the index does. The unique index
-  // is the real guard against a duplicate PENDING request, but it only exists
-  // from 0026 and says nothing about an already-approved one. Nothing here does
-  // partial refunds — a refund is always the whole order — so one decided
-  // refund is the end of it.
-  const { data: open } = await admin
-    .from("refunds")
-    .select("id")
-    .eq("order_id", orderId)
-    .in("status", ["pending", "approved"])
-    .limit(1)
-    .maybeSingle();
-  if (open) return notQueued();
-
-  const insert = (withProvenance: boolean) =>
-    admin.from("refunds").insert({
-      order_id: orderId,
-      amount: order.total,
-      reason: opts.reason ?? null,
-      status: "pending",
-      ...(withProvenance
-        ? { origin: opts.origin, requested_by: opts.requestedBy ?? null }
-        : {}),
-    });
-
-  let withProvenance = !columnKnownMissing(REFUND_PROVENANCE);
-  let { error } = await insert(withProvenance);
-
-  if (error && isMissingColumn(error) && withProvenance) {
-    // Pre-0026: the row still belongs in the queue, it just cannot say where it
-    // came from. An admin with a refund request and no provenance can still do
-    // their job; an admin with no request cannot.
-    rememberColumn(REFUND_PROVENANCE, false);
-    withProvenance = false;
-    ({ error } = await insert(false));
-  }
-
-  if (error) {
-    // refunds_one_open_per_order (0026) — someone got there first, which is
-    // exactly the outcome we wanted, so it is not an error.
-    if ((error as { code?: string }).code === "23505") return notQueued();
-    throw error;
-  }
-
-  if (withProvenance) rememberColumn(REFUND_PROVENANCE, true);
-  return { queued: true, amount: order.total };
-}
-
-/** An order can only be refunded once it has finished, one way or the other. */
-const REQUESTABLE = new Set(["delivered", "cancelled"]);
-
-export interface RefundRequestResult {
-  ok: boolean;
-  error?:
-    | "unauthorized"
-    | "not_found"
-    | "invalid_state"
-    | "already_requested"
-    | "server_error";
-}
-
-/**
- * The customer asking for their money back.
- *
- * Runs on the caller's own session, so RLS is the boundary and this is the
- * second lock rather than the only one: the order read returns nothing for
- * someone else's order (indistinguishable from one that does not exist), and
- * the "refunds — customer request" policy re-checks ownership and, since 0026,
- * that the amount does not exceed the order total.
- *
- * The amount is `orders.total`, read here from the database. It is never taken
- * from the caller — a refund is the one number a customer has an obvious
- * incentive to choose themselves.
- */
-export async function requestRefund(
-  orderId: string,
-  reason?: string
-): Promise<RefundRequestResult> {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return { ok: false, error: "unauthorized" };
-
-  const { data: order, error: orderError } = await supabase
-    .from("orders")
-    .select("id, total, status")
-    .eq("id", orderId)
-    .maybeSingle();
-  if (orderError) return { ok: false, error: "server_error" };
-  // Not theirs and does not exist are the same answer on purpose.
-  if (!order) return { ok: false, error: "not_found" };
-
-  if (!REQUESTABLE.has(String(order.status))) {
-    return { ok: false, error: "invalid_state" };
-  }
-  if (Number(order.total ?? 0) <= 0) {
-    return { ok: false, error: "invalid_state" };
-  }
-
-  // Same pre-check as queueRefundForOrder, for the same reasons: the unique
-  // index only exists from 0026, refresh-spamming the button must not bury the
-  // queue under copies of one claim, and an order that has already had a refund
-  // approved has had its refund.
-  const { data: open } = await supabase
-    .from("refunds")
-    .select("id")
-    .eq("order_id", orderId)
-    .in("status", ["pending", "approved"])
-    .limit(1)
-    .maybeSingle();
-  if (open) return { ok: false, error: "already_requested" };
-
-  const insert = (withProvenance: boolean) =>
-    supabase.from("refunds").insert({
-      order_id: orderId,
-      amount: order.total,
-      reason: reason?.trim().slice(0, 500) || null,
-      status: "pending",
-      ...(withProvenance
-        ? { origin: "customer", requested_by: user.id }
-        : {}),
-    });
-
-  let withProvenance = !columnKnownMissing(REFUND_PROVENANCE);
-  let { error } = await insert(withProvenance);
-
-  if (error && isMissingColumn(error) && withProvenance) {
-    rememberColumn(REFUND_PROVENANCE, false);
-    withProvenance = false;
-    ({ error } = await insert(false));
-  }
-
-  if (error) {
-    const code = (error as { code?: string }).code;
-    if (code === "23505") return { ok: false, error: "already_requested" };
-    // 42501 is the policy refusing the write. We already read the order under
-    // the same session, so this should be unreachable — answer it like a
-    // missing order rather than confirming the row is there but off-limits.
-    if (code === "42501") return { ok: false, error: "not_found" };
-    return { ok: false, error: "server_error" };
-  }
-
-  if (withProvenance) rememberColumn(REFUND_PROVENANCE, true);
-  return { ok: true };
-}
-
 /* ============================================================
    Deciding
    ============================================================ */
@@ -542,7 +154,7 @@ interface PendingRefund {
  * admin will eventually be asked to make a second time.
  */
 async function readPendingRefund(
-  supabase: Awaited<ReturnType<typeof createClient>> | ReturnType<typeof createAdminClient>,
+  supabase: ReturnType<typeof createAdminClient>,
   id: string
 ): Promise<PendingRefund | null> {
   const run = (columns: string) =>
@@ -883,14 +495,14 @@ export async function decideRefund(
             createdBy: actor.id,
           });
           if (!correction.ok) {
-            settlementWarning = `This order's payout was already settled and paid (settlement #${shortOrderId(ref.id)}). The automatic correction could not be recorded: see the note on that settlement and reconcile this one by hand.`;
+            settlementWarning = `The shop was already paid for this order (payment #${shortOrderId(ref.id)}), and taking it back automatically failed. See the note on that payment and take it off the shop's next payment by hand.`;
           } else if (correction.amount > 0) {
-            settlementWarning = `This order's payout was already settled and paid (settlement #${shortOrderId(ref.id)}). ₹${correction.amount} has been recorded as an outstanding correction, recovered from this vendor's next settlement.`;
+            settlementWarning = `The shop was already paid for this order (payment #${shortOrderId(ref.id)}). ₹${correction.amount} comes off its next payment.`;
           } else {
-            settlementWarning = `This order's payout was already settled and paid (settlement #${shortOrderId(ref.id)}). No correction was needed: this order's vendor entitlement was unaffected by the refund.`;
+            settlementWarning = `The shop was already paid for this order (payment #${shortOrderId(ref.id)}). This refund doesn't change what the shop gets.`;
           }
         } else {
-          settlementWarning = `This order is in an unpaid draft settlement (#${shortOrderId(ref.id)}). Void and rebuild that settlement so it reflects the refund before paying it.`;
+          settlementWarning = `This order is in a payment that isn't finished (#${shortOrderId(ref.id)}). Its amount is corrected when someone approves it.`;
         }
         await flagSettlementForRefund(
           ref.id,

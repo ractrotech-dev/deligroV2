@@ -9,12 +9,6 @@ import { DocumentReviewForm } from "./profile-forms";
  * number (in full for PAN, licence and RC; Aadhaar exists only as its last
  * four), expiry and days left, and Verify / Reject for a pending one. Then the
  * required documents still missing, and the replaced ones as history.
- *
- * Images show inline from the 10-minute link made for this render and open
- * full size in a new tab (zoom); PDFs open in the browser's viewer through
- * the "Open" route, which signs a fresh link each time (the console's CSP
- * does not allow a storage URL to be framed). Server component: numbers are
- * rendered here, never passed to the client forms. Platform: BOTH.
  */
 
 const STATUS_TONE: Record<string, Tone> = { verified: "green", pending: "amber", rejected: "red", expired: "red", replaced: "neutral" };
@@ -49,7 +43,7 @@ function Preview({ d, openHref }: Readonly<{ d: AdminDocument; openHref: string 
     );
   }
   return (
-    <a href={openHref} target="_blank" rel="noopener noreferrer" className="c-btn c-btn-outline press">
+    <a href={openHref} target="_blank" rel="noopener noreferrer" className="c-btn c-btn-outline">
       Open PDF
     </a>
   );
@@ -71,7 +65,7 @@ export function DocumentsTab({ profile: p }: Readonly<{ profile: AdminRiderProfi
       {p.documents.length === 0 ? (
         <Empty>No documents uploaded yet.</Empty>
       ) : (
-        <div className="grid gap-4 @3xl:grid-cols-2 @6xl:grid-cols-3">
+        <div className="grid gap-4 grid-cols-2 @6xl:grid-cols-3">
           {p.documents.map((d) => (
             <Panel
               key={d.id}
@@ -107,7 +101,7 @@ export function DocumentsTab({ profile: p }: Readonly<{ profile: AdminRiderProfi
                   <span className="font-semibold">{label(d.type)}</span>{" "}
                   <span className="text-muted">{`uploaded ${formatDateTime(d.uploadedAt)}`}</span>
                 </span>
-                <a href={`${base}/${d.id}`} target="_blank" rel="noopener noreferrer" className="c-btn-quiet press">
+                <a href={`${base}/${d.id}`} target="_blank" rel="noopener noreferrer" className="c-btn-quiet">
                   Open
                 </a>
               </li>

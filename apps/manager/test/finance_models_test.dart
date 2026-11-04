@@ -117,17 +117,11 @@ void main() {
     expect(k['note'], isNull);
   });
 
-  test('rider payouts, refunds', () {
+  test('rider payouts', () {
     final p = RiderPayoutPage.fromJson(p6('rider_payouts'));
     expect(p.items.first.rider.code, 'DR-0007');
     expect(p.items.first.payout.reference, 'UTR998877');
     expect(p.totalAmount, 21000.50);
-    final r = RefundPage.fromJson(p6('refunds'));
-    expect(r.pendingCount, 1);
-    expect(r.items.first.status, RefundStatus.pending);
-    expect(r.items.first.origin, RefundOrigin.customer);
-    expect(r.items.last.settlementEffect, 'correction_created');
-    expect(r.items.last.decidedBy?.name, 'Vikram');
   });
 
   test('every reconciliation section', () {
@@ -149,7 +143,10 @@ void main() {
   test('report kinds; the no-finance list carries no finance kinds', () {
     final all = ReportKindList.fromJson(p6('report_kinds'));
     expect(all.kinds, hasLength(13));
-    expect(all.kinds.firstWhere((k) => k.kind == 'orders').statusOptions, contains('delivered'));
+    final orders = all.kinds.firstWhere((k) => k.kind == 'orders');
+    expect(orders.statusOptions.map((o) => o.value), contains('delivered'));
+    expect(orders.statusLabel('placed'), 'New');
+    expect(orders.statusLabel('not_listed'), 'not listed');
     final limited = ReportKindList.fromJson(p6('report_kinds_no_finance'));
     expect(limited.kinds.map((k) => k.kind), isNot(contains('commission')));
   });

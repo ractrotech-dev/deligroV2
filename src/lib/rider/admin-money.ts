@@ -40,11 +40,13 @@ export interface FormLike {
 }
 
 /** Salary first: riders are paid a fixed salary, so it is what an entry usually is (P3-R11). */
-export const ADJUSTMENT_KINDS: readonly AdjustmentKind[] = ["salary", "bonus", "adjustment", "deduction"];
+// Riders get a fixed salary only (rule book): no new bonus entries. Old ones stay on
+// the ledger, which is why AdjustmentKind still names the kind.
+export const ADJUSTMENT_KINDS = ["salary", "adjustment", "deduction"] as const;
 /** What "Add an entry" starts on. */
-export const DEFAULT_ADJUSTMENT_KIND: AdjustmentKind = "salary";
+export const DEFAULT_ADJUSTMENT_KIND: (typeof ADJUSTMENT_KINDS)[number] = "salary";
 export const ADJUSTMENT_LABELS: Record<AdjustmentKind, string> = {
-  bonus: "Bonus",
+  bonus: "Older pay",
   adjustment: "Adjustment (+ or −)",
   deduction: "Deduction",
   salary: "Salary",
@@ -63,8 +65,6 @@ export const MONEY_CEILING = 1_000_000;
 const REASON_MAX = 300;
 const NOTE_MAX = 300;
 const REFERENCE_MAX = 120;
-const RULE_NAME_MAX = 80;
-const TARGET_MAX = 1000;
 
 // ---------------------------------------------------------------------------
 // reading fields
@@ -123,12 +123,12 @@ export interface AdjustmentInput {
 
 /**
  * `kind`, `amount`, `reason`, `orderCode?`, `effectiveOn`. The sign rule is
- * `rider_adjustments_amount_sign`: bonus, salary and deduction are positive
+ * `rider_adjustments_amount_sign`: salary and deduction are positive
  * (a deduction is entered positive and subtracted); an adjustment is signed
  * and never zero.
  */
 export function parseAdjustment(form: FormLike, ctx: { today: string }): Parsed<AdjustmentInput> {
-  const kind = text(form, "kind") as AdjustmentKind;
+  const kind = text(form, "kind") as (typeof ADJUSTMENT_KINDS)[number];
   if (!ADJUSTMENT_KINDS.includes(kind)) return fail("Choose what kind of entry this is.");
 
   const amount = money(text(form, "amount"), "amount");
@@ -174,11 +174,13 @@ export interface PayoutInput {
 }
 
 /**
- * `periodEnd`, `method`, `reference?`, `paidOn`, `note?`. `record_rider_payout`
- * refuses a period ending after today (IST) and a `paid_on` before the period
- * end (`invalid_payout`); this says so before the call.
+ * `periodEnd`, `method`, `reference?`, `paidOn`, `note?`. The database refuses a
+ * period ending after today (IST) and a `paid_on` before the period end
+ * (`invalid_payout`); this says so before the call. With `payNow` the admin is
+ * approving their own payment in the same step (0152), so the reference and the
+ * reason the database requires are required here too.
  */
-export function parsePayout(form: FormLike, ctx: { today: string }): Parsed<PayoutInput> {
+export function parsePayout(form: FormLike, ctx: { today: string; payNow?: boolean }): Parsed<PayoutInput> {
   const periodEnd = day(text(form, "periodEnd"), "settle-up-to date", ctx.today);
   if (!periodEnd.ok) return periodEnd;
 
@@ -195,6 +197,10 @@ export function parsePayout(form: FormLike, ctx: { today: string }): Parsed<Payo
   if (reference.length > REFERENCE_MAX) return fail(`Keep the reference under ${REFERENCE_MAX} characters.`);
   const note = text(form, "note");
   if (note.length > NOTE_MAX) return fail(`Keep the note under ${NOTE_MAX} characters.`);
+  if (ctx.payNow) {
+    if (!reference) return fail("Enter the payment reference from your bank or UPI app.");
+    if (note.length < 3) return fail("Write a short reason for this payment (at least 3 characters).");
+  }
 
   return {
     ok: true,
@@ -206,7 +212,7 @@ export function parsePayout(form: FormLike, ctx: { today: string }): Parsed<Payo
 export type PendingItem = Pick<EarningRecord, "id" | "kind" | "date" | "amount" | "reversesId">;
 
 export interface PayoutPreview {
-  /** The net `record_rider_payout` would settle (may be zero or negative). */
+  /** The net a payment up to that date would settle (may be zero or negative). */
   amount: number;
   /** How many ledger rows it would attach. */
   items: number;
@@ -217,8 +223,9 @@ export interface PayoutPreview {
 const paise = (x: number) => Math.round(x * 100);
 
 /**
- * What `record_rider_payout(driver, periodEnd, ...)` would settle, from the
- * rider's unattached records. Its selection rule, row for row:
+ * What a payment up to `periodEnd` would settle, from the rider's unattached
+ * records. The database's selection rule (`_rider_payout_preview`, 0152), row
+ * for row:
  *
  *   earnings and awards  dated (IST) on or before `periodEnd`
  *   adjustments          `effective_on` on or before `periodEnd`, PLUS the
@@ -245,101 +252,6 @@ export function previewPayout(pending: readonly PendingItem[], periodEnd: string
 }
 
 // ---------------------------------------------------------------------------
-// incentive rules
-// ---------------------------------------------------------------------------
-
-export interface RuleInput {
-  name: string;
-  /** Null on an edit: a rule's period is fixed once created. */
-  period: "daily" | "weekly" | null;
-  /** Null on an edit: a rule's start date is fixed once created. */
-  startsOn: string | null;
-  targetDeliveries: number;
-  bonusAmount: number;
-  windowStart: string | null;
-  windowEnd: string | null;
-  endsOn: string | null;
-  active: boolean;
-}
-
-export type RuleMode = { mode: "create" } | { mode: "edit"; startsOn: string };
-
-const TIME = /^([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?$/;
-
-/**
- * `name`, `period`, `targetDeliveries`, `bonusAmount`, `windowStart?`,
- * `windowEnd?`, `startsOn`, `endsOn?`, `active`. English only.
- *
- * On an edit the posted `period` and `startsOn` are ignored (0083 refuses to
- * change either, for every role) and `endsOn` is judged against the STORED
- * start date.
- */
-export function parseIncentiveRule(form: FormLike, ctx: RuleMode): Parsed<RuleInput> {
-  const name = text(form, "name");
-  if (!name) return fail("Name the rule - riders see this name in their app.");
-  if (name.length > RULE_NAME_MAX) return fail(`Keep the name under ${RULE_NAME_MAX} characters.`);
-
-  let period: RuleInput["period"] = null;
-  let startsOn: string | null = null;
-  if (ctx.mode === "create") {
-    const p = text(form, "period");
-    if (p !== "daily" && p !== "weekly") return fail("Choose whether the target is counted per day or per week.");
-    period = p;
-    const raw = text(form, "startsOn");
-    if (raw === "") return fail("Pick the first day the rule is in force.");
-    if (!isDayKey(raw)) return fail("The start date is not a real date.");
-    startsOn = raw;
-  }
-  const effectiveStart = ctx.mode === "create" ? (startsOn as string) : ctx.startsOn;
-
-  const rawTarget = text(form, "targetDeliveries");
-  if (!/^\d+$/.test(rawTarget) || Number(rawTarget) < 1 || Number(rawTarget) > TARGET_MAX) {
-    return fail(`The target is a whole number of deliveries, from 1 to ${TARGET_MAX}.`);
-  }
-
-  const bonus = money(text(form, "bonusAmount"), "bonus");
-  if (!bonus.ok) return bonus;
-  if (bonus.value <= 0) return fail("The bonus must be more than ₹0.");
-
-  const ws = text(form, "windowStart");
-  const we = text(form, "windowEnd");
-  let windowStart: string | null = null;
-  let windowEnd: string | null = null;
-  if (ws || we) {
-    if (!ws || !we) return fail("A time window needs both a start and an end. Clear both for all day.");
-    if (!TIME.test(ws) || !TIME.test(we)) return fail("Write the window times as HH:MM, for example 12:00.");
-    windowStart = ws.slice(0, 5);
-    windowEnd = we.slice(0, 5);
-    if (windowEnd <= windowStart) {
-      return fail("The window must end after it starts (a window can't run past midnight - use two rules).");
-    }
-  }
-
-  let endsOn: string | null = null;
-  const rawEnd = text(form, "endsOn");
-  if (rawEnd) {
-    if (!isDayKey(rawEnd)) return fail("The end date is not a real date.");
-    if (rawEnd < effectiveStart) return fail(`The end date can't be before the start date (${effectiveStart}).`);
-    endsOn = rawEnd;
-  }
-
-  return {
-    ok: true,
-    value: {
-      name,
-      period,
-      startsOn,
-      targetDeliveries: Number(rawTarget),
-      bonusAmount: bonus.value,
-      windowStart,
-      windowEnd,
-      endsOn,
-      active: text(form, "active") === "on",
-    },
-  };
-}
-
-// ---------------------------------------------------------------------------
 // what the database said, as sentences
 // ---------------------------------------------------------------------------
 
@@ -351,7 +263,7 @@ export interface DbError {
 }
 
 /** What a screen says in place of the money it can't show yet. */
-export const MIGRATION_MISSING = "Rider money (migration 0083) isn't applied to this database yet";
+export const MIGRATION_MISSING = "Rider money isn't set up on this database yet";
 export const MIGRATION_PENDING_MESSAGE = `${MIGRATION_MISSING}, so nothing was saved.`;
 
 /** PostgREST / Postgres codes for "that table, column or function isn't there". */
@@ -363,39 +275,47 @@ export function isSchemaMissing(error: DbError | null | undefined): boolean {
 }
 
 /**
- * `record_rider_payout`'s refusals (forbidden / nothing_to_pay / invalid_payout /
- * the method CHECK), as sentences. Raw database text never reaches the operator.
+ * A rider payment's refusals (the codes `mapPaymentRpcError` and the body parser
+ * answer with), as sentences. Raw database text never reaches the operator.
  */
-export function payoutErrorMessage(error: DbError): string {
-  const said = `${error.message ?? ""} ${error.details ?? ""}`;
-  if (isSchemaMissing(error)) return MIGRATION_PENDING_MESSAGE;
-  if (error.code === "42501" || /forbidden/i.test(said)) {
-    return "Only an admin can record a payout. Sign in with an admin account and try again.";
+export function riderPaymentMessage(code: string, extra: { amount?: number } = {}): string {
+  switch (code) {
+    case "nothing_to_pay":
+      return "There is nothing to pay up to that date: what this rider is owed comes to ₹0 or less. Pick a later date, or check the records.";
+    case "duplicate_pending":
+      return "This rider already has a salary payment waiting. Decide that one on Rider salaries first.";
+    case "same_person":
+      return "You asked for this payment, so someone else must approve it.";
+    case "not_requester":
+      return "Only the person who asked for a payment can cancel it.";
+    case "reference_required":
+    case "reference":
+      return "Enter the payment reference from your bank or UPI app.";
+    case "note_required":
+      return "Write a short reason (at least 3 characters).";
+    case "amount_changed":
+      return `The rider's records changed, so this payment is now ${formatMoney(extra.amount ?? 0)}. Check it and approve again.`;
+    case "already_decided":
+      return "This payment was already decided. Refresh to see it.";
+    case "paidOn":
+      return "The payment date can't be in the future.";
+    case "not_found":
+      return "That payment or rider no longer exists.";
+    default:
+      return "That didn't go through, and no money was recorded. Try again.";
   }
-  if (/nothing_to_pay/i.test(said)) {
-    return "There is nothing to pay up to that date: what this rider is owed nets to ₹0 or less. Pick a later date, or check the records.";
-  }
-  if (/invalid_payout/i.test(said)) {
-    if (/before the period end/i.test(said)) return "The payment date can't be before the day the period ends.";
-    if (/after today/i.test(said)) return "The period can't end after today (IST).";
-    return "The payout's period end or payment date was refused. Check both dates and try again.";
-  }
-  if (error.code === "23514") return "That payment method isn't accepted. Choose bank, UPI, cash or other.";
-  return "Couldn't record the payout. Nothing was saved - try again, and if it keeps failing check the server logs.";
 }
 
-/** A refused adjustment or incentive-rule write, as a sentence. */
-export function writeErrorMessage(error: DbError, what: "adjustment" | "rule"): string {
+/** A refused adjustment write, as a sentence. */
+export function writeErrorMessage(error: DbError): string {
   if (isSchemaMissing(error)) return MIGRATION_PENDING_MESSAGE;
   if (error.code === "42501") {
     return "The database says this account is not allowed to write rider money. Only an admin account can.";
   }
   if (error.code === "23514" || error.code === "22P02" || error.code === "22007") {
-    return `The database rejected those values (a check failed). Review the ${what === "rule" ? "rule" : "entry"} and try again.`;
+    return "The database rejected those values (a check failed). Review the entry and try again.";
   }
-  return what === "rule"
-    ? "Couldn't save the rule. Nothing was changed - try again, and if it keeps failing check the server logs."
-    : "Couldn't save the entry. Nothing was changed - try again, and if it keeps failing check the server logs.";
+  return "Couldn't save the entry. Nothing was changed - try again, and if it keeps failing check the server logs.";
 }
 
 // ---------------------------------------------------------------------------
@@ -419,24 +339,6 @@ const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "
 export function formatDay(day: string | null | undefined): string {
   if (!day || !isDayKey(day)) return day ?? "";
   return `${Number(day.slice(8, 10))} ${MONTHS[Number(day.slice(5, 7)) - 1]} ${day.slice(0, 4)}`;
-}
-
-/** A rule in the words an operator would use: "10 deliveries in a day". */
-export function describeRule(r: {
-  period: "daily" | "weekly";
-  targetDeliveries: number;
-  bonusAmount: number;
-  windowStart: string | null;
-  windowEnd: string | null;
-  startsOn: string;
-  endsOn: string | null;
-}): { target: string; window: string; dates: string } {
-  const unit = r.targetDeliveries === 1 ? "delivery" : "deliveries";
-  return {
-    target: `${r.targetDeliveries} ${unit} in a ${r.period === "daily" ? "day" : "week"} pays ${formatMoney(r.bonusAmount)}`,
-    window: r.windowStart && r.windowEnd ? `${r.windowStart.slice(0, 5)}-${r.windowEnd.slice(0, 5)} IST` : "All day",
-    dates: r.endsOn ? `${formatDay(r.startsOn)} to ${formatDay(r.endsOn)}` : `From ${formatDay(r.startsOn)}`,
-  };
 }
 
 /** How a delivery's pay was made up, for the Money tab: "₹20 base + ₹12 distance (4 km by road) + ₹5 tip". */

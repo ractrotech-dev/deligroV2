@@ -22,7 +22,7 @@ typedef PayoutRequestOpener = Future<void> Function(BuildContext context, Widget
 
 /// §5.13 (only with `manager.finance.view`): what the rider is owed and has
 /// been paid, the last payout, requests waiting for approval, the ledger,
-/// and — with the right permissions — recording a salary payout or a bonus /
+/// and — with the right permissions — recording a salary payout or a
 /// deduction. Riders are salaried: nothing here computes per-order pay.
 class RiderMoneyTab extends ConsumerWidget {
   const RiderMoneyTab({super.key, required this.rider, required this.money, this.requestPayout});
@@ -63,7 +63,7 @@ class RiderMoneyTab extends ConsumerWidget {
               key: const Key('rider-add-adjustment'),
               onPressed: () => addRiderAdjustment(context, ref, rider),
               icon: const Icon(Icons.add_card_outlined, size: 18),
-              label: const Text('Add bonus / deduction'),
+              label: const Text('Add deduction / adjustment'),
             ),
           TextButton(
             key: const Key('rider-open-ledger'),

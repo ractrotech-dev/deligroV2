@@ -11,7 +11,6 @@ import {
   EmptyState,
   PreviewNotice,
 } from "@/components/admin/admin-ui";
-import { ConsoleOnly } from "@/components/admin/console-only";
 import {
   DataTable,
   TableFooter,
@@ -24,13 +23,17 @@ import {
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { listCitiesWithZones, listStaffZonesFor } from "@/lib/data-access/zones";
 import { CreateEmployeeButton } from "./employees-manager";
+import Link from "next/link";
+import { StaffAccessControls } from "./staff-access-controls";
 import { ManagerZonesCell, type ZoneOption } from "./manager-zones-cell";
 
 /**
  * Settings → Team. An operator creates staff logins here: a manager (the Manager
  * app, scoped to the zones assigned here and the powers granted in Feature
  * access) or a driver (delivery app). The list shows everyone who currently has
- * a privileged role. Reached from the Settings menu.
+ * a privileged role, and each can be stopped, started again or given a new
+ * password (the rules are on the server, data-access/staff-access.ts). Reached
+ * from the Settings menu. Platform: WEB (the admin console is desktop only).
  */
 export const dynamic = "force-dynamic";
 
@@ -48,8 +51,40 @@ const ROLE_TONE = {
 type TeamRow = EmployeeListItem & { zoneIds: string[] };
 
 function columnsFor(zoneOptions: ZoneOption[]): Column<TeamRow>[] {
-  return [...baseColumns, zoneColumn(zoneOptions), joinedColumn];
+  return [...baseColumns, zoneColumn(zoneOptions), joinedColumn, accessColumn, featuresColumn, controlsColumn];
 }
+
+const accessColumn: Column<TeamRow> = {
+  key: "access",
+  header: "Access",
+  width: "w-[100px]",
+  cell: (e) => <StatusText tone={e.stopped ? "red" : "green"}>{e.stopped ? "Stopped" : "Active"}</StatusText>,
+};
+
+/** This person's own settings in Admin → App features. */
+const featuresColumn: Column<TeamRow> = {
+  key: "features",
+  header: "Features",
+  width: "w-[90px]",
+  cell: (e) => (
+    <Link
+      href={`/admin/settings/feature-access?role=${e.role}&account=${e.id}`}
+      className="text-[13px] font-semibold text-accent-ink hover:underline"
+    >
+      Change
+    </Link>
+  ),
+};
+
+const controlsColumn: Column<TeamRow> = {
+  key: "controls",
+  header: "",
+  align: "right",
+  width: "w-[240px]",
+  cell: (e) => (
+    <StaffAccessControls id={e.id} name={e.fullName ?? "this person"} role={e.role} stopped={e.stopped} />
+  ),
+};
 
 /** The zones a manager or rider works, editable in place (migration 0141). A
  * manager sees the orders of their zones and the riders who share one. */
@@ -72,10 +107,9 @@ const baseColumns: Column<TeamRow>[] = [
   {
     key: "name",
     header: "Name",
-    role: "title",
     cell: (e) => (
       <div className="flex min-w-0 items-center gap-3">
-        <span className="grid size-9 shrink-0 place-items-center rounded-xl bg-surface-2 text-ink">
+        <span className="grid size-9 shrink-0 place-items-center rounded-[var(--c-r)] bg-surface-2 text-ink">
           {e.role === "manager" ? (
             <ShieldCheck className="size-4" />
           ) : (
@@ -87,14 +121,6 @@ const baseColumns: Column<TeamRow>[] = [
             <span className="truncate font-semibold">
               {e.fullName ?? "Unnamed"}
             </span>
-            <span className="shrink-0 @3xl:hidden">
-              <StatusText tone={ROLE_TONE[e.role]}>
-                {e.role === "manager" ? "Manager" : "Driver"}
-              </StatusText>
-            </span>
-          </span>
-          <span className="mt-0.5 block truncate text-xs text-muted @3xl:hidden">
-            {e.phone ?? "No mobile"}
           </span>
         </span>
       </div>
@@ -103,7 +129,6 @@ const baseColumns: Column<TeamRow>[] = [
   {
     key: "role",
     header: "Role",
-    role: "wideOnly",
     width: "w-[140px]",
     cell: (e) => (
       <StatusText tone={ROLE_TONE[e.role]}>
@@ -114,7 +139,6 @@ const baseColumns: Column<TeamRow>[] = [
   {
     key: "phone",
     header: "Mobile",
-    role: "wideOnly",
     cell: (e) => (
       <span className="text-[13px] text-muted">{e.phone ?? "—"}</span>
     ),
@@ -124,7 +148,6 @@ const baseColumns: Column<TeamRow>[] = [
 const joinedColumn: Column<TeamRow> = {
   key: "joined",
   header: "Joined",
-  role: "trailing",
   width: "w-[140px]",
   cell: (e) => (
     <span className="text-data text-[13px] text-muted">
@@ -167,7 +190,7 @@ export default async function AdminEmployeesPage() {
         backLabel="Settings"
         title="Team"
         tag={`${employees.length} with access`}
-        subtitle="Create manager and driver logins, and see who has access."
+        subtitle="Create manager and driver logins, stop them, or reset a password."
         action={create}
       />
 
@@ -177,13 +200,6 @@ export default async function AdminEmployeesPage() {
         </PreviewNotice>
       ) : null}
 
-      {/* The one explanation for the Create button that drops out of the header
-          on a phone. Reading the list is the phone job; issuing a credential is
-          not. */}
-      <ConsoleOnly
-        tool="Creating an employee"
-        why="A new login's temporary password is shown once and never again, so it wants a screen you can copy from. Reading the team list works fine here."
-      />
 
       {employees.length === 0 ? (
         <EmptyState
@@ -217,7 +233,7 @@ export default async function AdminEmployeesPage() {
             columns={columnsFor(zoneOptions)}
             rows={employees}
             rowKey={(e) => e.id}
-            minWidth={720}
+            minWidth={1080}
             footer={
               <TableFooter
                 page={1}

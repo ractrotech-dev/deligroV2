@@ -28,13 +28,11 @@
     "ratingsGiven": 2,
     "avgRatingGiven": 3.5,
     "openComplaints": 1,
-    "pendingRefunds": 1,
     "allowed": {
       "revealContact": true,
       "suspend": true,
       "restrict": true,
-      "reactivate": false,
-      "decideRefunds": false
+      "reactivate": false
     }
   }
 }

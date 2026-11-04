@@ -95,9 +95,8 @@ void main() {
       expect(SignalKind.parse('accept_delayed'), SignalKind.acceptDelayed);
     });
 
-    test('use_advance and refund_exceeds_total read as sentences', () {
+    test('use_advance reads as a sentence', () {
       expect(refusalText(const ActionRefused('use_advance')), contains('Mark'));
-      expect(refusalText(const ActionRefused('refund_exceeds_total')), contains('refund'));
     });
 
     test('the emergency option promises what the server does (a push, not a ring)', () {

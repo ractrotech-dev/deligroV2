@@ -87,7 +87,7 @@ export async function customerVisible(scope: ManagerScope, id: string): Promise<
 
 export async function getCustomer(scope: ManagerScope, id: string, permissions: Record<string, boolean>): Promise<CustomerDetail | null> {
   const { data, error } = await db().from("profiles")
-    .select("id, full_name, phone, role, account_status, status_reason, status_changed_by, status_changed_at, created_at")
+    .select("id, full_name, phone, role, account_status, status_reason, status_changed_by, status_changed_at, created_at, wallet_balance")
     .eq("id", id).maybeSingle();
   if (error) throw error;
   const p = data as { id: string; full_name: string | null; phone: string | null; role: string; account_status: string | null;
@@ -101,10 +101,7 @@ export async function getCustomer(scope: ManagerScope, id: string, permissions: 
   let ticketsQ = db().from("support_tickets").select("id", { count: "exact", head: true }).eq("requester_id", id)
     .in("status", [...OPEN_TICKET_STATUSES]);
   if (zones) ticketsQ = ticketsQ.in("zone_id", zones);
-  let refundsQ = db().from("refunds").select("id, orders!inner(customer_id, zone_id)", { count: "exact", head: true })
-    .eq("status", "pending").eq("orders.customer_id", id);
-  if (zones) refundsQ = refundsQ.in("orders.zone_id", zones);
-  const [reviews, tickets, refunds] = await Promise.all([reviewsQ, ticketsQ, refundsQ]);
+  const [reviews, tickets] = await Promise.all([reviewsQ, ticketsQ]);
   const ratings = ((reviews.data ?? []) as { rating: number }[]).map((r) => r.rating);
   const book = await loadNameBook({ zones: f.zoneIds, people: [p.status_changed_by] });
   const status = (p.account_status ?? "active") as CustomerDetail["status"];
@@ -119,6 +116,7 @@ export async function getCustomer(scope: ManagerScope, id: string, permissions: 
     spent: f.spent,
     lastOrderAt: f.lastOrderAt ? new Date(f.lastOrderAt).toISOString() : null,
     zones: f.zoneIds.map((z) => ({ id: z, name: book.zoneName(z) })),
+    walletBalance: Number((p as { wallet_balance?: number | string | null }).wallet_balance ?? 0),
     statusReason: p.status_reason,
     statusChangedAt: p.status_changed_at,
     statusChangedBy: p.status_changed_by ? { id: p.status_changed_by, name: book.personName(p.status_changed_by) } : null,
@@ -129,7 +127,6 @@ export async function getCustomer(scope: ManagerScope, id: string, permissions: 
     ratingsGiven: ratings.length,
     avgRatingGiven: ratings.length ? Math.round((ratings.reduce((s, r) => s + r, 0) / ratings.length) * 10) / 10 : null,
     openComplaints: tickets.count ?? 0,
-    pendingRefunds: refunds.count ?? 0,
     allowed: customerAllowed(status, permissions),
   };
 }

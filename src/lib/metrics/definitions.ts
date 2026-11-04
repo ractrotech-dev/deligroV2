@@ -269,7 +269,7 @@ export interface VendorBalance {
 export interface VendorEarnings {
   /** Owed to shops: the sum of each shop's positive balance. */
   payable: number;
-  /** Owed by shops (COD commission not yet recovered): the sum of negative balances. */
+  /** Owed by shops (refunds not yet recovered): the sum of negative balances. */
   recoverable: number;
   byVendor: Map<string, VendorBalance>;
 }
@@ -277,8 +277,8 @@ export interface VendorEarnings {
 /**
  * What shops are owed for completed orders not yet in a paid settlement — the
  * same `contribution` a settlement would compute, netted per shop. A shop whose
- * COD commission exceeds its online remittance owes the platform; that is
- * `recoverable`, never a negative "payment due".
+ * refunds exceed its orders owes the platform; that is `recoverable`, never a
+ * negative "payment due".
  */
 export function vendorEarnings(
   orders: MetricOrder[],

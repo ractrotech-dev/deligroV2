@@ -22,8 +22,23 @@ export interface VendorPaymentRules {
    * cannot enable a payment the platform cannot take.
    */
   acceptOnline: boolean;
-  /** Highest total payable in cash, whole rupees. 0 = no ceiling. */
+  /**
+   * Highest total payable in cash, whole rupees. 0 = no ceiling. Already the
+   * stricter of the shop's limit and the platform's (`strictestCashLimit`).
+   */
   codMaxOrder: number;
+}
+
+/**
+ * The limit that applies when a shop and the platform each may set one: the
+ * smaller of those that are set. 0 means "not set" on either side, so a shop at 0
+ * uses the platform limit. `guard_order_cod_ceiling` (0194) does the same sum.
+ */
+export function strictestCashLimit(shopLimit: number, platformLimit: number): number {
+  const shop = Math.max(0, Math.round(shopLimit));
+  const platform = Math.max(0, Math.round(platformLimit));
+  if (shop > 0 && platform > 0) return Math.min(shop, platform);
+  return Math.max(shop, platform);
 }
 
 /** Both methods on, no ceiling — how an unconfigured shop behaves. */
@@ -83,6 +98,13 @@ export function paymentAvailability(
   return { cod, online, codRefusal, notice, noMethod: !cod && !online };
 }
 
+/** Over the cash limit: pay online, or, while online is off, it can't be placed. */
+function overLimitLine(online: boolean, limit: number): string {
+  return online
+    ? `Orders above ${rupees(limit)} must be paid online.`
+    : `Orders above ${rupees(limit)} can't be placed right now. Remove a few items to order.`;
+}
+
 /** The line shown under the payment options, given what is on offer and why. */
 function paymentNotice(
   cod: boolean,
@@ -90,13 +112,13 @@ function paymentNotice(
   codRefusal: CodRefusal | null,
   limit: number
 ): string | null {
+  // Above the cash limit with online off: no way to pay. Said before the general
+  // line below, because the customer can act on this one.
+  if (codRefusal === "over_limit") {
+    return overLimitLine(online, limit);
+  }
   if (!cod && !online) {
     return "This shop cannot take payment right now. Please try again a little later.";
-  }
-  if (codRefusal === "over_limit") {
-    return online
-      ? `Orders above ${rupees(limit)} must be paid online.`
-      : `This shop takes cash only up to ${rupees(limit)}. Remove a few items to place this order.`;
   }
   if (codRefusal === "cod_off") {
     return online
@@ -138,6 +160,7 @@ export function refusePayment(
   orderTotal: number
 ): PaymentRefusalCode | null {
   const avail = paymentAvailability(rules, orderTotal);
+  if (avail.codRefusal === "over_limit" && !avail.online) return "cod_limit_exceeded";
   if (avail.noMethod) return "no_payment_method";
   if (method === "online") return avail.online ? null : "online_not_available";
   if (avail.cod) return null;
@@ -153,7 +176,7 @@ export function refusalMessage(
 ): string {
   switch (code) {
     case "cod_limit_exceeded":
-      return `Orders above ${rupees(rules.codMaxOrder)} must be paid online.`;
+      return overLimitLine(rules.acceptOnline, rules.codMaxOrder);
     case "cod_not_available":
       return "This shop takes online payment only.";
     case "online_not_available":

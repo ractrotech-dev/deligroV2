@@ -8,6 +8,7 @@ import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { getPlatformLock, lockBlocksConsole } from "@/lib/platform-lock";
 import { pausedText } from "@/lib/platform-lock-rules";
 import { rateLimit, tooManyRequests } from "@/lib/rate-limit";
+import { staffAccountStopped } from "@/lib/auth/staff-access.server";
 import type { ManagerScope } from "@/lib/auth/manager-scope";
 
 /**
@@ -16,6 +17,7 @@ import type { ManagerScope } from "@/lib/auth/manager-scope";
  *   503 not_configured     — no backend keys
  *   401 unauthenticated    — no session
  *   403 forbidden          — signed in, but not a manager or admin
+ *   403 account_suspended  — a manager an admin has stopped (0190)
  *   403 permission_denied  — a manager whose switch for `permission` is off
  *
  * On success: the profile, the zones they may see, and their permissions. An
@@ -49,6 +51,9 @@ export async function managerApiContext(
   }
   if (profile.role !== "manager" && profile.role !== "admin") {
     return NextResponse.json({ error: "forbidden" }, { status: 403 });
+  }
+  if (profile.role === "manager" && (await staffAccountStopped(profile.id))) {
+    return NextResponse.json({ error: "account_suspended" }, { status: 403 });
   }
   // The developer's full pause (0177): the Manager app shows the message.
   const lock = await getPlatformLock();

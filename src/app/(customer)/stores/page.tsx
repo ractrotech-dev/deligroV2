@@ -10,6 +10,7 @@ import { GroceryListHero } from "@/components/stores/grocery-list-hero";
 import { listRestaurantsResult } from "@/lib/catalog";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { listAddresses } from "@/lib/data-access/addresses";
+import { customerFeatureOn } from "@/lib/features/guards.server";
 import { getSettings } from "@/lib/settings";
 import { enabledStoreCategories } from "@/lib/store-categories";
 import { ADDRESSES } from "@/lib/data";
@@ -36,7 +37,7 @@ export default async function StoresPage({
     listRestaurantsResult({ withMenu: false }),
     getSettings(),
     isSupabaseConfigured
-      ? listAddresses().catch(() => [])
+      ? customerFeatureOn("customer.saved_addresses").then((on) => (on ? listAddresses() : [])).catch(() => [])
       : Promise.resolve(ADDRESSES),
     getLang(),
   ]);

@@ -219,6 +219,10 @@ export type BannerInput = {
   tint: string;
   glyph?: string | null;
   sponsorName?: string | null;
+  /**
+   * Saved but never used to filter what a customer sees, so the form no longer
+   * asks. Left undefined the columns keep what they hold; a copy carries them over.
+   */
   targetCities?: string[];
   targetZones?: string[];
   targetSegments?: string[];
@@ -247,20 +251,21 @@ function toRow(input: BannerInput) {
     tint: input.tint,
     glyph: input.glyph ?? null,
     sponsor_name: input.sponsorName ?? null,
-    target_cities: input.targetCities ?? [],
-    target_zones: input.targetZones ?? [],
-    target_segments: input.targetSegments ?? [],
+    ...(input.targetCities ? { target_cities: input.targetCities } : {}),
+    ...(input.targetZones ? { target_zones: input.targetZones } : {}),
+    ...(input.targetSegments ? { target_segments: input.targetSegments } : {}),
     starts_at: input.startsAt ?? null,
     ends_at: input.endsAt ?? null,
     updated_at: new Date().toISOString(),
   };
 }
 
-export async function createBanner(input: BannerInput): Promise<string> {
+/** `id` lets the caller name the row in the audit log before it exists. */
+export async function createBanner(input: BannerInput, id?: string): Promise<string> {
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("banners")
-    .insert(toRow(input))
+    .insert({ ...toRow(input), ...(id ? { id } : {}) })
     .select("id")
     .single();
   if (error) throw error;
@@ -293,7 +298,7 @@ export async function setBannerStatus(
 }
 
 /** Copy a campaign as a fresh draft with zeroed analytics. */
-export async function duplicateBanner(id: string): Promise<string> {
+export async function duplicateBanner(id: string, newId?: string): Promise<string> {
   const existing = await getBannerFromDb(id);
   if (!existing) throw new Error("not_found");
   return createBanner({
@@ -319,7 +324,7 @@ export async function duplicateBanner(id: string): Promise<string> {
     targetSegments: existing.targeting?.segments ?? [],
     startsAt: existing.startsAt ?? null,
     endsAt: existing.endsAt ?? null,
-  });
+  }, newId);
 }
 
 export async function deleteBanner(id: string): Promise<void> {

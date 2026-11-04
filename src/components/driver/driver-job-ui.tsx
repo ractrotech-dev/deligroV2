@@ -118,7 +118,7 @@ export function RoutePanel({
         <Marker x={b.x} y={b.y} kind={toKind} />
       </svg>
       <p className="absolute bottom-2.5 left-3 rounded-full bg-black/55 px-2.5 py-1 text-[11px] font-medium text-white/80">
-        Straight line, not the road. Tap Navigate for directions.
+        Straight line, not the road.
       </p>
       {children ? (
         <div className="absolute inset-x-3 top-3 flex items-center gap-2">
@@ -253,6 +253,11 @@ export function CashNotice({
           >
             {formatINR(payment.collectAmount)}
           </p>
+          {(payment.pointsUsed ?? 0) > 0 ? (
+            <p className="mt-1 text-xs font-semibold text-deal">
+              The customer used {payment.pointsUsed} points on this order.
+            </p>
+          ) : null}
         </div>
       </div>
     );
@@ -263,11 +268,13 @@ export function CashNotice({
         <ShieldCheck className="size-5 shrink-0 text-green" />
         <div className="min-w-0">
           <p className="text-sm font-bold text-green">
-            Prepaid, collect nothing
+            {payment.paidWithPoints ? "Paid with points, collect nothing" : "Prepaid, collect nothing"}
           </p>
           {compact ? null : (
             <p className="text-xs text-muted">
-              Already paid online. Do not ask for money.
+              {payment.paidWithPoints
+                ? "The customer used their wallet. Do not ask for money."
+                : "Already paid online. Do not ask for money."}
             </p>
           )}
         </div>

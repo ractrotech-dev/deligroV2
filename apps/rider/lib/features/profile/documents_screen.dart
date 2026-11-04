@@ -14,7 +14,11 @@ import 'profile_widgets.dart';
 /// The rider's documents by type: status, number (masked), expiry with days
 /// left, and the way to upload, replace or view each one.
 class DocumentsScreen extends ConsumerWidget {
-  const DocumentsScreen({super.key});
+  const DocumentsScreen({super.key, this.basePath = '/more/profile/documents'});
+
+  /// Where this screen's upload and view pages are: under More for a working
+  /// rider, under the blocked screen for a rejected one (no tabs there).
+  final String basePath;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -31,7 +35,7 @@ class DocumentsScreen extends ConsumerWidget {
           child: AsyncBody<RiderProfile>(
             value: profile,
             onRetry: () => ref.invalidate(riderProfileProvider),
-            builder: (p) => _DocumentsBody(profile: p),
+            builder: (p) => _DocumentsBody(profile: p, basePath: basePath),
           ),
         ),
       ),
@@ -40,9 +44,10 @@ class DocumentsScreen extends ConsumerWidget {
 }
 
 class _DocumentsBody extends ConsumerWidget {
-  const _DocumentsBody({required this.profile});
+  const _DocumentsBody({required this.profile, required this.basePath});
 
   final RiderProfile profile;
+  final String basePath;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -63,13 +68,13 @@ class _DocumentsBody extends ConsumerWidget {
         ),
         const RowsLabel('Needed to get verified'),
         for (final type in required) ...[
-          _DocCard(type: type, doc: profile.documentOf(type), editable: editable),
+          _DocCard(type: type, doc: profile.documentOf(type), editable: editable, basePath: basePath),
           const SizedBox(height: 12),
         ],
         if (optional.isNotEmpty) ...[
           const RowsLabel('Optional'),
           for (final type in optional) ...[
-            _DocCard(type: type, doc: profile.documentOf(type), editable: editable),
+            _DocCard(type: type, doc: profile.documentOf(type), editable: editable, basePath: basePath),
             const SizedBox(height: 12),
           ],
         ],
@@ -87,11 +92,12 @@ class _DocumentsBody extends ConsumerWidget {
 }
 
 class _DocCard extends StatelessWidget {
-  const _DocCard({required this.type, required this.doc, required this.editable});
+  const _DocCard({required this.type, required this.doc, required this.editable, required this.basePath});
 
   final String type;
   final RiderDocument? doc;
   final bool editable;
+  final String basePath;
 
   @override
   Widget build(BuildContext context) {
@@ -151,7 +157,7 @@ class _DocCard extends StatelessWidget {
                 Expanded(
                   child: OutlinedButton.icon(
                     key: Key('view-$type'),
-                    onPressed: () => context.push('/more/profile/documents/view/${d.id}', extra: label),
+                    onPressed: () => context.push('$basePath/view/${d.id}', extra: label),
                     icon: const Icon(Icons.visibility_outlined, size: 18),
                     label: const Text('View'),
                   ),
@@ -163,12 +169,12 @@ class _DocCard extends StatelessWidget {
                       ? FilledButton(
                           key: Key('upload-$type'),
                           style: FilledButton.styleFrom(minimumSize: const Size(48, 48)),
-                          onPressed: () => context.push('/more/profile/documents/upload/$type'),
+                          onPressed: () => context.push('$basePath/upload/$type'),
                           child: Text(d == null ? 'Upload' : 'Upload again'),
                         )
                       : OutlinedButton.icon(
                           key: Key('upload-$type'),
-                          onPressed: () => context.push('/more/profile/documents/upload/$type'),
+                          onPressed: () => context.push('$basePath/upload/$type'),
                           icon: const Icon(Icons.upload_rounded, size: 18),
                           label: const Text('Replace'),
                         ),

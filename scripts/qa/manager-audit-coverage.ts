@@ -119,8 +119,8 @@ for (const f of migrations) {
 }
 for (const f of files("src", (p) => /\.tsx?$/.test(p))) {
   const src = readFileSync(f, "utf8");
-  if (!src.includes("logOpsAction(")) continue;
-  for (const m of src.matchAll(/logOpsAction\(\{[^}]*action:\s*"([a-z_.]+)"/g)) logged.add(m[1]);
+  if (!src.includes("logOpsAction(") && !src.includes("auditedChange(")) continue;
+  for (const m of src.matchAll(/(?:logOpsAction|auditedChange)\(\s*\{[^}]*action:\s*"([a-z_.]+)"/g)) logged.add(m[1]);
 }
 check("every _ops_log action argument resolves to codes", unresolved.length === 0, unresolved.join(" | "));
 const catalog = new Set(AUDIT_ACTIONS.map((a) => a.code));
@@ -130,6 +130,8 @@ check(`every logged code (${logged.size}) is in the catalog`, missing.length ===
 check("every catalog code is written by a migration", unused.length === 0, unused.join(", "));
 // The floor the design's audit list sets (§16, Audit log section).
 const REQUIRED = [
+  "vendor.edit", "vendor.delete", "vendor.open_set", "banner.update", "banner.delete", "category.delete", "offer.delete",
+  "staff.stop", "staff.start", "staff.password_reset",
   "order.advance", "order.cancel", "order.correct.status", "order.note", "order.escalate", "delivery.assign", "delivery.reassign",
   "vendor.suspend", "vendor.document.verified", "vendor.onboard", "product.flag", "product.hide", "product.approve", "product.stock",
   "rider.suspend", "rider.document.verify", "rider.onboard", "rider.adjustment", "payment.request", "payment.approve",
@@ -182,8 +184,8 @@ console.log("\n── 2b. the money and exception modules: only the pinned follo
 type Writes = Record<string, number>;
 const FOLLOW_UPS: Record<string, { writes: Writes; why: string }> = {
   "src/lib/data-access/refunds.ts": {
-    writes: { "refunds:insert": 2 },
-    why: "queueing a refund REQUEST (pending, not a decision). The decision, the order/payment 'refunded' flags and the settlement correction are all inside audited RPCs.",
+    writes: {},
+    why: "nothing: refunds are closed (0191). What is left is the gateway path, unreachable, and every write in it is an audited RPC.",
   },
   "src/lib/data-access/admin-settlements.ts": {
     writes: {
@@ -324,7 +326,6 @@ for (const [route, keys] of [
   ["payments/requests/route.ts", ["manager.finance.initiate_payment"]],
   ["payments/requests/[id]/decide/route.ts", ["manager.finance.approve_payment"]],
   ["finance/settlements/route.ts", ["manager.finance.initiate_payment"]],
-  ["finance/refunds/[id]/decide/route.ts", ["manager.finance.adjust"]],
   ["customers/[id]/actions/route.ts", ["manager.customers.suspend"]],
   ["customers/[id]/contact/route.ts", ["manager.customers.contact"]],
   ["products/bulk/route.ts", ["manager.products.adjust_stock"]],
@@ -341,7 +342,7 @@ const SENSITIVE = [
   // 0176: a manager writing a shop's menu or its photos.
   "manager.products.bulk_menu", "manager.products.replace_photo",
 ];
-const off = FEATURES.filter((f) => (f as { defaultOn?: boolean }).defaultOn === false).map((f) => f.key).sort();
+const off = FEATURES.filter((f) => f.key.startsWith("manager.") && (f as { defaultOn?: boolean }).defaultOn === false).map((f) => f.key).sort();
 check("the default-off switches are exactly the design's sensitive ones", JSON.stringify(off) === JSON.stringify([...SENSITIVE].sort()), off.join(", "));
 
 console.log(`\n${passed} passed, ${failed} failed`);

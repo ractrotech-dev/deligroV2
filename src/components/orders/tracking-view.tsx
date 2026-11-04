@@ -25,10 +25,13 @@ import {
   SHEET_COLLAPSED_SNAP,
   SHEET_DEFAULT_SNAP,
 } from "@/components/orders/tracking-sheet";
-import { RefundRequest } from "@/components/orders/refund-request";
 import { ProofOfDelivery } from "@/components/orders/proof-of-delivery";
 import { RiderRatingCard } from "@/components/orders/rider-rating-card";
+import { useFeature } from "@/components/features/features-provider";
+import { WalletCodeCard } from "@/components/orders/wallet-code-card";
+import { cashDue } from "@/lib/wallet/money";
 import { useLiveTracking, type TrackingHealth } from "@/hooks/use-live-tracking";
+import { useCancelCountdown } from "@/hooks/use-cancel-countdown";
 import {
   trackingSteps,
   statusIndex,
@@ -67,6 +70,9 @@ function minutesLabel(n: number, t: T): string {
  * delivered.
  */
 function totalLabel(order: UiOrder, delivered: boolean, t: T): string {
+  // With points on it, the figure beside this is the bill, and the rows below say how
+  // it was paid. "Total paid (Cash)" would claim cash that nobody handed over.
+  if ((order.pointsUsed ?? 0) > 0) return t("Bill total", "बिल का कुल");
   if (order.paymentStatus === "refunded")
     return t("Total refunded", "कुल रकम वापस की गई");
   if (isOrderPaid(order)) return t("Total paid", "कुल भुगतान हो गया");
@@ -190,8 +196,11 @@ function trackingHeadline(
 export function TrackingView({
   order,
   initialEta,
+  walletOn = false,
 }: Readonly<{
   order: UiOrder;
+  /** The wallet is on: offer the change code during a cash delivery. */
+  walletOn?: boolean;
   /**
    * Computed server-side for the first paint, so the headline is not a
    * per-restaurant constant for the frame before the first poll answers.
@@ -242,12 +251,11 @@ export function TrackingView({
   const current = statusIndex(displayStatus);
   const delivered = displayStatus === "DELIVERED";
   const cancelled = displayStatus === "CANCELLED";
-  // Mirrors the CANCELLABLE set in /api/orders/[id]/cancel. Offering it any
-  // wider produces a 409 the customer reads as "the kitchen already started" —
-  // which is what every `ready` order got, back when `ready` was displayed as
-  // KITCHEN and this condition was written against the display value.
-  const canCancel = canCustomerCancel(displayStatus);
-  const paid = isOrderPaid(order);
+  // Only for the seconds the database says are left (customer_cancel_order, 0191).
+  // The server decides on the tap; this just stops offering a button it would refuse.
+  const cancelSeconds = useCancelCountdown(isUuid ? live.cancelWindow : null);
+  const canCancelNow = useFeature("customer.cancel");
+  const canCancel = canCancelNow && canCustomerCancel(displayStatus, cancelSeconds);
 
   // A real countdown once the backend is live; the restaurant's advertised
   // number is all a mock order has, and it is labelled as an estimate below
@@ -304,18 +312,31 @@ export function TrackingView({
         router.refresh();
       } else {
         const data = await res.json().catch(() => ({}));
-        setCancelMsg(
-          data.error === "too_late"
-            ? t(
-                "The kitchen already started — can't cancel now.",
-                "किचन में खाना बनना शुरू हो गया है — अब कैंसिल नहीं हो सकता।",
-              )
-            : t(
-                "Could not cancel. Try again.",
-                "कैंसिल नहीं हो पाया। फिर कोशिश करें।",
-              ),
-        );
+        if (data.error === "too_late") {
+          // The server is what counts: say so, and let the next poll end the countdown.
+          setCancelMsg(
+            t(
+              "Too late to cancel. Your order will be delivered.",
+              "अब कैंसिल नहीं हो सकता। आपका ऑर्डर डिलीवर किया जाएगा।",
+            ),
+          );
+          await live.refresh();
+        } else {
+          setCancelMsg(
+            t(
+              "Could not cancel. Try again.",
+              "कैंसिल नहीं हो पाया। फिर कोशिश करें।",
+            ),
+          );
+        }
       }
+    } catch {
+      setCancelMsg(
+        t(
+          "Could not cancel. Try again.",
+          "कैंसिल नहीं हो पाया। फिर कोशिश करें।",
+        ),
+      );
     } finally {
       setCancelBusy(false);
     }
@@ -526,11 +547,11 @@ export function TrackingView({
 
             <OrderFollowUp
               order={order}
+              status={status}
+              walletOn={walletOn}
               delivered={delivered}
-              cancelled={cancelled}
-              paid={paid}
-              isUuid={isUuid}
               canCancel={canCancel}
+              cancelSeconds={cancelSeconds}
               cancelBusy={cancelBusy}
               cancelMsg={cancelMsg}
               setShowCancelConfirm={setShowCancelConfirm}
@@ -714,9 +735,11 @@ function OrderOutcome({
 }>) {
   const { lang, t } = useLang();
   const cancelNote = cancelled ? cancellationNote(order, lang) : null;
+  const canRateOrder = useFeature("customer.reviews");
+  const canRateRider = useFeature("customer.rate_rider");
   return (
     <>
-      {delivered ? (
+      {delivered && canRateOrder ? (
         <div className="rounded-2xl bg-green-soft p-5 text-center">
           <p className="text-[15px] font-bold">
             {rated
@@ -752,7 +775,7 @@ function OrderOutcome({
 
       {/* The courier, rated apart from the food: one rating per order, and
       the rider never learns who gave it (migration 0084). */}
-      {delivered && isUuid && riderName ? (
+      {delivered && isUuid && riderName && canRateRider ? (
         <RiderRatingCard orderId={order.id} riderName={riderName} />
       ) : null}
 
@@ -975,21 +998,23 @@ function CourierInfo({
 /** The bill, and everything left to do with the order from here. */
 function OrderFollowUp({
   order,
+  status,
+  walletOn,
   delivered,
-  cancelled,
-  paid,
-  isUuid,
   canCancel,
+  cancelSeconds,
   cancelBusy,
   cancelMsg,
   setShowCancelConfirm,
 }: Readonly<{
   order: UiOrder;
+  /** The live status, which the order prop can trail. */
+  status: string;
+  walletOn: boolean;
   delivered: boolean;
-  cancelled: boolean;
-  paid: boolean;
-  isUuid: boolean;
   canCancel: boolean;
+  /** Whole seconds left, from the database's last answer. */
+  cancelSeconds: number;
   cancelBusy: boolean;
   cancelMsg: string | null;
   setShowCancelConfirm: (open: boolean) => void;
@@ -1026,19 +1051,34 @@ function OrderFollowUp({
             {formatINR(order.total)}
           </span>
         </div>
+        {(order.pointsUsed ?? 0) > 0 ? (
+          <dl className="mt-2 space-y-1 text-sm">
+            <div className="flex justify-between font-medium text-green">
+              <dt>
+                {status === "CANCELLED"
+                  ? t("Points returned to your wallet", "पॉइंट वॉलेट में वापस")
+                  : t("Paid with points", "पॉइंट से भुगतान")}
+              </dt>
+              <dd className="text-data">
+                {status === "CANCELLED" ? "" : "−"}
+                {formatINR(order.pointsUsed ?? 0)}
+              </dd>
+            </div>
+            {status === "CANCELLED" ? null : (
+              <div className="flex justify-between font-bold">
+                <dt>{delivered ? t("Paid in cash", "नकद दिया") : t("Pay the rider in cash", "राइडर को नकद दें")}</dt>
+                <dd className="text-data">{formatINR(cashDue(order.total, order.pointsUsed))}</dd>
+              </div>
+            )}
+          </dl>
+        ) : null}
       </div>
 
-      {/* Once an order is finished — delivered or cancelled — asking for money
-      back is the only thing left to do with it. Mock orders are excluded
-      because there is no row behind them to refund. A cancelled order that
-      was never paid (cash on delivery) has nothing to give back, so it is
-      not offered there. */}
-      {isUuid && (delivered || (cancelled && paid)) ? (
-        <RefundRequest
-          orderId={order.id}
-          orderTotal={order.total}
-          paid={paid}
-        />
+      {walletOn &&
+      status === "ON_THE_WAY" &&
+      order.paymentMethod !== "online" &&
+      cashDue(order.total, order.pointsUsed) > 0 ? (
+        <WalletCodeCard orderId={order.id} />
       ) : null}
 
       {canCancel ? (
@@ -1053,14 +1093,22 @@ function OrderFollowUp({
             ) : (
               <XCircle className="size-4" />
             )}
-            {t("Cancel order", "ऑर्डर कैंसिल करें")}
+            {t(
+              `Cancel order (${cancelSeconds}s)`,
+              `ऑर्डर कैंसिल करें (${cancelSeconds} से.)`,
+            )}
           </button>
-          {cancelMsg ? (
-            <p className="rounded-xl bg-deal-soft px-3 py-2 text-center text-sm font-medium text-deal">
-              {cancelMsg}
-            </p>
-          ) : null}
         </div>
+      ) : null}
+
+      {/* Outside the block above: "too late" has to survive the button going away. */}
+      {cancelMsg ? (
+        <p
+          role="status"
+          className="rounded-xl bg-deal-soft px-3 py-2 text-center text-sm font-medium text-deal"
+        >
+          {cancelMsg}
+        </p>
       ) : null}
 
       {/* A delivered order is a completed sale, and until now the app
@@ -1122,8 +1170,8 @@ function CancelConfirm({
         </h2>
         <p className="mt-2 text-center text-sm leading-relaxed text-muted">
           {t(
-            "Do you want to cancel your order? This can't be undone.",
-            "क्या आप अपना ऑर्डर कैंसिल करना चाहते हैं? यह वापस नहीं होगा।",
+            "This can't be undone.",
+            "यह वापस नहीं होगा।",
           )}
         </p>
         <div className="mt-5 grid grid-cols-2 gap-3">

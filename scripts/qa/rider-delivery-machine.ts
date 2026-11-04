@@ -470,8 +470,9 @@ async function pureTier(): Promise<void> {
     }
   });
 
-  await group("pickup before the kitchen marks it ready -> order_not_active (the order's own lock)", () => {
-    assert.deepEqual(m.checkAction(s({ orderStatus: "kitchen" }), "pickup"), { ok: false, error: "order_not_active" });
+  await group("pickup before the kitchen marks it ready -> food_not_ready (the job stays the rider's)", () => {
+    assert.deepEqual(m.checkAction(s({ orderStatus: "kitchen" }), "pickup"), { ok: false, error: "food_not_ready" });
+    assert.deepEqual(m.checkAction(s({ orderStatus: "placed" }), "pickup"), { ok: false, error: "food_not_ready" });
     assert.deepEqual(m.checkAction(s({ status: "picked_up", orderStatus: "delivered" }), "start_trip"), { ok: false, error: "order_not_active" });
   });
 
@@ -548,7 +549,6 @@ async function dataTier(): Promise<void> {
     delivered: async (orderId: string) => void notes.push(`delivered:${orderId}`),
     riderArrived: async (orderId: string, name: string | null) => void notes.push(`arrived:${orderId}:${name}`),
     riderHandedOver: async (driverId: string, orderId: string) => void notes.push(`handedOver:${driverId}:${orderId}`),
-    incentiveAwards: async (driverId: string) => void notes.push(`awards:${driverId}`),
   };
   const withRule = (rule: "never" | "cod" | "always" | "exceptions") => ({
     settings: { ...DEFAULT_SETTINGS, podPhotoRule: rule },
@@ -586,7 +586,7 @@ async function dataTier(): Promise<void> {
     assert.equal(delivery().cod_collected_amount, 350, "COD recorded at the order total");
     assert.ok(delivery().cod_collected_at);
     await settle();
-    assert.deepEqual(notes, [`onTheWay:${O1}`, `arrived:${O1}:Ravi Rider`, `delivered:${O1}`, `awards:${A}`], "P3-R1: the award push follows the completion");
+    assert.deepEqual(notes, [`onTheWay:${O1}`, `arrived:${O1}:Ravi Rider`, `delivered:${O1}`], "no incentive push follows the completion");
     assert.deepEqual(
       events().map((e) => e.kind),
       ["arrived_pickup", "picked_up", "departed", "arrived_drop", "delivered"]
@@ -623,7 +623,6 @@ async function dataTier(): Promise<void> {
     assert.equal((patchBodies.deliveries ?? []).filter((b) => "cod_collected_amount" in b).length, 1);
     await settle();
     assert.deepEqual(notes.filter((n) => n.startsWith("delivered")), [`delivered:${O1}`]);
-    assert.deepEqual(notes.filter((n) => n.startsWith("awards")), [`awards:${A}`], "a replayed completion pushes no award");
   });
 
   await group("replay: two taps of Delivered racing -> both ok, exactly one transition", async () => {
@@ -879,9 +878,17 @@ async function dataTier(): Promise<void> {
     big.set(JPEG);
     assert.deepEqual(await up(new File([big], "a.jpg", { type: "image/jpeg" })), { ok: false, error: "too_large" });
     assert.deepEqual(await up(new File([JPEG], "a.jpg", { type: "image/jpeg" }), B), { ok: false, error: "not_yours" });
-    delivery().status = "assigned";
+    delivery().status = "delivered";
     assert.deepEqual(await up(new File([JPEG], "a.jpg", { type: "image/jpeg" })), { ok: false, error: "bad_state" });
     assert.equal((storage["delivery-proofs"] ?? []).length, 0, "nothing was stored by a refused upload");
+  });
+
+  await group("proof upload before the pickup: a report's photo, never proof of delivery", async () => {
+    fresh({ status: "ready" }, { status: "assigned", pod_photo_path: null });
+    const res = await actions.uploadDeliveryProof(A, O1, new File([JPEG], "a.jpg", { type: "image/jpeg" }));
+    assert.equal(res.ok, true);
+    assert.equal(delivery().pod_photo_path, null, "not recorded as the proof photo");
+    assert.equal((storage["delivery-proofs"] ?? []).length, 1, "the file is stored");
   });
 
   await group("proof upload: a retake replaces the stored path and removes the old object", async () => {

@@ -10,6 +10,7 @@ import 'core/push_routes.dart' show pendingPushProvider;
 import 'core/update_check.dart';
 import 'features/auth/login_screen.dart';
 import 'features/earnings/earnings_screen.dart' show earningsRedirect;
+import 'features/gate/blocked_screen.dart';
 import 'features/gate/gate_screen.dart';
 import 'features/gate/needs_update_screen.dart';
 import 'features/gate/not_rider_screen.dart';
@@ -25,11 +26,12 @@ final rootNavigatorKey = GlobalKey<NavigatorState>();
 
 /// The screens that only exist to say where the gate stands. Once the rider is
 /// through, they are never shown.
-const _gatePaths = {'/login', '/gate', '/not-rider', '/needs-update'};
+const _gatePaths = {'/login', '/gate', '/not-rider', blockedPath, '/needs-update'};
 
 /// Where a signed-in user [uid] belongs while `/api/rider/me` has not said
 /// yes for them:
 ///
+///   403 suspended or rejected -> /blocked      (this rider, stopped by Deligro)
 ///   403                       -> /not-rider    (a customer, vendor or admin account)
 ///   404, `not_configured`     -> /needs-update (a server without the rider routes)
 ///   anything else             -> /gate         (loading, or a failure with Retry)
@@ -54,6 +56,9 @@ String _gateFor(AsyncValue<RiderMe> me, String? uid) {
   final sameRider = me.hasValue && uid != null && me.value!.id == uid;
   if (me.hasError) {
     final error = me.error;
+    // This rider's own block holds through a reload: uploading a document asks
+    // `/me` again, and that must not bounce them out of the upload screen.
+    if (error is RiderBlockedException && error.uid == uid) return blockedPath;
     if (error is ApiException && error.transient && sameRider) return '/home';
     if (!me.isLoading && error is ApiException) {
       if (error.status == 403) return '/not-rider';
@@ -81,14 +86,26 @@ class _RouterRefresh extends ChangeNotifier {
     });
     ref.listen(meProvider, (_, _) => notifyListeners());
     ref.listen(updateProvider, (_, _) => notifyListeners());
+    // Suspended or rejected mid-shift: `/me` is asked again, and the redirect
+    // moves the rider to the blocked screen. Not while `/me` is itself on its
+    // way, and not when it already knows.
+    _signal = ref.read(riderBlockedSignalProvider);
+    _askAgain = () {
+      final me = ref.read(meProvider);
+      if (!me.isLoading && me.error is! RiderBlockedException) ref.invalidate(meProvider);
+    };
+    _signal.addListener(_askAgain);
   }
 
   String? _uid;
   late final StreamSubscription<dynamic> _auth;
+  late final ValueNotifier<int> _signal;
+  late final VoidCallback _askAgain;
 
   @override
   void dispose() {
     _auth.cancel();
+    _signal.removeListener(_askAgain);
     super.dispose();
   }
 }
@@ -115,20 +132,23 @@ final routerProvider = Provider<GoRouter>((ref) {
         return path == '/login' ? null : '/login';
       }
 
-      final gate = _gateFor(ref.read(meProvider), auth.currentUser?.id);
+      final me = ref.read(meProvider);
+      final gate = _gateFor(me, auth.currentUser?.id);
       if (gate == '/home') {
+        final onGate = _gatePaths.contains(path) || path.startsWith('$blockedPath/');
         // A push tapped before the gate was through now opens, for this rider.
         final held = ref.read(pendingPushProvider).take(auth.currentUser?.id);
-        if (held != null && (_gatePaths.contains(path) || path == '/home')) return held;
+        if (held != null && (onGate || path == '/home')) return held;
         // Through the gate: its own screens have nothing left to say.
-        if (_gatePaths.contains(path)) return '/home';
-        // A tab or section whose switch is off for this rider (Earnings,
-        // History, Cash, Performance, Incentives, Help tickets) is not reachable.
+        if (onGate) return '/home';
+        // A tab or section whose switch is off for this rider (Salary,
+        // History, Cash, Performance, Help tickets) is not reachable.
         final me = ref.read(meProvider).value;
         return earningsRedirect(path, me) ?? historyRedirect(path, me) ?? featureRedirect(path, me);
       }
-      // Not a rider: a push is not theirs to open.
-      if (gate == '/not-rider') ref.read(pendingPushProvider).clear();
+      // Not a rider, or stopped from working: a push is not theirs to open.
+      if (gate == '/not-rider' || gate == blockedPath) ref.read(pendingPushProvider).clear();
+      if (gate == blockedPath) return blockedRedirect(path, me.error as RiderBlockedException);
       return path == gate ? null : gate;
     },
     routes: [
@@ -139,6 +159,7 @@ final routerProvider = Provider<GoRouter>((ref) {
       ),
       GoRoute(path: '/gate', builder: (_, _) => const GateScreen()),
       GoRoute(path: '/not-rider', builder: (_, _) => const NotRiderScreen()),
+      blockedRoute,
       GoRoute(path: '/needs-update', builder: (_, _) => const NeedsUpdateScreen()),
       locationDisclosureRoute,
       notificationsRoute,

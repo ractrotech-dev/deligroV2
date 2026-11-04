@@ -333,7 +333,16 @@ Future<void> _approve(
     builder: (_) => _ApproveDialog(request: r, ownRequest: ownRequest),
   );
   if (d == null || !context.mounted) return;
-  await _send(context, ref, r, f, d, doneText: 'Approved and recorded as paid.');
+  await _send(
+    context,
+    ref,
+    r,
+    f,
+    d,
+    doneText: r.kind == PaymentKind.settlementReversal
+        ? 'Reversal approved. The payout is void and its orders can be paid again.'
+        : 'Approved and recorded as paid.',
+  );
 }
 
 Future<void> _reject(BuildContext context, WidgetRef ref, PaymentRequest r, PaymentRequestFilters f) async {

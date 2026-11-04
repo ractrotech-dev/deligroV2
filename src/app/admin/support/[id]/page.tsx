@@ -14,9 +14,6 @@ export const metadata: Metadata = { title: "Ticket · Support · Admin · Deligr
  * the whole thread with internal notes marked and photos through 10-minute
  * signed URLs, and the reply form (public reply or internal note, status,
  * assign to me, resolve, close).
- *
- * Platform: BOTH — the thread and the facts stack in the phone frame and sit
- * side by side at a desk.
  */
 export const dynamic = "force-dynamic";
 

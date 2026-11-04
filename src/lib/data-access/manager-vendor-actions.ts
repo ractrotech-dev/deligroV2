@@ -76,7 +76,7 @@ export async function opsVendorStatus(
   });
   if (error) return mapVendorRpcError(error);
   if (!replay) {
-    deferNotify(() => notifyVendorOps(id, "status", vendorStatusText(action, reason), "/more/shop"));
+    deferNotify(() => notifyVendorOps(id, "status", vendorStatusText(action, reason), "/more/store"));
   }
   return { ok: true };
 }
@@ -108,7 +108,7 @@ export async function opsReviewDocument(
   });
   if (error) return mapVendorRpcError(error);
   if (!replay) {
-    deferNotify(() => notifyVendorOps(vendorId, "document", documentDecisionText(doc.doc_type, decision, remarks), "/more/shop/documents"));
+    deferNotify(() => notifyVendorOps(vendorId, "document", documentDecisionText(doc.doc_type, decision, remarks), "/more/store"));
   }
   return { ok: true };
 }

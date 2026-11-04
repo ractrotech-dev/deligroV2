@@ -547,10 +547,10 @@ async function pureTier(): Promise<void> {
   const alerts = await import("../../src/lib/rider/alert-rules");
   const rules = await import("../../src/lib/support/rules");
 
-  await group("pushAllowed: the twelve categories, three locked", () => {
+  await group("pushAllowed: the eleven categories, three locked", () => {
     assert.deepEqual([...prefs.NOTIFICATION_CATEGORIES], [
       "offers", "cancellations", "safety", "pickup_reminders", "delivery_updates", "payouts",
-      "incentives", "announcements", "support", "cash", "documents", "high_demand",
+      "announcements", "support", "cash", "documents", "high_demand",
     ]);
     assert.deepEqual([...prefs.LOCKED_CATEGORIES], ["offers", "cancellations", "safety"]);
     for (const c of prefs.NOTIFICATION_CATEGORIES) {
@@ -562,13 +562,13 @@ async function pureTier(): Promise<void> {
     }
     assert.equal(prefs.pushAllowed({ payouts: "false" }, "payouts"), true, "only an explicit false mutes");
     assert.equal(prefs.pushAllowed({ payouts: 0 }, "payouts"), true);
-    assert.equal(prefs.pushAllowed({ payouts: false }, "incentives"), true, "one category's switch mutes only that one");
+    assert.equal(prefs.pushAllowed({ payouts: false }, "cash"), true, "one category's switch mutes only that one");
     assert.equal(prefs.pushAllowed({ something_new: false }, "something_new"), false, "an unknown category obeys its switch");
     assert.equal(prefs.pushAllowed([] as unknown as Record<string, unknown>, "payouts"), true, "a non-object is no prefs");
     const eff = prefs.effectivePrefs({ payouts: false, offers: false, junk: 1 });
     assert.equal(eff.payouts, false);
     assert.equal(eff.offers, true, "a locked category reads on whatever is stored");
-    assert.equal(Object.keys(eff).length, 12);
+    assert.equal(Object.keys(eff).length, 11);
   });
 
   await group("alert rules at their thresholds", () => {
@@ -722,45 +722,6 @@ async function dataTier(): Promise<void> {
   });
 
   // ---- D3: a recorded payout reaches the rider (§11.6) ------------------
-  const adminRiders = await import("../../src/lib/data-access/admin-riders");
-  const PAYOUT = "9a000001-0000-4000-8000-000000000001";
-  const payoutRow = { id: PAYOUT, amount: 4000, method: "bank", reference: "UTR-9", paidOn: "2026-11-01", periodEnd: "2026-10-31", items: 3 };
-  await group("D3: a recorded payout tells the rider - inbox row and push, the settled amount and the period it covers", async () => {
-    fresh();
-    const reads: [string, string][] = [];
-    const ok = await adminRiders.announcePayoutRecorded(R1, PAYOUT, {
-      read: async (d, p) => {
-        reads.push([d, p]);
-        return payoutRow;
-      },
-    });
-    assert.equal(ok, true);
-    assert.deepEqual(reads, [[R1, PAYOUT]], "the committed row is read back for the rider it belongs to");
-    const rows = inboxOf(R1);
-    assert.equal(rows.length, 1, "one inbox row");
-    assert.equal(rows[0].category, "payouts");
-    assert.equal(rows[0].body, "Payout recorded: ₹4,000 for work up to 31 Oct 2026. Reference: UTR-9.");
-    assert.equal(rows[0].data.url, "/earnings/payouts");
-    assert.equal(pushes.length, 1, "pushed");
-    assert.deepEqual(pushes[0].userIds, [R1]);
-  });
-  await group("D3: with the rider's payouts switch off the payout is in the inbox, not pushed", async () => {
-    fresh();
-    t("rider_profiles")[0].notification_prefs = { payouts: false };
-    assert.equal(await adminRiders.announcePayoutRecorded(R1, PAYOUT, { read: async () => payoutRow }), true);
-    assert.equal(inboxOf(R1).length, 1);
-    assert.equal(pushes.length, 0);
-  });
-  await group("D3: an unreadable payout or a failing notifier never throws (the payout stands)", async () => {
-    fresh();
-    assert.equal(await adminRiders.announcePayoutRecorded(R1, PAYOUT, { read: async () => { throw new Error("read failed"); } }), false);
-    assert.equal(await adminRiders.announcePayoutRecorded(R1, PAYOUT, { read: async () => null }), false);
-    assert.equal(
-      await adminRiders.announcePayoutRecorded(R1, PAYOUT, { read: async () => payoutRow, notify: async () => { throw new Error("push down"); } }),
-      false
-    );
-    assert.equal(inboxOf(R1).length, 0, "nothing half-written");
-  });
   await group("offers, cancellations and safety cannot be muted", async () => {
     fresh();
     t("rider_profiles")[0].notification_prefs = { offers: false, cancellations: false, safety: false };
@@ -1040,9 +1001,9 @@ async function dataTier(): Promise<void> {
     fresh();
     rememberColumn("rider_profiles.notification_prefs", true);
     mode.missingColumns.add("rider_profiles.notification_prefs");
-    await events.notifyRiderIncentiveEarned(R1, { name: "Lunch rush", amount: 100 });
+    await events.notifyRiderDepositDecided(R1, { amount: 100, status: "confirmed" });
     assert.equal(pushes.length, 1, "pushed");
-    assert.equal(inboxOf(R1)[0].category, "incentives");
+    assert.equal(inboxOf(R1)[0].category, "cash");
   });
   await group("no inbox table (0087 not applied) -> the push still goes", async () => {
     fresh();
@@ -1794,7 +1755,7 @@ async function structureTier(): Promise<void> {
     { file: "src/app/api/rider/support/tickets/route.ts", gate: /requireRiderApi\(\)/, writes: ["POST"] },
     { file: "src/app/api/rider/support/tickets/[id]/route.ts", gate: /requireRiderApi\(\)/, writes: [] },
     { file: "src/app/api/rider/support/tickets/[id]/messages/route.ts", gate: /requireRiderApi\(\)/, writes: ["POST"] },
-    { file: "src/app/api/rider/sos/route.ts", gate: /requireRiderApi\(\)/, writes: ["POST"] },
+    { file: "src/app/api/rider/sos/route.ts", gate: /requireRiderApi\(\{ allowBlocked: true \}\)/, writes: ["POST"] },
     { file: "src/app/api/rider/notifications/route.ts", gate: /requireRiderApi\(\)/, writes: ["POST"] },
     { file: "src/app/api/rider/announcements/route.ts", gate: /requireRiderApi\(\)/, writes: [] },
     { file: "src/app/api/orders/[id]/instructions/route.ts", gate: /auth\.getUser\(\)/, writes: ["PATCH"] },
@@ -1817,19 +1778,16 @@ async function structureTier(): Promise<void> {
   await group("P8-R7: register clears the id from other profiles after saving the caller's; rider signout clears the caller's", () => {
     const reg = readFileSync(join(root, "src/app/api/notifications/register/route.ts"), "utf8");
     const save = reg.indexOf(".update({ onesignal_id: playerId })");
-    const release = reg.indexOf("releaseSubscriptionFromOthers(user.id, playerId)");
+    const release = reg.indexOf("releaseSubscriptionFromOthers(user.id, playerId");
     assert.ok(save > 0 && release > save, "release runs after the caller's own save");
     const out = readFileSync(join(root, "src/app/api/rider/signout/route.ts"), "utf8");
     assert.ok(out.indexOf("clearOwnSubscription(profile.id)") > out.indexOf("requireRiderApi()"), "signout clears after its gate");
   });
-  await group("D3: recording a payout announces it to the rider, after the payout committed, without blocking the action", () => {
+  await group("D3: a payment approved in the console tells the rider through the one decision path", () => {
     const src = readFileSync(join(root, "src/app/admin/riders/[id]/money-actions.ts"), "utf8");
-    const action = src.slice(src.indexOf("export async function recordPayoutAction"));
-    const recordAt = action.indexOf("await recordPayout(");
-    const failAt = action.indexOf("if (!result.ok)", recordAt);
-    const announceAt = action.search(/deferNotify\(\(\) => announcePayoutRecorded\(driverId, payoutId\)\)/);
-    assert.ok(recordAt > 0 && failAt > recordAt, "recordPayout and its failure branch");
-    assert.ok(announceAt > failAt, "announced only after the failure branch returned, i.e. once the payout row exists");
+    assert.ok(src.includes("await decidePaymentRequest("), "the console approves through decidePaymentRequest");
+    const decide = readFileSync(join(root, "src/lib/data-access/payment-requests.ts"), "utf8");
+    assert.match(decide, /deferNotify\(\(\) => notifyPaymentDecided\(id\)\)/, "which tells the requester and the rider, after it committed");
   });
   await group("D2: a manager's hand-assignment tells the offeree, after the audited assign succeeded", () => {
     // Since the Manager merge the board's assignRider goes through opsAssign

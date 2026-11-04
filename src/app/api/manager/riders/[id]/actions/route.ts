@@ -11,7 +11,7 @@ export const dynamic = "force-dynamic";
 /**
  * POST /api/manager/riders/[id]/actions — approve, reject, suspend or
  * reactivate a rider, take them offline, verify or reject one of their
- * documents, or record a bonus / deduction / adjustment (§5.2, §5.3, §5.13).
+ * documents, or record a deduction / adjustment (§5.2, §5.3, §5.13).
  * Body and answers: the Phase 5 plan's API contract.
  *
  * Status actions need the rider's current verification or account status as

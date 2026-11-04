@@ -19,35 +19,26 @@ const STAGES: { value: string; label: string }[] = [
 
 const TERMINAL = new Set(["delivered", "cancelled"]);
 
+/** The server wants the same (cancelOrderAsAdmin, ops_cancel_order). */
+const MIN_REASON = 3;
+
 /**
  * Admin intervention on a single order: force a stage, or cancel it.
- *
- * Both controls confirm before firing. An override rewrites what the customer
- * is being shown on their tracker and a cancel can move real money, so neither
- * is a thing to do by mis-tapping a row on a phone.
- *
- * They confirm differently on purpose. The move is a light action and uses
- * `confirm()`, which is what the rest of the app uses. The cancel gets an inline
- * panel instead, because its consequence depends on how the order was paid and
- * naming that — refund queued, or nothing to refund — is the operator's actual
- * question. A native dialog is a poor place to explain it, and this keeps the
- * copy inside the phone frame.
  */
 export function OrderIntervention({
   orderId,
   dbStatus,
-  refundable,
 }: Readonly<{
   orderId: string;
   dbStatus: string;
-  /** True when a cancel would queue money back — a paid, online order. */
-  refundable: boolean;
 }>) {
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [target, setTarget] = useState("");
   const [confirmingCancel, setConfirmingCancel] = useState(false);
+  const [reason, setReason] = useState("");
+  const reasonOk = reason.trim().length >= MIN_REASON;
 
   const finished = TERMINAL.has(dbStatus);
 
@@ -71,15 +62,12 @@ export function OrderIntervention({
     startTransition(async () => {
       setError(null);
       setNotice(null);
-      const result = await cancelOrderAsAdmin(orderId);
-      setConfirmingCancel(false);
+      const result = await cancelOrderAsAdmin(orderId, reason.trim());
       if (!result.ok) setError(result.error ?? "Failed");
       else {
-        setNotice(
-          result.refundQueued
-            ? "Cancelled. A refund is queued in /admin/refunds."
-            : "Cancelled. Nothing was paid, so no refund was queued."
-        );
+        setConfirmingCancel(false);
+        setReason("");
+        setNotice("Cancelled. The customer and the shop were told.");
       }
     });
   };
@@ -89,9 +77,6 @@ export function OrderIntervention({
       <p className="text-sm text-muted">
         This order is {dbStatus === "delivered" ? "delivered" : "cancelled"} and
         can no longer be changed from here.
-        {dbStatus === "delivered"
-          ? " Money is refunded from /admin/refunds."
-          : null}
       </p>
     );
   }
@@ -103,7 +88,7 @@ export function OrderIntervention({
           value={target}
           onChange={(e) => setTarget(e.target.value)}
           disabled={pending}
-          className="min-w-0 flex-1 rounded-xl border border-line bg-surface-2 px-3 py-2 text-sm font-medium text-ink disabled:opacity-60"
+          className="min-w-0 flex-1 rounded-[var(--c-r)] border border-line bg-surface-2 px-3 py-2 text-sm font-medium text-ink disabled:opacity-60"
           aria-label="Move this order to"
         >
           <option value="">Move to…</option>
@@ -129,23 +114,32 @@ export function OrderIntervention({
       </div>
 
       {confirmingCancel ? (
-        <div className="rounded-xl border border-pop/40 bg-pop/10 p-3">
+        <div className="rounded-[var(--c-r)] border border-pop/40 bg-pop/10 p-3">
           <p className="flex items-start gap-2 text-sm font-medium text-ink">
             <TriangleAlert className="mt-0.5 size-4 shrink-0" />
             <span>
-              Cancel this order?{" "}
-              {refundable
-                ? "It was paid online, so a refund will be queued for approval."
-                : "Nothing was paid online, so no refund is queued — any cash is settled by hand."}{" "}
-              The customer and the restaurant are both told.
+              Cancel this order? The customer and the restaurant are both told.
             </span>
           </p>
+          <label htmlFor="cancel-reason" className="mt-3 block text-xs font-semibold text-muted">
+            Reason (required)
+          </label>
+          <textarea
+            id="cancel-reason"
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+            disabled={pending}
+            maxLength={200}
+            rows={2}
+            placeholder="Why is this order being cancelled?"
+            className="mt-1 w-full resize-none rounded-[var(--c-r)] border border-line bg-surface-2 px-3 py-2 text-sm text-ink disabled:opacity-60"
+          />
           <div className="mt-3 flex gap-2">
             <Button
               size="sm"
               variant="outline"
               onClick={cancel}
-              disabled={pending}
+              disabled={pending || !reasonOk}
               className="border-deal/40 text-deal hover:bg-deal-soft"
             >
               {pending ? (

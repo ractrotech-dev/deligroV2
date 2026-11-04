@@ -24,10 +24,12 @@
  *   ─────────────────────
  *   = vendor payout        before refunds
  *
- * Who is holding the money then decides the direction:
- *   online paid → the platform holds it and remits `vendorNet` (less refunds).
- *   COD         → the shop already took the cash, so the platform recovers the
- *                 deductions instead, and the line contributes a negative.
+ * Deligro receives the customer's money and pays the shop on its settlement:
+ *   online paid → the money reached Deligro through the gateway.
+ *   cash (COD)  → the rider collected it and it comes up rider → manager → owner.
+ *                 The rider pays the shop nothing at pickup (owner, 2026-11-04).
+ * Both remit `vendorNet` (less refunds). Only an order whose money Deligro never
+ * received (an online payment that failed) has nothing to remit.
  *
  * A coupon complicates the first line only. `orders.total` is what the customer
  * paid, and since 0031 that is net of any discount — so reading it as the food
@@ -104,11 +106,7 @@ export interface SettlementOrderBreakdown {
   taxAmount: number;
   tip: number;
   foodGross: number;
-  /**
-   * The part of the order's discount the platform paid for. Added back into
-   * `foodGross`, and remitted to the shop on a COD order where the shop
-   * collected that much less cash at the door.
-   */
+  /** The part of the order's discount the platform paid for. Added back into `foodGross`. */
   platformDiscount: number;
   commission: number;
   commissionGst: number;
@@ -124,16 +122,20 @@ export interface SettlementOrderBreakdown {
 /**
  * Did the platform collect this order's money, and so owe the shop its share?
  *
+ * Cash always does: only delivered orders are settled, and on a delivered cash
+ * order the rider took the money, which is then Deligro's to pass on. Its
+ * `payment_status` says nothing here, so it is not read.
+ *
  * A refunded online order still counts: the gateway refund flips
  * `payment_status` to 'refunded' (see refunds.ts), but the refund itself is
  * already carried by `approvedRefunds`. Treating 'refunded' as "the platform
- * never held the money" priced it on the COD branch and charged the shop the
- * whole food value a second time.
+ * never held the money" charged the shop the whole food value a second time.
  */
 export function platformHeldPayment(
   method: SettlementPaymentMethod,
   status: SettlementPaymentStatus
 ): boolean {
+  if (method === "cod") return true;
   return method === "online" && (status === "paid" || status === "refunded");
 }
 
@@ -249,12 +251,10 @@ export function breakdownOrder(
   );
   const refundRecovered = Math.max(0, Math.round(input.approvedRefunds));
 
-  // On an online order the platform holds the whole payment, so restoring the
-  // discount into `foodGross` above is already the whole fix — `vendorNet`
-  // carries it. On COD the shop collected the cash at the door and collected
-  // `platformDiscount` less of it than the food was worth, so the platform owes
-  // it back; without this term the shop funds every platform promotion on the
-  // payment method this app actually runs on.
+  // When Deligro holds the payment, restoring the discount into `foodGross`
+  // above is already the whole fix — `vendorNet` carries it. The other branch is
+  // an order Deligro was never paid for: the shop's food money is not there to
+  // send, so the line carries only the deductions and any Deligro-funded discount.
   const contribution = remitsVendor
     ? vendorNet - refundRecovered
     : platformDiscount - deductions - refundRecovered;
@@ -299,6 +299,26 @@ export function correctionDelta(input: {
   const inLine = Math.max(0, Math.round(input.refundAlreadyInLine));
   const prior = Math.max(0, Math.round(input.priorCorrections));
   return Math.max(0, now - inLine - prior);
+}
+
+/**
+ * How much too low stored cash lines are, from before migration 0185 when a cash
+ * order was priced as "the shop owes Deligro". Stored statements are never
+ * rewritten, so this is how a paid one says what the shop should have got and an
+ * unpaid draft gets rebuilt. 0 for lines priced under the current rule.
+ */
+export function oldCashRuleShortfall(
+  lines: {
+    paymentMethod: SettlementPaymentMethod;
+    vendorNet: number;
+    refundRecovered: number;
+    contribution: number;
+  }[]
+): number {
+  return lines.reduce((sum, line) => {
+    if (line.paymentMethod !== "cod") return sum;
+    return sum + Math.max(0, line.vendorNet - line.refundRecovered - line.contribution);
+  }, 0);
 }
 
 export interface SettlementTotals {

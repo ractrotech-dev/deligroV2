@@ -444,7 +444,6 @@ void main() {
         'pickup_reminders',
         'delivery_updates',
         'payouts',
-        'incentives',
         'announcements',
         'support',
         'cash',
@@ -469,7 +468,7 @@ void main() {
       final prefs = body['notificationPrefs'] as Map<String, dynamic>;
       expect(prefs['cash'], false);
       expect(prefs['payouts'], true);
-      expect(prefs.length, 9);
+      expect(prefs.length, 8);
     });
 
     test('GET reads category -> bool for every category; a missing key is on', () {

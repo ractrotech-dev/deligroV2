@@ -4,6 +4,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/api.dart';
+import '../../core/customer_features.dart';
 import '../../models/address.dart';
 import '../../state/location.dart';
 import '../../state/providers.dart';
@@ -128,6 +129,7 @@ class _LocationScreenState extends ConsumerState<LocationScreen> {
     final loc = ref.watch(locationProvider);
     final signedIn = ref.watch(userIdProvider) != null;
     final addresses = ref.watch(addressesProvider);
+    final addressBookOn = ref.watch(customerFeaturesProvider).can(savedAddressesFeature);
 
     return Scaffold(
       appBar: AppBar(title: const Text('Delivery location')),
@@ -162,8 +164,8 @@ class _LocationScreenState extends ConsumerState<LocationScreen> {
                     Divider(height: 1, indent: 68, color: c.line),
                     _ActionTile(
                       icon: Icons.add_rounded,
-                      title: 'Add a new address',
-                      subtitle: 'Save it for next time',
+                      title: addressBookOn ? 'Add a new address' : 'Type an address',
+                      subtitle: addressBookOn ? 'Save it for next time' : 'For this order',
                       onTap: _add,
                     ),
                   ],
@@ -174,7 +176,9 @@ class _LocationScreenState extends ConsumerState<LocationScreen> {
               const SizedBox(height: 12),
               _FailureCard(result: _failure!, onRetry: _detect),
             ],
-            if (signedIn) ...[
+            if (signedIn && !addressBookOn) ...[
+              // Admin → App features: nothing to list, and nothing to sign in for.
+            ] else if (signedIn) ...[
               const SectionTitle('Saved addresses', padding: EdgeInsets.fromLTRB(2, 26, 2, 10)),
               addresses.when(
                 skipLoadingOnRefresh: true,

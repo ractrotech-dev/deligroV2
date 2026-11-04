@@ -22,7 +22,7 @@ export interface VendorDashboard {
     lastMonth: number;
   };
   /** Right now, on the board (paid-or-COD, like the kitchen board). */
-  live: { new: number; accepted: number; preparing: number; ready: number };
+  live: { new: number; accepted: number; preparing: number; ready: number; outForDelivery: number };
   /** Orders placed today that finished or were cancelled. */
   today: { orders: number; completed: number; cancelled: number };
   /** Null when the shop's Earnings switch is off. */
@@ -41,7 +41,7 @@ export interface VendorDashboard {
 
 export async function getVendorDashboard(
   restaurantId: string,
-  opts: { includeMoney: boolean }
+  opts: { includeMoney: boolean; includeMarketing?: boolean }
 ): Promise<VendorDashboard> {
   const now = new Date();
   const today = startOfIstDay(now);
@@ -53,7 +53,7 @@ export async function getVendorDashboard(
     loadSaleOrders(restaurantId),
     listKitchenOrders(restaurantId),
     opts.includeMoney ? vendorLedger(restaurantId) : Promise.resolve(null),
-    marketingCounts(restaurantId),
+    opts.includeMarketing === false ? Promise.resolve(NO_MARKETING) : marketingCounts(restaurantId),
   ]);
 
   const sales = { today: 0, yesterday: 0, total: 0, thisMonth: 0, lastMonth: 0 };
@@ -81,6 +81,10 @@ export async function getVendorDashboard(
     accepted: all.filter((o) => o.stage === "accepted").length,
     preparing: all.filter((o) => o.stage === "preparing").length,
     ready: all.filter((o) => o.stage === "ready").length,
+    // Accept moves an order straight to `ready`, so `accepted` and `preparing`
+    // only hold orders from before that (or one whose move did not land). A rider
+    // on the way is the shop's other live question; the board holds those too.
+    outForDelivery: all.filter((o) => o.status === "on_the_way").length,
   };
 
   const money = ledger
@@ -90,7 +94,15 @@ export async function getVendorDashboard(
       })
     : null;
 
-  return { sales, live, today: todays, money, marketing, updatedAt: now.toISOString() };
+  // Sale figures are money: zeros with Earnings off, so an old app shows nothing real.
+  return {
+    sales: opts.includeMoney ? sales : { today: 0, yesterday: 0, total: 0, thisMonth: 0, lastMonth: 0 },
+    live,
+    today: todays,
+    money,
+    marketing,
+    updatedAt: now.toISOString(),
+  };
 }
 
 /**
@@ -98,8 +110,10 @@ export async function getVendorDashboard(
  * table exists the dashboard says so (`available: false`) instead of zeros
  * that look like "you have none".
  */
+const NO_MARKETING = { available: false, pending: 0, approved: 0, inProgress: 0, completed: 0, rejected: 0 };
+
 async function marketingCounts(restaurantId: string): Promise<VendorDashboard["marketing"]> {
-  const empty = { available: false, pending: 0, approved: 0, inProgress: 0, completed: 0, rejected: 0 };
+  const empty = NO_MARKETING;
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("marketing_requests")

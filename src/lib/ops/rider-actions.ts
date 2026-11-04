@@ -33,7 +33,7 @@ export type ParsedRiderAction =
   | { action: "reject_document"; documentId: string; remarks: string; clientActionId: string }
   | {
       action: "add_adjustment";
-      kind: "bonus" | "deduction" | "adjustment";
+      kind: "deduction" | "adjustment";
       amount: number;
       effectiveOn: string;
       orderId: string | null;
@@ -85,7 +85,8 @@ export function parseRiderActionBody(body: Record<string, unknown> | null): { ok
       const a = body.adjustment as Record<string, unknown> | undefined;
       if (!a || typeof a !== "object") return bad("adjustment");
       const kind = a.kind;
-      if (kind !== "bonus" && kind !== "deduction" && kind !== "adjustment") return bad("kind");
+      // Riders get a fixed salary only (rule book): no new bonus entries.
+      if (kind !== "deduction" && kind !== "adjustment") return bad("kind");
       const amount = typeof a.amount === "number" && Number.isFinite(a.amount) ? Math.round(a.amount * 100) / 100 : Number.NaN;
       if (Number.isNaN(amount) || amount === 0 || Math.abs(amount) > 100000 || (kind !== "adjustment" && amount < 0)) return bad("amount");
       if (!isDay(a.effectiveOn)) return bad("effectiveOn");

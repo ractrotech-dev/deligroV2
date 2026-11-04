@@ -4,6 +4,9 @@ import { useActionState, useState } from "react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Field, Section, Toggle, fieldCls, labelCls } from "@/components/ui/field";
+import { MapPicker } from "@/components/location/map-picker";
+import { ShopPhotoUpload } from "@/components/admin/shop-photo-upload";
+import { isMapsConfigured } from "@/lib/maps/config";
 import {
   CYCLE_LABEL,
   CYCLE_NOTE,
@@ -33,21 +36,24 @@ function codLimitNote(acceptCod: boolean, codLimit: number): string {
   if (codLimit > 0) {
     return `Customers will see: “Orders above ₹${codLimit.toLocaleString("en-IN")} must be paid online.”`;
   }
-  return "No limit — any order can be paid in cash.";
+  return "Uses the platform cash limit, if one is set.";
 }
 
 /**
  * Edit a vendor's business fields. Uncontrolled inputs with defaultValue —
- * the server action reads FormData and re-validates. Status, slug and the login
- * account are managed elsewhere (row actions / wizard), not here.
+ * the server action reads FormData and re-validates. Status and slug are managed
+ * elsewhere (row actions / wizard), and the login is on the shop's Access tab.
  */
 export function VendorForm({
   vendor,
   categories,
   platformCommissionPct = 0,
+  areas,
 }: Readonly<{
   vendor: VendorDetail;
   categories: string[];
+  /** Delivery zones a shop can be placed in. Empty on a database without zones. */
+  areas: { id: string; label: string }[];
   /** Shown as the placeholder when this vendor has no override of its own. */
   platformCommissionPct?: number;
 }>) {
@@ -70,15 +76,26 @@ export function VendorForm({
   const [codLimit, setCodLimit] = useState(vendor.codMaxOrder);
   const [cycle, setCycle] = useState<SettlementCycle>(vendor.settlementCycle);
 
+  // The pin and photo are set by widgets, so they are state with a form field each.
+  const [imageUrl, setImageUrl] = useState<string | null>(vendor.imageUrl);
+  const [lat, setLat] = useState(vendor.lat === null ? "" : String(vendor.lat));
+  const [lng, setLng] = useState(vendor.lng === null ? "" : String(vendor.lng));
+  const [address, setAddress] = useState(vendor.address ?? "");
+  const initialPin = vendor.lat !== null && vendor.lng !== null ? { lat: vendor.lat, lng: vendor.lng } : null;
+
   return (
     <form action={formAction} className="space-y-4 pb-24">
       {state.error ? (
-        <p className="rounded-xl border border-deal/30 bg-deal/10 px-3.5 py-3 text-sm font-medium text-deal">
+        <p className="rounded-[var(--c-r)] border border-deal/30 bg-deal/10 px-3.5 py-3 text-sm font-medium text-deal">
           {state.error}
         </p>
       ) : null}
 
       <Section title="Basic information">
+        <div id="photo" className="scroll-mt-24">
+          <ShopPhotoUpload value={imageUrl} onChange={setImageUrl} />
+          <input type="hidden" name="imageUrl" value={imageUrl ?? ""} />
+        </div>
         <Field label="Shop name" required>
           <input name="name" defaultValue={vendor.name} className={fieldCls} required />
         </Field>
@@ -110,7 +127,7 @@ export function VendorForm({
           <input name="ownerName" defaultValue={vendor.ownerName ?? ""} className={fieldCls} />
         </Field>
         <div className="grid grid-cols-2 gap-3">
-          <Field label="Mobile">
+          <Field label="Contact mobile">
             <input
               name="ownerMobile"
               defaultValue={vendor.ownerMobile ?? ""}
@@ -128,9 +145,9 @@ export function VendorForm({
           </Field>
         </div>
         <Field
-          label="Email"
+          label="Contact email"
           required
-          hint="The vendor's login is issued against this address. They sign in with their mobile number and password, but without an email there is no account to hold one."
+          hint="For reaching the owner. Changing these does not change how they sign in. That is on the shop's Access tab."
         >
           <input
             name="ownerEmail"
@@ -167,7 +184,7 @@ export function VendorForm({
             {DAYS.map((d) => (
               <label
                 key={d}
-                className="flex items-center gap-2 rounded-xl bg-surface-2 px-3 py-2.5 text-sm font-medium"
+                className="flex items-center gap-2 rounded-[var(--c-r)] bg-surface-2 px-3 py-2.5 text-sm font-medium"
               >
                 <input
                   type="checkbox"
@@ -223,8 +240,28 @@ export function VendorForm({
       </Section>
 
       <Section title="Location">
+        {areas.length > 0 ? (
+          <Field
+            label="Area"
+            hint="New orders go to this area's managers. Orders already placed stay with the old area."
+          >
+            <select name="zoneId" defaultValue={vendor.zoneId ?? ""} className={fieldCls}>
+              {vendor.zoneId ? null : <option value="">Choose an area</option>}
+              {areas.map((a) => (
+                <option key={a.id} value={a.id}>
+                  {a.label}
+                </option>
+              ))}
+            </select>
+          </Field>
+        ) : null}
         <Field label="Address">
-          <input name="address" defaultValue={vendor.address ?? ""} className={fieldCls} />
+          <input
+            name="address"
+            value={address}
+            onChange={(e) => setAddress(e.target.value)}
+            className={fieldCls}
+          />
         </Field>
         <div className="grid grid-cols-2 gap-3">
           <Field label="Landmark">
@@ -239,10 +276,52 @@ export function VendorForm({
             />
           </Field>
         </div>
-        <p className="text-xs text-muted">
-          The map pin (lat/lng) is set from the registration wizard&apos;s location
-          step.
-        </p>
+        {/* A shop with no pin cannot go live or take orders. */}
+        <div id="pin" className="scroll-mt-24 space-y-3">
+          <span className={labelCls}>Map pin</span>
+          {isMapsConfigured ? (
+            // The map's search box is not a form field: Enter picks a place there,
+            // and must not submit the whole form.
+            <div
+              onKeyDown={(e) => {
+                if (e.key === "Enter") e.preventDefault();
+              }}
+            >
+              <MapPicker
+                initial={initialPin}
+                onPick={(loc) => {
+                  setLat(String(loc.lat));
+                  setLng(String(loc.lng));
+                  if (loc.address) setAddress((a) => a || loc.address);
+                }}
+              />
+            </div>
+          ) : (
+            <p className="text-xs text-muted">The map isn&apos;t set up here. Type the numbers below.</p>
+          )}
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Latitude" hint={initialPin ? undefined : "This shop has no pin yet."}>
+              <input
+                name="lat"
+                value={lat}
+                onChange={(e) => setLat(e.target.value)}
+                inputMode="decimal"
+                placeholder="21.71"
+                className={fieldCls}
+              />
+            </Field>
+            <Field label="Longitude">
+              <input
+                name="lng"
+                value={lng}
+                onChange={(e) => setLng(e.target.value)}
+                inputMode="decimal"
+                placeholder="81.53"
+                className={fieldCls}
+              />
+            </Field>
+          </div>
+        </div>
       </Section>
 
       <Section
@@ -263,7 +342,7 @@ export function VendorForm({
         />
 
         {!acceptCod && !acceptOnline ? (
-          <p className="rounded-xl border border-deal/30 bg-deal/10 px-3.5 py-2.5 text-[13px] font-medium text-deal">
+          <p className="rounded-[var(--c-r)] border border-deal/30 bg-deal/10 px-3.5 py-2.5 text-[13px] font-medium text-deal">
             Turn on at least one payment method. With both off this shop cannot
             take any order.
           </p>
@@ -271,7 +350,7 @@ export function VendorForm({
 
         <Field
           label="Cash limit per order (₹)"
-          hint="Above this amount the customer must pay online. Leave 0 for no limit."
+          hint="Above this amount the customer must pay online. 0 uses the platform limit. If both are set, the stricter applies."
         >
           <input
             type="number"
@@ -327,7 +406,7 @@ export function VendorForm({
           />
         </Field>
 
-        <p className="rounded-xl bg-surface-2 px-3.5 py-3 text-[12.5px] leading-relaxed text-muted">
+        <p className="rounded-[var(--c-r)] bg-surface-2 px-3.5 py-3 text-[12.5px] leading-relaxed text-muted">
           What this shop is paid for each order:
           <br />
           <span className="text-ink">

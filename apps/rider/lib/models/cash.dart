@@ -134,6 +134,7 @@ class CashCollection {
     required this.amount,
     required this.online,
     required this.status,
+    this.paidWithPoints = false,
   });
 
   final String orderId;
@@ -144,7 +145,10 @@ class CashCollection {
   final int amount;
   final bool online;
 
-  /// `collected`, `not_recorded` or `paid_online`.
+  /// Wallet points covered the order: no cash was collected.
+  final bool paidWithPoints;
+
+  /// `collected`, `not_recorded`, `paid_online` or `paid_points`.
   final String status;
 
   bool get notRecorded => status == 'not_recorded';
@@ -157,6 +161,8 @@ class CashCollection {
         DateTime.fromMillisecondsSinceEpoch(0),
     amount: _int(j['amount']),
     online: j['method'] == 'online' || j['status'] == 'paid_online',
+    // Wallet points covered it: no cash, and not paid online either.
+    paidWithPoints: j['status'] == 'paid_points',
     status: '${j['status']}',
   );
 }
@@ -177,7 +183,7 @@ class CollectionsPage {
 }
 
 enum DepositStatus {
-  submitted('Waiting for a manager'),
+  submitted('Waiting to be confirmed'),
   confirmed('Confirmed'),
   disputed('Disputed'),
   withdrawn('Withdrawn'),
@@ -204,6 +210,7 @@ class CashDeposit {
     required this.status,
     required this.createdAt,
     this.managerName,
+    this.decidedByName,
     this.reference,
     this.note,
     this.hasReceipt = false,
@@ -216,6 +223,9 @@ class CashDeposit {
   final DepositStatus status;
   final DateTime createdAt;
   final String? managerName;
+
+  /// Who confirmed or disputed it. Null while it waits, and from an older server.
+  final String? decidedByName;
   final String? reference;
   final String? note;
   final bool hasReceipt;
@@ -234,6 +244,7 @@ class CashDeposit {
         DateTime.tryParse('${j['createdAt']}') ??
         DateTime.fromMillisecondsSinceEpoch(0),
     managerName: _str(j['managerName']),
+    decidedByName: _str(j['decidedByName']),
     reference: _str(j['reference']),
     note: _str(j['note']),
     hasReceipt: j['hasReceipt'] == true,

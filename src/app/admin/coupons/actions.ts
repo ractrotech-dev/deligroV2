@@ -6,6 +6,8 @@ import { requireRole } from "@/lib/auth";
 import { adminSaveOffer, adminSetOfferActive, OfferWriteError } from "@/lib/data-access/admin-offers";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { formString } from "@/lib/utils/form-data";
+import { istInputToIso } from "@/lib/utils/ist-time";
+import { auditedChange } from "@/lib/data-access/ops-audit";
 import {
   deletePromotion,
 } from "@/lib/data-access/promotions";
@@ -34,12 +36,6 @@ function toInt(raw: FormDataEntryValue | null, fallback: number): number {
   return Number.isFinite(n) ? Math.trunc(n) : fallback;
 }
 
-function toIso(raw: FormDataEntryValue | null): string | null {
-  if (typeof raw !== "string" || !raw.trim()) return null;
-  const d = new Date(raw);
-  return Number.isNaN(d.getTime()) ? null : d.toISOString();
-}
-
 function parse(form: FormData): PromotionDraft {
   const kind = (form.get("kind") as PromotionKind) ?? "percent";
   const restaurantId = formString(form, "restaurantId").trim() || null;
@@ -54,7 +50,7 @@ function parse(form: FormData): PromotionDraft {
     // from riding along when someone switches a percentage code to flat.
     maxDiscount: kind === "percent" ? toOptionalInt(form.get("maxDiscount")) : null,
     active: form.get("active") === "on",
-    expiresAt: toIso(form.get("expiresAt")),
+    expiresAt: istInputToIso(form.get("expiresAt")),
     maxPerCustomer: toOptionalInt(form.get("maxPerCustomer")),
     maxRedemptions: toOptionalInt(form.get("maxRedemptions")),
     restaurantId,
@@ -131,5 +127,13 @@ export async function setCouponActiveAction(code: string, active: boolean) {
 }
 
 export async function deleteCouponAction(code: string) {
-  return mutate(() => deletePromotion(code));
+  const admin = await requireRole("admin");
+  // The coupon_changes trigger keeps the row's history, but it never reached the
+  // audit log the owner reads, so the delete is logged here too.
+  return mutate(() =>
+    auditedChange(
+      { action: "offer.delete", actorId: admin.id, entityType: "offer", entityId: code.trim().toUpperCase(), reason: "Deleted in the admin console" },
+      () => deletePromotion(code)
+    )
+  );
 }

@@ -1,6 +1,7 @@
 import '../core/api.dart';
 import '../models/finance.dart';
 import '../models/outcome.dart';
+import '../models/payment_request.dart';
 import '../models/settlement.dart';
 
 /// Finance (§7) — `/api/manager/finance/*`, one method per endpoint.
@@ -18,12 +19,10 @@ abstract interface class FinanceRepository {
   /// the same `clientActionId`).
   Future<Outcome<SettlementInitiated>> initiateSettlement(SettlementInitiation d);
 
-  Future<RefundPage> refunds(FinanceQuery q, {RefundStatus? status, String? cursor});
-
-  /// 409 `already_decided` → [Refused]; 502 `effect_failed` (decision saved,
-  /// finishing it failed) and other faults throw so the same decision is
-  /// retried.
-  Future<Outcome<RefundItem>> decideRefund(String id, RefundDecision d);
+  /// Asks for a paid settlement to be reversed. Nothing changes until a different
+  /// person approves it. 409 `not_paid` / `duplicate_pending`, 400, 403, 404 →
+  /// [Refused]; faults throw (Retry re-sends the same `clientActionId`).
+  Future<Outcome<PaymentRequest>> requestSettlementReversal(String id, SettlementReversal r);
 
   Future<Reconciliation> reconciliation(FinanceQuery q, ReconSection section, {String? state, String? cursor});
 }
@@ -71,17 +70,9 @@ class ApiFinanceRepository implements FinanceRepository {
       runAction(() => _api.post('$_base/settlements', d.toJson()), SettlementInitiated.fromJson);
 
   @override
-  Future<RefundPage> refunds(FinanceQuery q, {RefundStatus? status, String? cursor}) async =>
-      RefundPage.fromJson(await _api.get('$_base/refunds', query: {
-        ...q.toQuery(),
-        if (status != null && status != RefundStatus.unknown) 'status': status.wire,
-        'cursor': ?cursor,
-      }));
-
-  @override
-  Future<Outcome<RefundItem>> decideRefund(String id, RefundDecision d) => runAction(
-        () => _api.post('$_base/refunds/${Uri.encodeComponent(id)}/decide', d.toJson()),
-        (res) => res['refund'] is Map ? RefundItem.fromJson((res['refund'] as Map).cast<String, dynamic>()) : null,
+  Future<Outcome<PaymentRequest>> requestSettlementReversal(String id, SettlementReversal r) => runAction(
+        () => _api.post('$_base/settlements/${Uri.encodeComponent(id)}/reverse', r.toJson()),
+        (res) => res['request'] is Map ? PaymentRequest.fromJson((res['request'] as Map).cast<String, dynamic>()) : null,
       );
 
   @override

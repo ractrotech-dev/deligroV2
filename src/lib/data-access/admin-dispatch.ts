@@ -1,6 +1,5 @@
 import "server-only";
-import { createAdminClient } from "@/lib/supabase/admin";
-import { listAllOrders } from "@/lib/data-access/admin-orders";
+import { listAllOrders, ridersByOrder, unassignedOrderIds } from "@/lib/data-access/admin-orders";
 import { UNASSIGNED_AFTER_MIN } from "@/lib/dispatch/thresholds";
 import type { AdminOrderRow } from "@/lib/roles-data";
 
@@ -68,18 +67,14 @@ export async function getLiveBoard(limit = 8): Promise<LiveBoard> {
   if (!live.length) return EMPTY;
 
   const ids = live.map((o) => o.id).filter((id): id is string => Boolean(id));
-  const riders = await ridersByOrder(ids);
+  const [riders, unassignedIds] = await Promise.all([
+    ridersByOrder(ids),
+    // The same list "Orders with no rider" opens. Its failure costs this card.
+    unassignedOrderIds().catch(() => [] as string[]),
+  ]);
 
   const atRisk = live.filter((o) => (o.lateByMinutes ?? 0) > 0).length;
-
-  // "No rider yet" is only a problem once the order has had time to be picked
-  // up; every order is unassigned for its first few seconds.
-  const cutoff = Date.now() - UNASSIGNED_AFTER_MIN * 60_000;
-  const unassigned = live.filter((o) => {
-    if (!o.id || riders.get(o.id)) return false;
-    const placed = placedMs(o);
-    return placed === null ? false : placed < cutoff;
-  }).length;
+  const unassigned = unassignedIds.length;
 
   return {
     rows: live.slice(0, limit).map((o) => ({
@@ -90,69 +85,4 @@ export async function getLiveBoard(limit = 8): Promise<LiveBoard> {
     atRisk,
     unassigned,
   };
-}
-
-/**
- * order id → rider name, for the orders given. Two queries rather than an
- * embed: `deliveries.driver_id` points at `profiles`, and the rest of this
- * codebase resolves that pair by hand (see getOrderDelivery) because the
- * relationship has no name PostgREST can be relied on to expose.
- *
- * A failure here costs the rider column, not the board.
- */
-async function ridersByOrder(ids: string[]): Promise<Map<string, string>> {
-  const out = new Map<string, string>();
-  if (!ids.length) return out;
-
-  try {
-    const supabase = createAdminClient();
-
-    const { data: deliveries, error } = await supabase
-      .from("deliveries")
-      .select("order_id, driver_id")
-      .in("order_id", ids);
-    if (error || !deliveries?.length) return out;
-
-    const rows = deliveries as { order_id: string; driver_id: string | null }[];
-    const driverIds = [
-      ...new Set(rows.map((r) => r.driver_id).filter((d): d is string => Boolean(d))),
-    ];
-    if (!driverIds.length) return out;
-
-    const { data: profiles } = await supabase
-      .from("profiles")
-      .select("id, full_name")
-      .in("id", driverIds);
-
-    const nameById = new Map(
-      ((profiles ?? []) as { id: string; full_name: string | null }[]).map((p) => [
-        p.id,
-        p.full_name?.trim() || "Rider",
-      ])
-    );
-
-    for (const r of rows) {
-      const name = r.driver_id ? nameById.get(r.driver_id) : undefined;
-      if (name) out.set(r.order_id, name);
-    }
-  } catch {
-    // Fall through with whatever was resolved.
-  }
-
-  return out;
-}
-
-/**
- * When the order was placed, in ms.
- *
- * Reads `placedAtIso`, never `placedAt` — the latter is a localised display
- * string ("24 Jul, 8:24 PM") and parsing it back is guesswork. An order whose
- * age cannot be established is excluded from the unassigned count rather than
- * assumed to be old: over-reporting a dispatch failure sends an operator
- * chasing an order that is fine.
- */
-function placedMs(order: AdminOrderRow): number | null {
-  if (!order.placedAtIso) return null;
-  const parsed = Date.parse(order.placedAtIso);
-  return Number.isNaN(parsed) ? null : parsed;
 }

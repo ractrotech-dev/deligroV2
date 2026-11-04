@@ -1,9 +1,8 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
-import { Panel, RangeTabs } from "@/components/admin/admin-ui";
+import { RangeTabs } from "@/components/admin/admin-ui";
 import {
   MetricRow,
-  ShareBar,
   type Delta,
   type MetricItem,
   type ShareSegment,
@@ -21,8 +20,6 @@ import {
 } from "@/lib/data-access/admin-vendors";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { formatINR, formatRating, formatCount } from "@/lib/utils/format";
-import { VendorCredentials } from "./edit/vendor-credentials";
-import { VendorDeletePanel } from "./vendor-delete-panel";
 import { VendorPerformance } from "./vendor-performance";
 import { Card, Row, fmtDate, rupees } from "./vendor-fields";
 
@@ -100,8 +97,7 @@ function OwnerCard({ vendor }: Readonly<{ vendor: VendorDetail }>) {
 
 /**
  * Web console overview for one shop: KPIs, sales report, then the facts
- * that used to be the whole page. Password and delete live in Access — they
- * are shop-level, not header chrome.
+ * that used to be the whole page. Password and delete live on the Access tab.
  */
 export async function VendorOverview({
   vendor,
@@ -175,30 +171,27 @@ export async function VendorOverview({
   }));
 
   const gaps = storefrontGaps(vendor);
+  // To the thing that fixes the worst gap: no pin stops orders, no photo does not.
+  const fixAnchor = gaps.includes("map pin") ? "#pin" : gaps.includes("photo") ? "#photo" : "";
 
   return (
     <div className="space-y-4">
       {gaps.length > 0 ? (
-        <div className="flex flex-wrap items-center gap-2 rounded-xl border border-deal/25 bg-deal/5 px-4 py-3 text-sm">
+        <div className="flex flex-wrap items-center gap-2 rounded-[var(--c-r)] border border-deal/25 bg-deal/5 px-4 py-3 text-sm">
           <span className="font-semibold text-deal">
             Storefront {storefrontScore(vendor)}% complete.
           </span>
           <span className="text-muted">Still missing {gaps.join(", ")}.</span>
           <Link
-            href={`/admin/vendors/${vendor.id}/edit`}
-            className="press ml-auto text-xs font-semibold text-accent-ink"
+            href={`/admin/vendors/${vendor.id}/edit${fixAnchor}`}
+            className="ml-auto text-xs font-semibold text-accent-ink"
           >
-            Fix on edit
+            Fix now
           </Link>
         </div>
       ) : null}
 
-      <div className="flex justify-end @3xl:hidden">{rangeTabs}</div>
       <MetricRow items={kpis} />
-
-      <Panel title="Order mix" subtitle={`${days} days`} className="@3xl:hidden">
-        <ShareBar segments={segments} />
-      </Panel>
 
       <VendorPerformance
         days={days}
@@ -208,7 +201,7 @@ export async function VendorOverview({
         rangeTabs={rangeTabs}
       />
 
-      <div className="grid gap-3 @3xl:grid-cols-3">
+      <div className="grid gap-3 grid-cols-3">
         <OwnerCard vendor={vendor} />
         <Card title="Shop">
           <Row label="Category" value={vendor.category} />
@@ -237,26 +230,6 @@ export async function VendorOverview({
           />
         </Card>
       </div>
-
-      <section id="access" className="space-y-3">
-        <div>
-          <h2 className="text-sm font-bold">Access</h2>
-          <p className="mt-0.5 text-xs text-muted">
-            The owner&apos;s login, and removing the shop from the platform.
-          </p>
-        </div>
-        <div className="grid gap-3 @3xl:grid-cols-2">
-          <VendorCredentials
-            id={vendor.id}
-            loginEmail={vendor.ownerEmail}
-            loginPassword={vendor.loginPassword}
-            passwordResetAt={vendor.passwordResetAt}
-            ownerMobile={vendor.ownerMobile}
-            ownerPhoneVerified={vendor.ownerPhoneVerified}
-          />
-          <VendorDeletePanel id={vendor.id} name={vendor.name} />
-        </div>
-      </section>
     </div>
   );
 }

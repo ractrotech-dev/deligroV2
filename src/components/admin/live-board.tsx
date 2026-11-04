@@ -74,7 +74,7 @@ export function LiveBoard({ rows }: Readonly<{ rows: LiveBoardRow[] }>) {
                   {o.id ? (
                     <Link
                       href={`/admin/orders/${o.id}`}
-                      className="text-data press text-[11.5px] text-ink hover:text-accent-ink"
+                      className="text-data text-[11.5px] text-ink hover:text-accent-ink"
                     >
                       {o.code}
                     </Link>

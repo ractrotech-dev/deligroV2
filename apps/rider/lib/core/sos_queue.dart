@@ -141,7 +141,9 @@ enum SosPhase {
   /// The server confirmed (a 2xx). The only phase that may say ops were alerted.
   sent,
 
-  /// The server refused it for good (a bad request); never retried.
+  /// The server refused it for good (a bad request, or a 403): it did NOT reach
+  /// anyone and is not retried. The screens say so plainly, with the emergency
+  /// number, until the rider has seen it ([SosQueue.acknowledge]).
   refused,
 
   /// An alert from over an hour ago, kept but not sent: the rider decides.
@@ -176,7 +178,10 @@ class SosStatus {
 ///    with the rider's position as it is then (a position more than two
 ///    minutes old is never sent as current);
 ///  * 401: stop retrying until the same user signs in again ([userChanged]);
-///  * a refusal (400): drop it and report [SosPhase.refused];
+///  * a refusal (400, 403): drop it and report [SosPhase.refused]. The server
+///    takes an alert from a suspended or rejected rider, so a 403 means it can
+///    never go (not a rider, or an old server): trying again for an hour would
+///    only hide that from someone who needs help;
 ///  * every alert belongs to the user who pressed it: it is only sent while
 ///    they are signed in, and [userChanged] drops it on sign-out or when
 ///    another user signs in;
@@ -327,7 +332,7 @@ class SosQueue {
         await _store();
         _set(SosStatus(SosPhase.sent, ack: ack));
       } on ApiException catch (e) {
-        if (e.status == 400) {
+        if (e.status == 400 || e.status == 403) {
           _items.removeWhere((q) => q.id == item.id);
           await _store();
           _set(const SosStatus(SosPhase.refused));
@@ -419,9 +424,16 @@ class SosQueue {
     if (!_changes.isClosed) _changes.add(s);
   }
 
-  /// Forgets a finished result (sent or refused) so the sheet starts clean.
+  /// Forgets a confirmed alert so the sheet starts clean. An alert that did not
+  /// go stays on show: opening the sheet must not hide that nobody was told.
   void reset() {
-    if (_status.pending || _status.phase == SosPhase.stale) return;
+    if (_status.phase != SosPhase.sent) return;
+    _set(SosStatus.idle);
+  }
+
+  /// The rider has seen that the alert did not go.
+  void acknowledge() {
+    if (_status.phase != SosPhase.refused) return;
     _set(SosStatus.idle);
   }
 

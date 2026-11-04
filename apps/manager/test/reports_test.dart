@@ -6,6 +6,7 @@ import 'package:deligro_manager/features/reports/report_view.dart';
 import 'package:deligro_manager/features/reports/reports_screen.dart';
 import 'package:deligro_manager/features/stats/stats_export.dart' show ReportFormat;
 import 'package:deligro_manager/models/report.dart';
+import 'package:deligro_manager/models/rider.dart' show RiderPage;
 import 'package:excel/excel.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -88,6 +89,42 @@ void main() {
     expect(find.byKey(const Key('filter-payment')), findsOneWidget);
     expect(find.byKey(const Key('filter-rider')), findsNothing);
     expect(find.byKey(const Key('filter-status')), findsNothing);
+  });
+
+  testWidgets('the order report offers its statuses in the server\'s words, and sends the value', (t) async {
+    final fakes = FinanceFakes();
+    await pumpFinance(t, const ReportViewScreen(kind: 'orders'), fakes: fakes);
+    await t.pumpAndSettle();
+    await t.tap(find.byKey(const Key('report-filters')));
+    await t.pumpAndSettle();
+    expect(find.text('Preparing'), findsOneWidget);
+    await t.ensureVisible(find.byKey(const Key('filter-status-kitchen')));
+    await t.tap(find.byKey(const Key('filter-status-kitchen')));
+    await t.pumpAndSettle();
+    await t.tap(find.byKey(const Key('filters-apply')));
+    await t.pumpAndSettle();
+    expect(find.text('Status: Preparing'), findsOneWidget);
+  });
+
+  testWidgets('the rider picker lists every page, not just the first 50', (t) async {
+    final fakes = FinanceFakes();
+    RiderPage pageOf(int n, String? next) => RiderPage.fromJson({
+          'items': [
+            {'id': 'r-$n', 'name': 'Rider $n', 'riderCode': 'R$n'},
+          ],
+          'nextCursor': next,
+        });
+    fakes.riders.pages[null] = pageOf(1, 'c2');
+    fakes.riders.pages['c2'] = pageOf(2, 'c3');
+    fakes.riders.pages['c3'] = pageOf(3, null);
+    await pumpFinance(t, const ReportViewScreen(kind: 'orders'), fakes: fakes);
+    await t.pumpAndSettle();
+    await t.tap(find.byKey(const Key('report-filters')));
+    await t.pumpAndSettle();
+    expect(fakes.riders.listCalls.map((c) => c.cursor), [null, 'c2', 'c3']);
+    await t.tap(find.byKey(const Key('filter-rider')));
+    await t.pumpAndSettle();
+    expect(find.text('Rider 3 · R3'), findsWidgets);
   });
 
   test('filters sheet keys follow the kind', () {

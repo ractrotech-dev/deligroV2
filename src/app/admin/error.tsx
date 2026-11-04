@@ -53,8 +53,8 @@ export default function AdminError({
   }, [error]);
 
   return (
-    <div className="flex flex-col items-center gap-2 rounded-xl border border-line bg-surface px-4 py-10 text-center">
-      <span className="mb-1 grid size-12 place-items-center rounded-2xl bg-deal-soft text-deal">
+    <div className="flex flex-col items-center gap-2 rounded-[var(--c-r)] border border-line bg-surface px-4 py-10 text-center">
+      <span className="mb-1 grid size-12 place-items-center rounded-[var(--c-r)] bg-deal-soft text-deal">
         <TriangleAlert className="size-6" />
       </span>
       <p className="font-semibold">This screen failed to load</p>

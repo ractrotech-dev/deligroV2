@@ -3,37 +3,39 @@ import Link from "next/link";
 import {
   Empty,
   PageHeader,
-  Panel,
   Section,
+  SectionCol,
+  SectionRow,
   Tabs,
 } from "@/components/admin/console";
-import { PayoutTotals } from "@/components/admin/payout-breakdown";
+import { TableFooter } from "@/components/admin/data-table";
+import { PayFigure, PayToList } from "@/components/admin/payout-breakdown";
+import { pageCountOf, toPage } from "@/lib/utils/paging";
 import {
   listOrderPayouts,
   listSettlementVendors,
+  previewAllUnpaid,
 } from "@/lib/data-access/admin-settlements";
 import {
   CYCLE_LABEL,
-  currentPeriod,
   formatDayKey,
   nextPayoutDay,
 } from "@/lib/settlements/cycle";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { formatINR } from "@/lib/utils/format";
-import { OrderPayoutRowCard } from "./order-payout-row";
+import { OrderPayoutsTable } from "./order-payout-row";
+import { PayAllButton } from "./pay-all-button";
 import { OrderPayoutFilters } from "./payout-filters";
 
 /**
- * Admin → Settlements → Order payouts.
+ * Admin → Settlements → one shop.
  *
- * One shop's delivered orders, each with what it is worth and a Paid / Unpaid
- * dropdown. This is the "pay me now" screen: a shop with a single order that
- * does not want to wait for its cycle gets paid from here, and the order drops
- * out of the next batch by itself.
+ * The screen answers one question: how much do I send this shop? That amount
+ * comes first, worked out already, with where to send it and one button beside it.
+ * The orders behind it follow in a table, each row reading as its own sum.
  *
  * Paid is not a column on the order — it is membership of a settlement. That is
- * why this screen and the batch builder can never disagree about which orders
- * are still owed: they are reading the same fact.
+ * why this screen and the shop list can never disagree about what is owed.
  */
 export const dynamic = "force-dynamic";
 
@@ -43,28 +45,26 @@ function one(v: string | string[] | undefined): string | undefined {
   return Array.isArray(v) ? v[0] : v;
 }
 
-/**
- * The chosen shop's payout page, or the reason it could not be read. Neither
- * when no shop is picked yet. Called only after the page's `requireRole("admin")`.
- */
-async function loadPayouts(
-  restaurantId: string,
-  filters: { fromDate: string; toDate: string; state?: "paid" | "unpaid" }
-) {
-  const result = restaurantId
-    ? await listOrderPayouts(restaurantId, {
-        fromDate: filters.fromDate || undefined,
-        toDate: filters.toDate || undefined,
-        state: filters.state,
-      }).catch(() => ({
-        error:
-          "Could not load orders. Apply migrations 0028 and 0034 if you have not yet.",
-      }))
-    : null;
+const LOAD_ERROR = "Could not load this shop's orders. Refresh to try again.";
 
-  const error = result && "error" in result ? result.error : null;
-  const page = result && !("error" in result) ? result : null;
-  return { error, page };
+/** Called only after the page's `requireRole("admin")`. */
+async function loadShop(
+  restaurantId: string,
+  filters: { fromDate: string; toDate: string; state?: "paid" | "unpaid"; page: number }
+) {
+  if (!restaurantId) return { error: null, page: null, owed: null };
+  const [listed, owed] = await Promise.all([
+    listOrderPayouts(restaurantId, {
+      fromDate: filters.fromDate || undefined,
+      toDate: filters.toDate || undefined,
+      state: filters.state,
+      page: filters.page,
+    }).catch(() => ({ error: LOAD_ERROR })),
+    previewAllUnpaid(restaurantId).catch(() => ({ error: LOAD_ERROR })),
+  ]);
+  if ("error" in listed) return { error: listed.error, page: null, owed: null };
+  if ("error" in owed) return { error: owed.error, page: null, owed: null };
+  return { error: null, page: listed, owed };
 }
 
 export default async function OrderPayoutsPage({
@@ -80,8 +80,8 @@ export default async function OrderPayoutsPage({
     return (
       <PageHeader
         back={{ href: "/admin/settlements", label: "Settlements" }}
-        title="Order payouts"
-        description="Connect Supabase to pay orders."
+        title="Pay a shop"
+        description="Connect Supabase to pay shops."
       />
     );
   }
@@ -93,14 +93,16 @@ export default async function OrderPayoutsPage({
     stateParam === "paid" || stateParam === "unpaid" ? stateParam : undefined;
   const fromDate = one(sp.from) ?? "";
   const toDate = one(sp.to) ?? "";
+  const pageParam = toPage(one(sp.page));
 
   const vendors = await listSettlementVendors().catch(() => []);
   const vendor = vendors.find((v) => v.id === restaurantId);
 
-  const { error, page } = await loadPayouts(restaurantId, {
+  const { error, page, owed } = await loadShop(restaurantId, {
     fromDate,
     toDate,
     state,
+    page: pageParam,
   });
 
   const href = (next: Record<string, string | undefined>) => {
@@ -118,24 +120,20 @@ export default async function OrderPayoutsPage({
   };
 
   const cycle = vendor?.settlementCycle;
-  const period = cycle ? currentPeriod(cycle) : null;
+
+  let note: string | undefined;
+  if (owed) {
+    const orders = `For ${owed.lines.length} order${owed.lines.length === 1 ? "" : "s"}.`;
+    note = cycle
+      ? `${orders} Paid ${CYCLE_LABEL[cycle].toLowerCase()}. Next payment day is ${formatDayKey(nextPayoutDay(cycle))}.`
+      : orders;
+  }
 
   return (
     <>
       <PageHeader
         back={{ href: "/admin/settlements", label: "Settlements" }}
-        title="Order payouts"
-        description="Pay a single order early, or check what is still owed. Money moves by bank or UPI outside the app — marking an order paid records that you sent it and takes it out of the next settlement."
-        actions={
-          restaurantId ? (
-            <Link
-              href={`/admin/settlements/new?restaurantId=${restaurantId}`}
-              className="c-btn c-btn-dark press"
-            >
-              Pay the whole period
-            </Link>
-          ) : null
-        }
+        title="Pay a shop"
       />
 
       <OrderPayoutFilters
@@ -145,65 +143,76 @@ export default async function OrderPayoutsPage({
         toDate={toDate}
       />
 
-      {error ? (
-        <p className="rounded-[var(--c-r)] border border-deal/30 bg-deal-soft px-3.5 py-2.5 text-[12.5px] text-deal">
-          {error}
-        </p>
-      ) : null}
+      {error ? <p className="text-[13px] font-medium text-deal">{error}</p> : null}
 
-      {!restaurantId ? (
-        <Empty>
-          Pick a shop above to see every delivered order, what it is worth, and
-          whether it has been paid.
-        </Empty>
-      ) : null}
+      {!restaurantId ? <Empty>Choose a shop to see how much to send.</Empty> : null}
 
-      {page && vendor && cycle && period ? (
-        <p className="rounded-[var(--c-r)] border border-line bg-surface-2 px-3.5 py-2.5 text-[12px] leading-relaxed text-muted">
-          <span className="font-medium text-ink">{page.restaurantName}</span> is
-          paid {CYCLE_LABEL[cycle].toLowerCase()}. The period running now is{" "}
-          {formatDayKey(period.from)} – {formatDayKey(period.to)}, so the next
-          full payout can be built on{" "}
-          <span className="font-medium text-ink">
-            {formatDayKey(nextPayoutDay(cycle))}
-          </span>. Anything marked Paid here is left out of it.
-        </p>
-      ) : null}
-
-      {page ? (
+      {page && owed ? (
         <>
-          <Panel
-            title={`Still to pay ${page.restaurantName}`}
-            meta={`${page.unpaidCount} unpaid order${page.unpaidCount === 1 ? "" : "s"}`}
-            className="admin-measure"
-          >
-            <PayoutTotals
-              totals={page.unpaidTotals}
-              commissionPct={page.terms.commissionPct}
-              commissionGstPct={page.terms.commissionGstPct}
-              orderCount={page.unpaidCount}
-            />
-            {page.terms.otherChargesPerOrder > 0 ? (
-              <p className="mt-2 text-[11px] text-muted">
-                Other charges are{" "}
-                {formatINR(page.terms.otherChargesPerOrder)} per order for this
-                shop.
-              </p>
+          <SectionRow>
+            <SectionCol basis={340}>
+              <PayFigure
+                shop={page.restaurantName}
+                amount={owed.netPayable}
+                note={note}
+              />
+              {owed.netPayable > 0 ? (
+                <div className="mt-4 flex items-center gap-3">
+                  <PayAllButton
+                    restaurantId={page.restaurantId}
+                    amount={owed.netPayable}
+                  />
+                  <Link
+                    href={`/admin/settlements/new?restaurantId=${page.restaurantId}`}
+                    className="text-[12.5px] font-medium text-muted hover:text-ink"
+                  >
+                    Pay only some dates instead
+                  </Link>
+                </div>
+              ) : null}
+              {owed.netPayable < 0 ? (
+                <p className="mt-3 text-[12.5px] text-muted">
+                  This shop&apos;s adjustments and charges came to more than its orders.
+                  It comes off their next payment, so there is nothing to do now.
+                </p>
+              ) : null}
+              {page.openDrafts.map((draft) => (
+                <p key={draft.id} className="mt-3 text-[12.5px] text-muted">
+                  A payment of{" "}
+                  <span className="text-data font-semibold tabular-nums text-ink">
+                    {formatINR(draft.netPayable)}
+                  </span>{" "}
+                  is not finished.{" "}
+                  <Link
+                    href={`/admin/settlements/${draft.id}`}
+                    className="font-semibold text-accent-ink"
+                  >
+                    Open it
+                  </Link>
+                </p>
+              ))}
+            </SectionCol>
+
+            {owed.netPayable > 0 ? (
+              <SectionCol basis={340}>
+                <Section flush title="Send it to">
+                  <PayToList payout={page.payout} />
+                </Section>
+              </SectionCol>
             ) : null}
-          </Panel>
+          </SectionRow>
 
           <Section
-            title="Delivered orders"
-            meta={`${page.rows.length} shown`}
+            title="Orders"
             actions={
               <Tabs
-                label="Payout status"
+                label="Payment status"
                 active={href({ state })}
                 items={[
                   {
                     href: href({ state: undefined }),
                     label: "All",
-                    count: page.rows.length,
+                    count: page.unpaidCount + page.paidCount,
                   },
                   {
                     href: href({ state: "unpaid" }),
@@ -213,33 +222,26 @@ export default async function OrderPayoutsPage({
                   {
                     href: href({ state: "paid" }),
                     label: "Paid",
-                    count: page.rows.filter((r) => r.paid).length,
+                    count: page.paidCount,
                   },
                 ]}
               />
             }
           >
-            {page.rows.length === 0 ? (
-              <Empty
-                action={{
-                  href: href({ state: undefined }),
-                  label: "Clear status filter",
-                }}
-              >
-                No delivered orders match these filters.
-              </Empty>
-            ) : (
-              <ul className="space-y-2">
-                {page.rows.map((row) => (
-                  <OrderPayoutRowCard
-                    key={row.orderId}
-                    row={row}
-                    commissionPct={page.terms.commissionPct}
-                    commissionGstPct={page.terms.commissionGstPct}
-                  />
-                ))}
-              </ul>
-            )}
+            <OrderPayoutsTable
+              rows={page.rows}
+              commissionPct={page.terms.commissionPct}
+              commissionGstPct={page.terms.commissionGstPct}
+              empty={<Empty>No orders here.</Empty>}
+            />
+            {page.shownTotal > page.pageSize ? (
+              <TableFooter
+                page={page.page}
+                totalPages={pageCountOf(page.shownTotal, page.pageSize)}
+                hrefFor={(p) => href({ state, page: p > 1 ? String(p) : undefined })}
+                summary={`${page.shownTotal} orders, newest first`}
+              />
+            ) : null}
           </Section>
         </>
       ) : null}

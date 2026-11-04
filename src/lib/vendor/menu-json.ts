@@ -24,5 +24,12 @@ export function menuItemJson(m: VendorMenuItem) {
     availableTo: m.availableTo,
     variants: m.variants,
     addonGroups: m.addonGroups,
+    // What Deligro has done to the dish (0146): it may be hidden, or a price may
+    // be parked, while the shop's own switch still says on sale.
+    approvalStatus: m.approvalStatus,
+    pendingPrice: m.pendingPrice,
+    hidden: m.hidden,
+    hiddenReason: m.hiddenReason,
+    approvalNote: m.approvalNote,
   };
 }

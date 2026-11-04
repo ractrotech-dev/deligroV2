@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useState, useTransition } from "react";
+import { useActionState, useRef, useState, useTransition } from "react";
 import { Field, fieldCls } from "@/components/ui/field";
 import { Panel } from "@/components/admin/console";
 import { createAnnouncementAction, endAnnouncementAction, type ComposerResult } from "./actions";
@@ -32,18 +32,30 @@ function Outcome({ result }: Readonly<{ result: ComposerResult | null }>) {
  * (owner decision for the rider and Partner apps).
  */
 export function AnnouncementForm() {
-  const [state, action, pending] = useActionState(createAnnouncementAction, null);
   const [audience, setAudience] = useState<string>("rider");
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
   const [startsAt, setStartsAt] = useState("");
   const [push, setPush] = useState(true);
+  const formRef = useRef<HTMLFormElement>(null);
+  // Sent means sent: empty the form, so a second click has nothing to re-send.
+  // A refused one keeps what was typed.
+  const [state, action, pending] = useActionState(async (prev: ComposerResult | null, form: FormData) => {
+    const result = await createAnnouncementAction(prev, form);
+    if (result.ok) {
+      formRef.current?.reset();
+      setTitle("");
+      setBody("");
+      setStartsAt("");
+    }
+    return result;
+  }, null);
   const label = AUDIENCES.find((a) => a.value === audience)?.label ?? audience;
 
   return (
     <div className="grid gap-4 @4xl:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
       <Panel title="New announcement" description="Pinned at the top of their inbox while it runs.">
-        <form action={action} className="space-y-3">
+        <form ref={formRef} action={action} className="space-y-3">
           <Field label="For">
             <select name="audience" value={audience} onChange={(e) => setAudience(e.target.value)} className={fieldCls}>
               {AUDIENCES.map((a) => (
@@ -59,7 +71,7 @@ export function AnnouncementForm() {
           <Field label="Message">
             <textarea name="body" required rows={4} maxLength={2000} value={body} onChange={(e) => setBody(e.target.value)} className={fieldCls} />
           </Field>
-          <div className="grid gap-3 @lg:grid-cols-2">
+          <div className="grid gap-3 grid-cols-2">
             <Field label="Starts (IST)" hint="Blank: now.">
               <input type="datetime-local" name="startsAt" value={startsAt} onChange={(e) => setStartsAt(e.target.value)} className={fieldCls} />
             </Field>
@@ -72,7 +84,7 @@ export function AnnouncementForm() {
             Also send it as a notification now {startsAt ? "(only when it starts now — a scheduled one appears in the inbox at its start)" : ""}
           </label>
           <Outcome result={state} />
-          <button type="submit" disabled={pending} className="c-btn c-btn-dark press">
+          <button type="submit" disabled={pending} className="c-btn c-btn-dark">
             {pending ? "Publishing…" : startsAt ? "Schedule" : "Publish"}
           </button>
         </form>
@@ -108,7 +120,7 @@ export function EndAnnouncementButton({ id, scheduled }: Readonly<{ id: string; 
             setError(r.ok ? null : r.error);
           })
         }
-        className="c-btn-quiet press"
+        className="c-btn-quiet"
       >
         {scheduled ? "Withdraw" : "End now"}
       </button>

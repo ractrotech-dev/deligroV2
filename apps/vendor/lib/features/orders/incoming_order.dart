@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/api.dart';
+import '../../core/feature_gates.dart';
 import '../../core/format.dart';
 import '../../models/order.dart';
 import '../../state/orders.dart';
@@ -235,9 +236,13 @@ class _IncomingOrderDialogState extends ConsumerState<IncomingOrderDialog> {
                         runSpacing: 6,
                         children: [
                           _Chip(
-                            o.isCod ? 'Cash on delivery' : (o.paymentStatus == 'paid' ? 'Paid online' : 'Online'),
-                            fg: o.isCod ? c.accentInk : c.green,
-                            bg: o.isCod ? c.accentSoft : c.greenSoft,
+                            o.paidInFull
+                                ? 'Paid in full'
+                                : o.isCod
+                                    ? 'Cash on delivery'
+                                    : (o.paymentStatus == 'paid' ? 'Paid online' : 'Online'),
+                            fg: o.isCod && !o.paidInFull ? c.accentInk : c.green,
+                            bg: o.isCod && !o.paidInFull ? c.accentSoft : c.greenSoft,
                           ),
                           if (others > 0) _Chip('+$others more waiting', fg: c.ink, bg: c.surface2),
                           if (overdue) _Chip('Waiting over 3 min', fg: c.deal, bg: c.dealSoft),
@@ -277,21 +282,23 @@ class _IncomingOrderDialogState extends ConsumerState<IncomingOrderDialog> {
                         ),
                       ),
                     ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: FilledButton.icon(
-                        style: FilledButton.styleFrom(
-                          backgroundColor: c.dealSoft,
-                          foregroundColor: c.deal,
-                          minimumSize: const Size.fromHeight(52),
-                        ),
-                        onPressed: _busy ? null : () => _reject(o),
-                        icon: const Icon(Icons.close_rounded),
-                        label: const FittedBox(
-                          child: Text('Reject', style: TextStyle(fontWeight: FontWeight.w800)),
+                    if (ref.watch(vendorMeProvider).value?.can(rejectOrdersFeature) ?? false) ...[
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: FilledButton.icon(
+                          style: FilledButton.styleFrom(
+                            backgroundColor: c.dealSoft,
+                            foregroundColor: c.deal,
+                            minimumSize: const Size.fromHeight(52),
+                          ),
+                          onPressed: _busy ? null : () => _reject(o),
+                          icon: const Icon(Icons.close_rounded),
+                          label: const FittedBox(
+                            child: Text('Reject', style: TextStyle(fontWeight: FontWeight.w800)),
+                          ),
                         ),
                       ),
-                    ),
+                    ],
                   ],
                 ),
               ),

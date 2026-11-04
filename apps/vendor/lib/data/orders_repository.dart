@@ -2,7 +2,7 @@ import '../core/api.dart';
 import '../models/order.dart';
 
 /// The vendor's orders. Every status change goes through the website's
-/// routes, which send the pushes, dispatch the rider, queue refunds and stop
+/// routes, which send the pushes, dispatch the rider, alert staff and stop
 /// the ring — the app never writes an order row itself.
 class OrdersRepository {
   OrdersRepository(this._api);

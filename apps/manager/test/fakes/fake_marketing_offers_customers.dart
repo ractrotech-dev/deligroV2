@@ -3,7 +3,6 @@ import 'package:deligro_manager/data/customers_repository.dart';
 import 'package:deligro_manager/data/marketing_repository.dart';
 import 'package:deligro_manager/data/offers_repository.dart';
 import 'package:deligro_manager/models/customers.dart';
-import 'package:deligro_manager/models/finance.dart' show RefundPage;
 import 'package:deligro_manager/models/marketing.dart';
 import 'package:deligro_manager/models/offers.dart';
 import 'package:deligro_manager/models/outcome.dart';
@@ -138,7 +137,6 @@ class FakeCustomersRepository implements CustomersRepository {
   CustomerPage page = CustomerPage.fromJson(p7('customers_list'));
   CustomerDetail detailValue = CustomerDetail.fromJson(p7('customer_detail')['customer'] as Map<String, dynamic>);
   TicketPage complaintPage = TicketPage.fromJson(p7('customer_complaints'));
-  RefundPage refundPage = RefundPage.fromJson(p7('customer_refunds'));
   CustomerFeedback feedbackValue = CustomerFeedback.fromJson(p7('customer_feedback'));
   Retention retentionValue = Retention.fromJson(p7('retention'));
 
@@ -160,9 +158,6 @@ class FakeCustomersRepository implements CustomersRepository {
 
   @override
   Future<TicketPage> complaints(String id, {String? cursor}) async => complaintPage;
-
-  @override
-  Future<RefundPage> refunds(String id, {String? cursor}) async => refundPage;
 
   @override
   Future<CustomerFeedback> feedback(String id, {String? cursor}) async => feedbackValue;

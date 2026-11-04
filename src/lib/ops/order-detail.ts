@@ -160,7 +160,11 @@ export function toOrderDetail(
     pickup: x.pickup,
     drop: x.drop,
     customer,
-    delivery: x.delivery,
+    // Calling the rider is under the same switch as calling the customer.
+    delivery:
+      x.delivery?.rider && permissions["manager.call_customer"] !== true
+        ? { ...x.delivery, rider: { ...x.delivery.rider, phone: null } }
+        : x.delivery,
     timeline: x.timeline,
     tickets: x.tickets,
     allowed: allowedActions({ status: row.status, deliveryStatus: x.delivery?.status ?? row.delivery?.status ?? null }, permissions),

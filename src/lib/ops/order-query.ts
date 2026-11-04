@@ -5,12 +5,26 @@
  */
 import { isUuid } from "@/lib/auth/manager-scope";
 import { addDays, istDayKey, istDayStart } from "@/lib/metrics/ist";
+import { phoneE164 } from "./customer-contract";
 import type { DbOrderStatus } from "./order-contract";
 
 export type OrderQueue = "delayed" | "unassigned" | "cancelled";
 
+/**
+ * What the search box asked for. `text` looks in customer and shop names;
+ * `codePrefix` is set when the word could also be an order code ("cafe" is a
+ * shop and hex). `phone` is a whole number, and needs the contact permission.
+ */
+export type OrderSearch =
+  | { kind: "id"; id: string }
+  | { kind: "code"; prefix: string }
+  | { kind: "phone"; phone: string }
+  | { kind: "text"; text: string; codePrefix?: string };
+
 export interface OrderQuery {
-  q?: { kind: "id"; id: string } | { kind: "code"; prefix: string };
+  q?: OrderSearch;
+  /** Filled in by the data layer: who a `text` or `phone` search found, in scope. */
+  match?: OrderSearchMatch;
   from?: string;
   to?: string;
   vendor?: string;
@@ -62,6 +76,60 @@ export function decodeCursor(s: string): { createdAt: string; id: string } | nul
 const list = (v: string | null) =>
   (v ?? "").split(",").map((x) => x.trim().toLowerCase()).filter(Boolean);
 
+export const SEARCH_TEXT_MIN = 2;
+export const SEARCH_TEXT_MAX = 60;
+
+/**
+ * The search text with everything a pattern would read as syntax taken out:
+ * `%` and `_` (LIKE), `\` (LIKE's escape: a trailing one is an SQL error), and
+ * `*` (PostgREST reads it as `%`, so "*" alone would match every name).
+ * The rest reaches the database as one bound value, so commas and brackets are
+ * only characters.
+ */
+export function cleanSearchText(raw: string): string {
+  return raw.replace(/[\\%_*\u0000-\u001f\u007f]/g, "").replace(/\s+/g, " ").trim();
+}
+
+/** The box's text → what to look for, or null when it cannot be searched as typed. */
+export function parseOrderSearch(rawQ: string): OrderSearch | null {
+  // Narrow a copy: isUuid is a type guard, and narrowing rawQ would make the else branch never.
+  if (isUuid(String(rawQ))) return { kind: "id", id: rawQ.toLowerCase() };
+  const typedAsCode = rawQ.startsWith("#");
+  const code = rawQ.replace(/^#/, "").replace(/\s+/g, "");
+  if (/^[0-9a-fA-F]{4,8}$/.test(code)) {
+    // A word of hex letters alone may be a name as well: "Cafe", "Dada".
+    if (typedAsCode || /\d/.test(code)) return { kind: "code", prefix: code.toUpperCase() };
+    return { kind: "text", text: code, codePrefix: code.toUpperCase() };
+  }
+  const phone = phoneE164(rawQ);
+  if (phone) return { kind: "phone", phone };
+  // Only digits, and neither a code nor a whole phone number: no name looks like that.
+  if (/^[+\d\s-]+$/.test(rawQ)) return null;
+  const text = cleanSearchText(rawQ);
+  if (text.length < SEARCH_TEXT_MIN || text.length > SEARCH_TEXT_MAX) return null;
+  return { kind: "text", text };
+}
+
+/** Who a `text` or `phone` search found. Ids come from the database, never from the box. */
+export interface OrderSearchMatch {
+  customerIds: string[];
+  shopIds: string[];
+}
+
+/**
+ * The PostgREST `or` for a search match, or null when nothing can match. Every
+ * id is checked so nothing the box held can reach this string as syntax.
+ */
+export function orderSearchFilter(match: OrderSearchMatch, codePrefix?: string): string | null {
+  const customers = match.customerIds.filter((id) => isUuid(id));
+  const shops = match.shopIds.filter((id) => isUuid(id));
+  const parts: string[] = [];
+  if (customers.length) parts.push(`customer_id.in.(${customers.join(",")})`);
+  if (shops.length) parts.push(`restaurant_id.in.(${shops.join(",")})`);
+  if (codePrefix && /^[0-9A-F]{4,8}$/.test(codePrefix)) parts.push(`short_code.like.${codePrefix}*`);
+  return parts.length ? parts.join(",") : null;
+}
+
 export function parseOrderQuery(
   params: URLSearchParams,
   now: Date
@@ -70,13 +138,9 @@ export function parseOrderQuery(
 
   const rawQ = params.get("q")?.trim();
   if (rawQ) {
-    // Narrow a copy: isUuid is a type guard, and narrowing rawQ would make the else branch never.
-    if (isUuid(String(rawQ))) query.q = { kind: "id", id: rawQ.toLowerCase() };
-    else {
-      const code = rawQ.replace(/^#/, "").replace(/\s+/g, "");
-      if (!/^[0-9a-fA-F]{4,8}$/.test(code)) return { ok: false, field: "q" };
-      query.q = { kind: "code", prefix: code.toUpperCase() };
-    }
+    const search = parseOrderSearch(rawQ);
+    if (!search) return { ok: false, field: "q" };
+    query.q = search;
   }
 
   const statuses = list(params.get("status"));

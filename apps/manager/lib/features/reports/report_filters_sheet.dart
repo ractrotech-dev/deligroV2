@@ -22,6 +22,8 @@ Future<ReportQuery?> showReportFiltersSheet(BuildContext context, ReportKindInfo
 
 const _paymentChoices = <(String?, String)>[(null, 'All'), ('cod', 'Cash'), ('online', 'Online')];
 
+const _riderPagesMax = 100;
+
 class _FiltersSheet extends ConsumerStatefulWidget {
   const _FiltersSheet({required this.kind, required this.query});
   final ReportKindInfo kind;
@@ -48,14 +50,27 @@ class _FiltersSheetState extends ConsumerState<_FiltersSheet> {
       });
     }
     if (widget.kind.takes('rider')) {
-      ref.read(ridersRepoProvider).list(RiderFilters(zoneId: zone)).then((p) {
-        if (mounted) {
-          setState(() => _riders = [for (final r in p.items) (id: r.id, name: [r.name ?? 'Rider', ?r.riderCode].join(' · '))]);
-        }
+      _allRiders(zone).then((all) {
+        if (mounted) setState(() => _riders = all);
       }, onError: (_) {
         if (mounted) setState(() => _riders = const []);
       });
     }
+  }
+
+  /// Every rider in the zone, page by page: the list answers 50 at a time. The
+  /// page limit only guards against a cursor that never ends.
+  Future<List<({String id, String name})>> _allRiders(String? zone) async {
+    final repo = ref.read(ridersRepoProvider);
+    final out = <({String id, String name})>[];
+    String? cursor;
+    for (var page = 0; page < _riderPagesMax; page++) {
+      final p = await repo.list(RiderFilters(zoneId: zone), cursor: cursor);
+      out.addAll([for (final r in p.items) (id: r.id, name: [r.name ?? 'Rider', ?r.riderCode].join(' · '))]);
+      cursor = p.nextCursor;
+      if (cursor == null) break;
+    }
+    return out;
   }
 
   Widget _picker(String key, String label, List<({String id, String name})>? options, String? selected,
@@ -96,9 +111,10 @@ class _FiltersSheetState extends ConsumerState<_FiltersSheet> {
                 ),
                 for (final s in k.statusOptions)
                   ChoiceChip(
-                    label: Text(s.replaceAll('_', ' ')),
-                    selected: _q.status == s,
-                    onSelected: (_) => setState(() => _q = _q.copyWith(status: s, page: 1)),
+                    key: Key('filter-status-${s.value}'),
+                    label: Text(s.label),
+                    selected: _q.status == s.value,
+                    onSelected: (_) => setState(() => _q = _q.copyWith(status: s.value, page: 1)),
                   ),
               ]),
             _ => Wrap(key: const Key('filter-payment'), spacing: 8, children: [

@@ -249,7 +249,7 @@ export function MenuManager({
         <div className="flex-1" />
         {!editing ? (
           <>
-            <div className="relative w-full @sm:w-[210px]">
+            <div className="relative w-[210px]">
               <Search className="pointer-events-none absolute left-3 top-1/2 size-3.5 -translate-y-1/2 text-muted" />
               <input
                 value={query}
@@ -280,12 +280,12 @@ export function MenuManager({
       ) : null}
 
       {noItems && (
-        <p className="rounded-xl border border-line bg-surface px-4 py-8 text-center text-sm text-muted">
+        <p className="rounded-[var(--c-r)] border border-line bg-surface px-4 py-8 text-center text-sm text-muted">
           No menu items yet. Add them manually or import from Excel below.
         </p>
       )}
       {noMatches && (
-        <p className="rounded-xl border border-line bg-surface px-4 py-8 text-center text-sm text-muted">
+        <p className="rounded-[var(--c-r)] border border-line bg-surface px-4 py-8 text-center text-sm text-muted">
           No items match &quot;{query.trim()}&quot;.
         </p>
       )}
@@ -294,7 +294,7 @@ export function MenuManager({
           {groups.map((group) => (
             <div
               key={group.name}
-              className="overflow-hidden rounded-xl border border-line bg-surface"
+              className="overflow-hidden rounded-[var(--c-r)] border border-line bg-surface"
             >
               <div className="flex items-center gap-2 border-b border-line bg-surface-2 px-3.5 py-2">
                 <span className="text-[11px] font-bold uppercase tracking-[0.06em] text-muted">
@@ -316,7 +316,7 @@ export function MenuManager({
                         type="button"
                         onClick={() => setPickerFor(pickerFor === item.id ? null : item.id)}
                         aria-label={`Change the picture for ${item.name}`}
-                        className="press relative grid size-11 shrink-0 place-items-center overflow-hidden rounded-lg border border-line bg-surface-2"
+                        className="relative grid size-11 shrink-0 place-items-center overflow-hidden rounded-lg border border-line bg-surface-2"
                       >
                         {item.imageUrl ? (
                           // eslint-disable-next-line @next/next/no-img-element
@@ -352,7 +352,7 @@ export function MenuManager({
                           // A button, so it keeps a pressable capsule — but not
                           // the `pill` status vocabulary, which is for stating
                           // a fact rather than for offering to change one.
-                          "press shrink-0 rounded-[var(--c-r-sm)] border px-2.5 py-1 text-[11px] font-semibold transition-colors " +
+                          "shrink-0 rounded-[var(--c-r-sm)] border px-2.5 py-1 text-[11px] font-semibold transition-colors" +
                           (item.available
                             ? "border-green/40 bg-green-soft text-green hover:border-green"
                             : "border-line bg-surface text-muted hover:border-[var(--c-border-hover)] hover:text-ink")
@@ -363,7 +363,7 @@ export function MenuManager({
                       <button
                         type="button"
                         onClick={() => openEdit(item)}
-                        className="press grid size-8 shrink-0 place-items-center rounded-full bg-surface-2 text-muted hover:text-ink"
+                        className="grid size-8 shrink-0 place-items-center rounded-full bg-surface-2 text-muted hover:text-ink"
                         aria-label="Edit item"
                       >
                         <Pencil className="size-4" />
@@ -372,7 +372,7 @@ export function MenuManager({
                         type="button"
                         onClick={() => remove(item)}
                         disabled={pending}
-                        className="press grid size-8 shrink-0 place-items-center rounded-full bg-surface-2 text-muted hover:text-deal"
+                        className="grid size-8 shrink-0 place-items-center rounded-full bg-surface-2 text-muted hover:text-deal"
                         aria-label="Delete item"
                       >
                         <Trash2 className="size-4" />
@@ -442,14 +442,14 @@ function MenuItemForm({
         <button
           type="button"
           onClick={onClose}
-          className="press grid size-8 place-items-center rounded-full text-muted hover:text-ink"
+          className="grid size-8 place-items-center rounded-full text-muted hover:text-ink"
           aria-label="Close"
         >
           <X className="size-4" />
         </button>
       </div>
       {error ? (
-        <p className="rounded-xl border border-deal/30 bg-deal/10 px-3 py-2 text-sm font-medium text-deal">
+        <p className="rounded-[var(--c-r)] border border-deal/30 bg-deal/10 px-3 py-2 text-sm font-medium text-deal">
           {error}
         </p>
       ) : null}
@@ -507,7 +507,7 @@ function MenuItemForm({
           type="button"
           onClick={() => set({ veg: !form.veg })}
           className={
-            "press flex-1 rounded-xl px-3 py-2 text-sm font-semibold " +
+            "flex-1 rounded-[var(--c-r)] px-3 py-2 text-sm font-semibold" +
             (form.veg ? "bg-green-soft text-green" : "bg-surface-2 text-muted")
           }
         >
@@ -517,7 +517,7 @@ function MenuItemForm({
           type="button"
           onClick={() => set({ available: !form.available })}
           className={
-            "press flex-1 rounded-xl px-3 py-2 text-sm font-semibold " +
+            "flex-1 rounded-[var(--c-r)] px-3 py-2 text-sm font-semibold" +
             (form.available ? "bg-accent-soft text-accent" : "bg-surface-2 text-muted")
           }
         >

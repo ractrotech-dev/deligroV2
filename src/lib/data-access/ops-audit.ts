@@ -13,6 +13,12 @@ import { createAdminClient } from "@/lib/supabase/admin";
  * this database (an auth API call): log first, refuse the change if the log
  * fails, and record a `*.failed` entry if the change then fails. There is no
  * best-effort variant: an entry that can silently go missing is not an audit.
+ *
+ * `auditedChange` is that same log-first shape, and is also what the older
+ * admin screens that write a table directly use (shop edit and delete, banners,
+ * categories, coupon delete). Those have no RPC, so entry and change are not one
+ * transaction: a crash between the two leaves an entry for a change that did
+ * not land. It never leaves a change with no entry, which is the gap that matters.
  */
 
 export interface OpsActionInput {
@@ -46,6 +52,28 @@ export async function logOpsAction(input: OpsActionInput): Promise<number> {
   return Number(data);
 }
 
+/**
+ * Log, then change. A log that fails stops the change; a change that fails is
+ * recorded, so the entry already written is not mistaken for something that
+ * happened. Name `action` as a literal first in the object: the audit coverage
+ * check reads it from there.
+ */
+export async function auditedChange<T>(entry: OpsActionInput, change: () => Promise<T>): Promise<T> {
+  await logOpsAction(entry);
+  try {
+    return await change();
+  } catch (e) {
+    await logOpsAction({
+      action: "audit.change_failed",
+      actorId: entry.actorId,
+      entityType: entry.entityType,
+      entityId: entry.entityId,
+      zoneId: entry.zoneId,
+      reason: `${entry.action} did not go through`,
+    }).catch(() => {});
+    throw e;
+  }
+}
 
 export interface ActivityItem {
   id: number;

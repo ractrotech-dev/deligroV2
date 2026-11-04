@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
 import { requireRole } from "@/lib/auth";
+import { captureError } from "@/lib/obs/emit";
+import { isSchemaMissing, type DbError } from "@/lib/rider/admin-money";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { isUuid } from "@/lib/auth/manager-scope";
 import { Empty, PageHeader, StatusText, Toolbar } from "@/components/admin/console";
@@ -19,7 +21,7 @@ export const metadata: Metadata = { title: "Alert thresholds · Admin · Deligro
  * picked: the platform defaults every zone inherits (admins only). With a
  * zone: that zone's own rules, each overriding the default until reset.
  * Every change is audited (alert_rule.set / alert_rule.reset). Fraud and
- * service-level alerts stay off until Phase 9 switches them on.
+ * service-level alerts are not listed: nothing evaluates them yet.
  */
 export const dynamic = "force-dynamic";
 
@@ -32,19 +34,20 @@ export default async function AlertThresholdsPage({
 
   let rules: AlertRule[] = [];
   let zones: { id: string; name: string }[] = [];
-  let missing = false;
+  let trouble: "missing" | "failed" | null = null;
   if (isSupabaseConfigured) {
     try {
       const [r, cities] = await Promise.all([listRules(zone), listCitiesWithZones()]);
       rules = r;
       zones = cities.flatMap((c) => c.zones.map((z) => ({ id: z.id, name: `${z.name} · ${c.name}` })));
-    } catch {
-      missing = true;
+    } catch (e) {
+      trouble = isSchemaMissing(e as DbError) ? "missing" : "failed";
+      if (trouble === "failed") captureError(e, { source: "admin-alerts/rules", attrs: { event: "alert_rules_failed" } });
     }
   }
 
   const columns: Column<AlertRule>[] = [
-    { key: "label", header: "Alert", role: "title", cell: (r) => (
+    { key: "label", header: "Alert", cell: (r) => (
       <span className="block min-w-0">
         <span className="block font-semibold text-ink">{r.label}</span>
         <span className="block text-xs text-muted">{r.description}</span>
@@ -54,7 +57,7 @@ export default async function AlertThresholdsPage({
       zone === null ? <StatusText tone="neutral">Default</StatusText>
         : r.inherited ? <StatusText tone="neutral">Inherited</StatusText>
         : <StatusText tone="blue">This zone</StatusText> },
-    { key: "edit", header: "Setting", role: "actions", cell: (r) => <RuleEditor key={`${zone}:${r.kind}`} rule={r} zoneId={zone} /> },
+    { key: "edit", header: "Setting", cell: (r) => <RuleEditor key={`${zone}:${r.kind}`} rule={r} zoneId={zone} /> },
   ];
 
   return (
@@ -73,8 +76,8 @@ export default async function AlertThresholdsPage({
           <FilterSubmit />
         </FilterForm>
       </Toolbar>
-      {missing ? (
-        <Empty>Alert thresholds need migration 0166 applied to this database.</Empty>
+      {trouble ? (
+        <Empty>{trouble === "missing" ? "Alert thresholds aren't set up on this database yet." : "Could not load alert thresholds. Refresh to try again."}</Empty>
       ) : (
         <DataTable caption="Alert thresholds" columns={columns} rows={rules} rowKey={(r) => r.kind} />
       )}

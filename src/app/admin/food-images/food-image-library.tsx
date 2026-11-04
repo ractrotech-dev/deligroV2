@@ -57,7 +57,7 @@ export function FoodImageLibrary({
       <UploadCard disabled={disabled} />
 
       {error ? (
-        <p className="rounded-xl border border-deal/30 bg-deal/10 px-3.5 py-3 text-sm font-medium text-deal">
+        <p className="rounded-[var(--c-r)] border border-deal/30 bg-deal/10 px-3.5 py-3 text-sm font-medium text-deal">
           {error}
         </p>
       ) : null}
@@ -84,17 +84,17 @@ export function FoodImageLibrary({
       ) : null}
 
       {images.length === 0 ? (
-        <p className="rounded-xl border border-line bg-surface-2 px-3.5 py-8 text-center text-sm text-muted">
+        <p className="rounded-[var(--c-r)] border border-line bg-surface-2 px-3.5 py-8 text-center text-sm text-muted">
           {query
             ? `No photos found for “${query}”.`
             : "No food photos yet. Upload one above — name it the way it appears on a menu."}
         </p>
       ) : (
-        <ul className="grid grid-cols-2 gap-3 @xl:grid-cols-3 @4xl:grid-cols-4">
+        <ul className="grid gap-3 grid-cols-3 @4xl:grid-cols-4">
           {images.map((image) => (
             <li
               key={image.id}
-              className="overflow-hidden rounded-xl border border-line bg-surface"
+              className="overflow-hidden rounded-[var(--c-r)] border border-line bg-surface"
             >
               <div className="relative aspect-[4/3] bg-surface-2">
                 <Image
@@ -127,7 +127,7 @@ export function FoodImageLibrary({
                     type="button"
                     disabled={disabled || pending}
                     onClick={() => setEditing(image)}
-                    className="press grid size-8 place-items-center rounded-full bg-surface-2 text-muted hover:text-ink disabled:opacity-40"
+                    className="grid size-8 place-items-center rounded-full bg-surface-2 text-muted hover:text-ink disabled:opacity-40"
                     aria-label={`Rename ${image.title}`}
                   >
                     <Pencil className="size-4" />
@@ -136,7 +136,7 @@ export function FoodImageLibrary({
                     type="button"
                     disabled={disabled || pending}
                     onClick={() => remove(image)}
-                    className="press grid size-8 place-items-center rounded-full bg-surface-2 text-muted hover:text-deal disabled:opacity-40"
+                    className="grid size-8 place-items-center rounded-full bg-surface-2 text-muted hover:text-deal disabled:opacity-40"
                     aria-label={`Delete ${image.title}`}
                   >
                     <Trash2 className="size-4" />
@@ -222,7 +222,7 @@ function UploadCard({ disabled }: Readonly<{ disabled: boolean }>) {
         </span>
       </label>
 
-      <div className="grid gap-3 @xl:grid-cols-2">
+      <div className="grid gap-3 grid-cols-2">
         <label className="block space-y-1.5">
           <span className={labelCls}>Other names (optional)</span>
           <input
@@ -280,12 +280,12 @@ function UploadCard({ disabled }: Readonly<{ disabled: boolean }>) {
       <p className="text-[11px] text-muted">JPG, PNG or WebP, up to 2 MB.</p>
 
       {error ? (
-        <p className="rounded-xl border border-deal/30 bg-deal/10 px-3 py-2 text-[12.5px] font-medium text-deal">
+        <p className="rounded-[var(--c-r)] border border-deal/30 bg-deal/10 px-3 py-2 text-[12.5px] font-medium text-deal">
           {error}
         </p>
       ) : null}
       {done ? (
-        <p className="rounded-xl border border-green/30 bg-green/10 px-3 py-2 text-[12.5px] font-medium text-green">
+        <p className="rounded-[var(--c-r)] border border-green/30 bg-green/10 px-3 py-2 text-[12.5px] font-medium text-green">
           {done}
         </p>
       ) : null}
@@ -328,7 +328,7 @@ function EditCard({
           type="button"
           onClick={onCancel}
           aria-label="Close"
-          className="press grid size-8 place-items-center rounded-full text-muted hover:text-ink"
+          className="grid size-8 place-items-center rounded-full text-muted hover:text-ink"
         >
           <X className="size-4" />
         </button>

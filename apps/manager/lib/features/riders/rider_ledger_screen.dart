@@ -18,7 +18,7 @@ final _ledgerProvider = FutureProvider.autoDispose.family<LedgerPage, (String, L
   retry: (_, _) => null,
 );
 
-/// A rider's ledger (§5.13, `manager.finance.view`): salary, bonuses,
+/// A rider's ledger (§5.13, `manager.finance.view`): salary,
 /// deductions and adjustments with who added them and whether they were
 /// paid, and the payouts with their references.
 class RiderLedgerScreen extends ConsumerStatefulWidget {

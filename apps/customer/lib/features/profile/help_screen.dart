@@ -35,13 +35,13 @@ class HelpScreen extends ConsumerWidget {
       ),
       (
         q: 'How do I cancel?',
-        a: 'You can cancel from the order tracking screen before the kitchen starts preparing your food.',
+        a: 'You can cancel only in the first few seconds after placing your order, from the order tracking screen, while the countdown is showing. After that your order will be delivered.',
       ),
       (
         q: 'Payment methods',
         a: s.featureOnlinePayment
             ? 'You can pay cash on delivery, or online by card, UPI or netbanking at checkout. '
-                'Some shops set a cash limit on larger orders — checkout will say so.'
+                'Larger orders can have a cash limit — checkout will say so.'
             : 'We currently accept Cash on Delivery. Online payment isn\'t available yet.',
       ),
     ];

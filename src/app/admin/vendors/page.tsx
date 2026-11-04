@@ -24,7 +24,6 @@ import {
   type MetricItem,
   type Tone,
 } from "@/components/admin/console";
-import { ConsoleOnly } from "@/components/admin/console-only";
 import { VendorAvatar } from "@/components/admin/vendor-avatar";
 import { AdminQuickLink } from "@/components/admin/admin-quick-link";
 import { ApproveRestaurantButton } from "@/components/admin/approve-restaurant-button";
@@ -117,7 +116,6 @@ function vendorColumns(
     {
       key: "shop",
       header: "Shop",
-      role: "title",
       width: "w-[240px]",
       cell: (v) => (
         <div className="flex min-w-0 items-center gap-2.5">
@@ -163,7 +161,6 @@ function vendorColumns(
     {
       key: "status",
       header: "Status",
-      role: "trailing",
       width: "w-[130px]",
       cell: (v) => {
         const gaps = storefrontGaps(v);
@@ -223,7 +220,6 @@ function vendorColumns(
       key: "orders",
       header: `Orders${ordersWindow}`,
       align: "right",
-      role: "wideOnly",
       width: "w-[92px]",
       cell: (v) => {
         const m = ranking?.byId[v.id];
@@ -240,7 +236,6 @@ function vendorColumns(
       key: "revenue",
       header: "Revenue",
       align: "right",
-      role: "wideOnly",
       width: "w-[104px]",
       cell: (v) => {
         const m = ranking?.byId[v.id];
@@ -258,7 +253,6 @@ function vendorColumns(
     {
       key: "since",
       header: "Since",
-      role: "wideOnly",
       width: "w-[92px]",
       cell: (v) => (
         <span className="text-[11.5px] text-muted">
@@ -270,7 +264,6 @@ function vendorColumns(
       ? {
           key: "decision",
           header: "Decision",
-          role: "actions",
           width: "w-[190px]",
           cell: (v) => (
             <div className="flex items-center gap-2">
@@ -282,13 +275,12 @@ function vendorColumns(
       : {
           key: "slot",
           header: "Feed slot",
-          role: "wideOnly",
           width: "w-[110px]",
           cell: (v) => <VendorPositionSelect id={v.id} position={v.sortPosition} />,
         },
     {
       key: "email",
-      header: "Login email",
+      header: "Contact email",
       width: "w-[190px]",
       cell: (v) =>
         v.ownerEmail ? (
@@ -296,8 +288,7 @@ function vendorColumns(
             {v.ownerEmail}
           </span>
         ) : (
-          // Not a cosmetic gap: without an email there is no auth account to
-          // hang a password on, so this shop cannot be given a login at all.
+          // The desk's way to reach the owner. Their login is separate (Access tab).
           <Link
             href={`/admin/vendors/${v.id}/edit`}
             className="inline-flex items-center gap-1 text-[11.5px] font-semibold text-deal hover:underline"
@@ -317,7 +308,6 @@ function vendorColumns(
     {
       key: "actions",
       header: "",
-      role: "actions",
       align: "right",
       width: "w-[340px]",
       cell: (v) => (
@@ -397,18 +387,9 @@ export default async function AdminVendorsPage({
     return query ? `/admin/vendors?${query}` : "/admin/vendors";
   };
 
-  // Counted over the page in hand, not the whole roster: a second COUNT query
-  // for a nudge is not worth it, and "3 of the 25 shown" is the honest reading
-  // of a figure derived from twenty-five rows.
-  const incomplete = result.items.filter((v) => storefrontGaps(v).length > 0);
-  const noEmail = result.items.filter((v) => !v.ownerEmail);
-
   /* ---------- the roster, by state ----------
-     Counts of the whole roster, not of the page in hand — `getVendorCounts`
-     asks the database. The two figures after them are the opposite: they are
-     derived from the twenty-five rows loaded, because a second scan of every
-     shop to nudge about a missing photo is not worth the query. Their notes say
-     which, so neither is read as the other. */
+     Every figure is a count of the whole roster: `getVendorCounts` asks the
+     database. None of them changes with the page in hand. */
   const metrics: MetricItem[] = [
     {
       label: "Active partners",
@@ -429,29 +410,22 @@ export default async function AdminVendorsPage({
       href: "/admin/vendors?status=suspended",
     },
     {
-      // A roster-wide count, unlike the two derived figures below it: this is
-      // the gap that stops a shop working rather than looking unfinished, so it
-      // earns its own query. Without a pin the delivery radius cannot be
-      // checked and `createOrder` refuses the order outright.
+      // The gap that stops a shop working rather than looking unfinished. Without
+      // a pin the delivery radius cannot be checked and `createOrder` refuses the
+      // order outright.
       label: "No map pin",
       value: nf.format(counts.unpinned),
-      note: counts.unpinned
-        ? "Cannot take orders until pinned — whole roster"
-        : "Every shop on the roster is pinned",
+      note: counts.unpinned ? "Cannot take orders until pinned" : "Every shop is pinned",
     },
     {
       label: "Unfinished storefronts",
-      value: nf.format(incomplete.length),
-      note: incomplete.length
-        ? "Missing a photo, address, category, phone or pin — on this page"
-        : "Every shop on this page is complete",
+      value: nf.format(counts.incomplete),
+      note: counts.incomplete ? "Missing a photo, address, category, phone or pin" : "Every shop is complete",
     },
     {
-      label: "No login email",
-      value: nf.format(noEmail.length),
-      note: noEmail.length
-        ? "Cannot be issued a password until one is added"
-        : "Every shop on this page can sign in",
+      label: "No contact email",
+      value: nf.format(counts.noEmail),
+      note: counts.noEmail ? "Add one on the shop's edit page" : "Every shop has one",
     },
   ];
 
@@ -464,7 +438,7 @@ export default async function AdminVendorsPage({
         description="Approve signups, then manage each shop like a storefront."
         status={
           counts.pending > 0 ? (
-            <Link href="/admin/vendors?status=pending" className="press">
+            <Link href="/admin/vendors?status=pending" className="">
               <span className="inline-flex items-center gap-1.5 rounded-[var(--c-r-sm)] bg-[var(--c-tint-amber)] px-2 py-[3px] text-[11.5px] font-semibold text-[color:var(--c-ink-amber)]">
                 <span className="c-status-dot" />
                 {counts.pending} waiting to go live
@@ -473,18 +447,14 @@ export default async function AdminVendorsPage({
           ) : null
         }
         actions={
-          <ConsoleOnly tool="Vendor onboarding" notice={false}>
-            <Link href="/admin/vendors/new" className="c-btn c-btn-dark press">
+          <>
+            <Link href="/admin/vendors/new" className="c-btn c-btn-dark">
               <Plus className="size-3.5" strokeWidth={2.4} /> Add vendor
             </Link>
-          </ConsoleOnly>
+          </>
         }
       />
 
-      <ConsoleOnly
-        tool="Vendor onboarding"
-        why="Approving a signup, suspending a shop and searching the list all work on a phone — only adding a brand-new vendor needs the desk."
-      />
 
       {/* The roster by state, then the two data-quality gaps that stop a shop
           working at all. The green "queue is clear" banner this replaces was a
@@ -518,6 +488,11 @@ export default async function AdminVendorsPage({
               href: href({ status: "suspended", page: null }),
               label: "Suspended",
               count: counts.suspended,
+            },
+            {
+              href: href({ status: "rejected", page: null }),
+              label: "Rejected",
+              count: counts.rejected,
             },
           ]}
         />
@@ -560,11 +535,11 @@ export default async function AdminVendorsPage({
         />
       </Section>
 
-      <div className="grid gap-2 @3xl:grid-cols-2">
+      <div className="grid gap-2 grid-cols-2">
         <AdminQuickLink
           href="/admin/vendors/categories"
           label="Categories"
-          hint="Group shops on the customer feed"
+          hint="Labels for filing shops in Admin"
           icon={Tags}
         />
         <AdminQuickLink

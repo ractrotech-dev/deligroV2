@@ -28,6 +28,8 @@ export interface CustomerSummary {
 }
 
 export interface CustomerDetail extends CustomerSummary {
+  /** Wallet points held (0198). Read-only here: only an admin corrects a balance. */
+  walletBalance: number;
   statusReason: string | null;
   statusChangedAt: string | null;
   statusChangedBy: Ref | null;
@@ -38,8 +40,7 @@ export interface CustomerDetail extends CustomerSummary {
   ratingsGiven: number;
   avgRatingGiven: number | null;
   openComplaints: number;
-  pendingRefunds: number;
-  allowed: { revealContact: boolean; suspend: boolean; restrict: boolean; reactivate: boolean; decideRefunds: boolean };
+  allowed: { revealContact: boolean; suspend: boolean; restrict: boolean; reactivate: boolean };
 }
 
 /** "Priya Sharma" → "Priya S."; one word stays as it is. */
@@ -91,7 +92,6 @@ export function customerAllowed(s: AccountStatus, permissions: Record<string, bo
     suspend: suspend && s !== "suspended",
     restrict: suspend && s !== "restricted",
     reactivate: suspend && s !== "active",
-    decideRefunds: permissions["manager.finance.view"] === true && permissions["manager.finance.adjust"] === true,
   };
 }
 

@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { requireRole } from "@/lib/auth";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { formString } from "@/lib/utils/form-data";
+import { auditedChange } from "@/lib/data-access/ops-audit";
 import {
   CategoryImagesNotMigratedError,
   setCategoryImage,
@@ -39,7 +40,7 @@ export async function setCategoryImageAction(
   _prev: CategoryImageResult,
   form: FormData
 ): Promise<CategoryImageResult> {
-  await requireRole("admin");
+  const admin = await requireRole("admin");
   if (!isSupabaseConfigured) {
     return {
       ok: false,
@@ -55,7 +56,8 @@ export async function setCategoryImageAction(
     return { ok: false, error: "Unknown category." };
   }
 
-  const raw = formString(form, "imageUrl").trim();
+  // Reset wins over whatever is in the text box.
+  const raw = form.get("reset") ? "" : formString(form, "imageUrl").trim();
 
   if (raw && !hostAllowed(raw)) {
     return {
@@ -66,7 +68,10 @@ export async function setCategoryImageAction(
   }
 
   try {
-    await setCategoryImage(id, raw || null);
+    await auditedChange(
+      { action: "category.image", actorId: admin.id, entityType: "category", entityId: id, reason: "Changed in the admin console", after: { custom_picture: Boolean(raw) } },
+      () => setCategoryImage(id, raw || null)
+    );
   } catch (err) {
     if (err instanceof CategoryImagesNotMigratedError) {
       return {
@@ -82,6 +87,5 @@ export async function setCategoryImageAction(
   // show up — revalidating only the admin route would confirm a save nobody sees.
   revalidatePath("/", "layout");
   revalidatePath("/admin/storage");
-  revalidatePath("/admin/settings/categories");
   return { ok: true };
 }

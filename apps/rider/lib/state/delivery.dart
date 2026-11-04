@@ -199,16 +199,25 @@ class UnreachableGate {
   }
 }
 
+/// The switch that hides the Call buttons (the server then sends no numbers).
+const callCustomerFeature = 'driver.call_customer';
+
+/// The switch that hides the Navigate button.
+const navigationFeature = 'driver.navigation';
+
 /// The server's rule (exception-rules.ts): arrived at the door, a logged call
-/// to the customer since, and `unreachableWaitMinutes` waited.
-UnreachableGate unreachableGate(RiderActive a, {required DateTime now, DateTime? localCall}) {
+/// to the customer since, and `unreachableWaitMinutes` waited. A rider who has no
+/// way to call ([canCall] false, or no number for the customer) is not asked to:
+/// only the wait applies.
+UnreachableGate unreachableGate(RiderActive a, {required DateTime now, DateTime? localCall, bool canCall = true}) {
   final arrivedAt = a.arrivedDropAt;
+  final callable = canCall && (a.drop.phone ?? '').trim().isNotEmpty;
   if (arrivedAt == null) {
-    return UnreachableGate(arrived: false, called: localCall != null, waitLeft: Duration.zero);
+    return UnreachableGate(arrived: false, called: !callable || localCall != null, waitLeft: Duration.zero);
   }
   final logged = a.timeline.any(
     (e) => e.kind == 'contact_attempt' && e.method == 'customer' && !e.at.isBefore(arrivedAt),
   );
   final waitLeft = arrivedAt.add(Duration(minutes: a.unreachableWaitMinutes)).difference(now);
-  return UnreachableGate(arrived: true, called: logged || localCall != null, waitLeft: waitLeft);
+  return UnreachableGate(arrived: true, called: !callable || logged || localCall != null, waitLeft: waitLeft);
 }

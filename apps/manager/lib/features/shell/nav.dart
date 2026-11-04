@@ -23,15 +23,13 @@ const tabs = <TabDef>[
   TabDef('/more', 'More', Icons.menu_rounded, Icons.menu_rounded),
 ];
 
-/// One row of the More menu. [phase] names the build phase that delivers the
-/// screen; until then it opens a labelled placeholder.
+/// One row of the More menu.
 class MoreItem {
-  const MoreItem(this.path, this.en, this.icon, {this.permission, this.phase, this.subtitleEn});
+  const MoreItem(this.path, this.en, this.icon, {this.permission, this.subtitleEn});
   final String path;
   final String en;
   final IconData icon;
   final String? permission;
-  final int? phase;
   final String? subtitleEn;
 }
 
@@ -50,7 +48,7 @@ const moreItems = <MoreItem>[
       subtitleEn: 'Confirm rider deposits, settle disputes'),
   MoreItem('/more/customers', 'Customers', Icons.people_outline,
       permission: 'manager.customers.view',
-      subtitleEn: 'Accounts, orders, refunds, retention'),
+      subtitleEn: 'Accounts, orders, retention'),
   MoreItem('/more/products', 'Products', Icons.inventory_2_outlined,
       permission: 'manager.products.view',
       subtitleEn: 'Availability, prices, listings'),
@@ -71,9 +69,6 @@ const moreItems = <MoreItem>[
   MoreItem('/more/audit', 'Audit log', Icons.fact_check_outlined,
       permission: 'manager.audit.view_zone',
       subtitleEn: 'Every recorded action in your zones'),
-  MoreItem('/more/insights', 'Insights', Icons.insights_outlined,
-      permission: 'manager.reports.view', phase: 9,
-      subtitleEn: 'Forecasts, benchmarks, SLAs'),
   MoreItem('/more/profile', 'Profile & permissions', Icons.badge_outlined,
       subtitleEn: 'Zones, permissions, activity, devices'),
   MoreItem('/more/settings/alerts', 'Alert thresholds', Icons.tune_outlined,

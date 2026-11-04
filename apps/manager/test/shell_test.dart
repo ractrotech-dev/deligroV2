@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:deligro_manager/features/shell/nav.dart';
 import 'package:deligro_manager/models/dashboard.dart';
 import 'package:deligro_manager/models/manager_me.dart';
@@ -9,7 +11,6 @@ import 'package:deligro_manager/state/prefs.dart';
 import 'package:deligro_manager/state/providers.dart';
 import 'package:deligro_manager/state/session.dart';
 import 'package:deligro_manager/theme/app_theme.dart';
-import 'package:deligro_manager/widgets/phase_placeholder.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -17,7 +18,6 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'auth_test.dart' show meJson;
-import 'helpers.dart';
 import 'stats_fixture.dart';
 
 class _FixedMe extends ManagerMeNotifier {
@@ -140,17 +140,21 @@ void main() {
     expect(find.byKey(const Key('zone-picker')), findsOneWidget);
   });
 
-  testWidgets('a placeholder names the phase that delivers it', (tester) async {
-    await tester.pumpWidget(await themed(const PhasePlaceholder(title: 'Vendors', icon: Icons.store, phase: 4)));
-    expect(find.text('Arrives in build phase 4.'), findsOneWidget);
-  });
-
-  testWidgets('More lists only permitted rows and opens their placeholder', (tester) async {
+  testWidgets('More lists only permitted rows', (tester) async {
     await _pumpApp(tester, _me(perms: {'manager.vendors.view': false}), at: '/more');
     expect(find.byKey(const Key('more-/more/vendors')), findsNothing);
-    await tester.scrollUntilVisible(find.byKey(const Key('more-/more/insights')), 200, scrollable: find.byType(Scrollable).first);
-    await tester.tap(find.byKey(const Key('more-/more/insights')));
-    await tester.pumpAndSettle();
-    expect(find.text('Arrives in build phase 9.'), findsOneWidget);
+    expect(find.byKey(const Key('more-/more/offers')), findsOneWidget);
+  });
+
+  test('Insights is not offered until its screens are finished', () {
+    expect(moreItems.map((m) => m.path), isNot(contains('/more/insights')));
+  });
+
+  test('no screen in the app still says it arrives in a later phase', () {
+    final offenders = [
+      for (final f in Directory('lib').listSync(recursive: true).whereType<File>().where((f) => f.path.endsWith('.dart')))
+        if (RegExp(r'Arrives in build phase|PhasePlaceholder').hasMatch(f.readAsStringSync())) f.path,
+    ];
+    expect(offenders, isEmpty);
   });
 }

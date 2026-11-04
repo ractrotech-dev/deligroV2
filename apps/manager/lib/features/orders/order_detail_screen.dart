@@ -247,6 +247,10 @@ class OrderDetailBody extends ConsumerWidget {
         if (d.money.tip != 0) _MoneyRow('Tip', d.money.tip),
         const SizedBox(height: 4),
         _MoneyRow('Total', d.money.total, bold: true, key: const Key('money-total')),
+        if (d.money.pointsUsed > 0) ...[
+          _MoneyRow('Paid with points', -d.money.pointsUsed, key: const Key('money-points')),
+          _MoneyRow('Cash to collect', d.money.total - d.money.pointsUsed, key: const Key('money-cash')),
+        ],
       ]),
       if (d.tickets.isNotEmpty) ...[
         _Heading('Tickets'),

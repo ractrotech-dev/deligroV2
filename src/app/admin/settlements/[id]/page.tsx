@@ -1,10 +1,8 @@
 import { requireRole } from "@/lib/auth";
 import { notFound } from "next/navigation";
+import { captureError } from "@/lib/obs/emit";
 import {
-  Fact,
-  FactList,
   PageHeader,
-  Panel,
   Section,
   SectionCol,
   SectionRow,
@@ -12,17 +10,18 @@ import {
   type Tone,
 } from "@/components/admin/console";
 import {
-  OrderPayoutBreakdown,
+  PayFigure,
   PayoutLinesTable,
   PayoutTotals,
+  PayToList,
 } from "@/components/admin/payout-breakdown";
 import {
   getSettlement,
   type SettlementStatus,
 } from "@/lib/data-access/admin-settlements";
+import { oldCashRuleShortfall } from "@/lib/settlements/math";
 import { formatINR } from "@/lib/utils/format";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
-import { ConsoleOnly } from "@/components/admin/console-only";
 import { SettlementActions } from "./settlement-actions";
 import { ReversalActions } from "./reversal-actions";
 import { adminMayApproveOwn, pendingRequestFor } from "@/lib/data-access/settlement-requests";
@@ -36,15 +35,18 @@ const STATUS_TONE: Record<SettlementStatus, Tone> = {
 };
 
 const STATUS_LABEL: Record<SettlementStatus, string> = {
-  draft: "Draft",
+  draft: "Not finished",
   paid: "Paid",
-  void: "Void",
+  void: "Cancelled",
 };
 
+/** One payment: how much, where it goes, what to do next, and the orders in it. */
 export default async function SettlementDetailPage({
   params,
+  searchParams,
 }: Readonly<{
   params: Promise<{ id: string }>;
+  searchParams: Promise<{ changed?: string }>;
 }>) {
   // The layout is not a guard: Next skips it when the client already holds that
   // segment, so the page that reads service-role data checks for itself.
@@ -53,55 +55,120 @@ export default async function SettlementDetailPage({
   if (!isSupabaseConfigured) notFound();
 
   const { id } = await params;
+  const { changed } = await searchParams;
   let settlement;
   let pendingRequest: Awaited<ReturnType<typeof pendingRequestFor>> = null;
   let mayApproveOwn = false;
   try {
     [settlement, pendingRequest, mayApproveOwn] = await Promise.all([getSettlement(id), pendingRequestFor(id), adminMayApproveOwn(admin.id)]);
-  } catch {
-    notFound();
+  } catch (e) {
+    captureError(e, { source: "admin-settlements/detail", attrs: { event: "settlement_read_failed", settlementId: id } });
+    return (
+      <>
+        <PageHeader title="Payment" back={{ href: "/admin/settlements", label: "Settlements" }} />
+        <p className="text-[13px] font-medium text-deal">
+          Could not load this payment. Refresh to try again.
+        </p>
+      </>
+    );
   }
   if (!settlement) notFound();
 
-  const owes = settlement.netPayable < 0;
   const payout = settlement.payout;
+  const shop = settlement.restaurantName;
+
+  let title: string | undefined;
+  if (settlement.status === "paid") title = `Paid to ${shop}`;
+  if (settlement.status === "void") title = `Cancelled payment to ${shop}`;
+
+  const orders = `For ${settlement.orderCount} order${settlement.orderCount === 1 ? "" : "s"}, ${settlement.periodLabel}.`;
+
+  // Old refunds on earlier, already-paid orders, taken back in this payment.
+  const linesTotal = settlement.lines.reduce((sum, l) => sum + l.contribution, 0);
+  const corrections = settlement.lines.length
+    ? Math.max(0, linesTotal - settlement.netPayable - settlement.mismatch)
+    : 0;
+  const shortfall =
+    settlement.status === "paid" ? oldCashRuleShortfall(settlement.lines) : 0;
 
   return (
     <>
       <PageHeader
-        title={settlement.restaurantName}
-        description={settlement.periodLabel}
+        title={shop}
         back={{ href: "/admin/settlements", label: "Settlements" }}
         status={
           <StatusBadge tone={STATUS_TONE[settlement.status]}>
             {STATUS_LABEL[settlement.status]}
           </StatusBadge>
         }
-        actions={
-          <div className="text-right">
-            <p className="text-[10.5px] font-semibold uppercase tracking-[0.06em] text-muted">
-              {owes ? "Vendor owes" : "Net payable"}
-            </p>
-            <p
-              className={`text-data mt-1 text-[22px] font-bold leading-none tracking-[-0.025em] tabular-nums ${owes ? "text-deal" : "text-ink"}`}
-            >
-              {formatINR(Math.abs(settlement.netPayable))}
-            </p>
-          </div>
-        }
       />
 
-      {settlement.kind === "instant" ? (
-        <p className="rounded-[var(--c-r)] border border-line bg-surface-2 px-3.5 py-2.5 text-[12px] leading-relaxed text-muted">
-          Early payout for a single order, made ahead of this shop&apos;s normal
-          cycle. It is excluded from the next settlement automatically, so it
-          cannot be paid twice.
+      {changed && settlement.status === "draft" ? (
+        <p className="text-[13px] font-medium text-[color:var(--c-ink-amber)]">
+          An adjustment changed the amount, so this is the payment now. Check it, then pay.
+        </p>
+      ) : null}
+
+      {shortfall > 0 ? (
+        <p className="text-[13px] font-medium text-deal">
+          This payment used the old cash rule, so the shop got{" "}
+          <span className="text-data font-semibold tabular-nums">
+            {formatINR(shortfall)}
+          </span>{" "}
+          less than it should have.
         </p>
       ) : null}
 
       <SectionRow>
-        <SectionCol grow={1.3} basis={340}>
-          <Panel title="How this payout was worked out">
+        <SectionCol basis={340}>
+          <PayFigure
+            shop={shop}
+            title={title}
+            amount={settlement.netPayable}
+            note={orders}
+          />
+          {settlement.paymentRef ? (
+            <p className="mt-2 text-[12.5px] text-muted">
+              Payment reference{" "}
+              <span className="text-data font-medium text-ink">
+                {settlement.paymentRef}
+              </span>
+            </p>
+          ) : null}
+          {settlement.notes ? (
+            <p className="mt-2 text-[12.5px] text-muted">{settlement.notes}</p>
+          ) : null}
+          <div className="mt-4">
+            {settlement.status === "draft" ? (
+              <SettlementActions
+                id={settlement.id}
+                netPayable={settlement.netPayable}
+                pendingRequest={pendingRequest}
+                viewerId={admin.id}
+                mayApproveOwn={mayApproveOwn}
+              />
+            ) : null}
+            {settlement.status === "paid" ? (
+              <ReversalActions
+                id={settlement.id}
+                pendingRequest={pendingRequest}
+                viewerId={admin.id}
+                mayApproveOwn={mayApproveOwn}
+              />
+            ) : null}
+          </div>
+        </SectionCol>
+
+        {settlement.status === "draft" ? (
+          <SectionCol basis={300}>
+            <Section flush title="Send it to">
+              <PayToList payout={payout} />
+            </Section>
+          </SectionCol>
+        ) : null}
+
+        <SectionCol basis={300}>
+          <Section flush title={`How we got ${formatINR(Math.abs(settlement.netPayable))}`}>
             <PayoutTotals
               totals={{
                 foodGross: settlement.foodGross,
@@ -113,98 +180,25 @@ export default async function SettlementDetailPage({
               }}
               commissionPct={payout.commissionPct}
               commissionGstPct={payout.commissionGstPct}
-              orderCount={settlement.orderCount}
+              corrections={corrections}
               mismatch={settlement.mismatch}
             />
-          </Panel>
-        </SectionCol>
-
-        <SectionCol basis={280}>
-          <Section
-            flush
-            title="Where the money goes"
-            description="The rates shown are what this shop is on today. The rupee figures beside them are the snapshot taken when this settlement was built — changing a rate never rewrites a payout that already exists."
-          >
-            <FactList>
-              <Fact label="UPI">{payout.upiId ?? "—"}</Fact>
-              <Fact label="Account name">{payout.bankAccountName ?? "—"}</Fact>
-              <Fact label="Account no.">
-                <span className="text-data">
-                  {payout.bankAccountNumber ?? "—"}
-                </span>
-              </Fact>
-              <Fact label="IFSC">
-                <span className="text-data">{payout.bankIfsc ?? "—"}</span>
-              </Fact>
-              <Fact label="Bank">{payout.bankName ?? "—"}</Fact>
-              <Fact label="Commission">{payout.commissionPct}%</Fact>
-              {settlement.paymentRef ? (
-                <Fact label="UTR / ref">
-                  <span className="text-data font-medium text-ink">
-                    {settlement.paymentRef}
-                  </span>
-                </Fact>
-              ) : null}
-              {settlement.notes ? (
-                <Fact label="Notes">{settlement.notes}</Fact>
-              ) : null}
-            </FactList>
           </Section>
         </SectionCol>
       </SectionRow>
 
-      {/* Console-only: marking a payout paid means typing a UTR against a money
-          transfer, and a phone keyboard is the wrong place to get that right.
-          Reading the statement is exactly what a phone is for, so it stays. */}
-      {settlement.status === "draft" ? (
-        <ConsoleOnly
-          tool="Settling a payout"
-          why="Recording a UTR or voiding a batch moves real money, and a phone keyboard is the wrong place to get a reference number right. The statement below reads fine here."
-        >
-          <SettlementActions
-            id={settlement.id}
-            netPayable={settlement.netPayable}
-            pendingRequest={pendingRequest}
-            viewerId={admin.id}
-            mayApproveOwn={mayApproveOwn}
-          />
-        </ConsoleOnly>
-      ) : null}
-      {settlement.status === "paid" ? (
-        <ConsoleOnly
-          tool="Reversing a payout"
-          why="Reversing a paid payout needs a second person and a check with the bank — a desk job, not a phone one."
-        >
-          <ReversalActions
-            id={settlement.id}
-            pendingRequest={pendingRequest}
-            viewerId={admin.id}
-            mayApproveOwn={mayApproveOwn}
-          />
-        </ConsoleOnly>
-      ) : null}
-
-      {settlement.lines.length === 1 ? (
-        <Panel
-          title={`Order ${settlement.lines[0].code}`}
-          className="admin-measure"
-        >
-          <OrderPayoutBreakdown
-            line={settlement.lines[0]}
+      {settlement.lines.length > 0 ? (
+        <Section title="Orders">
+          <PayoutLinesTable
+            lines={settlement.lines}
             commissionPct={payout.commissionPct}
             commissionGstPct={payout.commissionGstPct}
           />
-        </Panel>
-      ) : null}
-      {settlement.lines.length > 1 ? (
-        <Section title="Orders in this batch" meta={`${settlement.lines.length}`}>
-          <PayoutLinesTable lines={settlement.lines} />
         </Section>
       ) : null}
       {settlement.lines.length === 0 && settlement.status === "void" ? (
         <p className="c-empty">
-          Voided — order lines were released so they can be settled again. The
-          header totals above are the snapshot from when the draft was created.
+          This payment was cancelled, so its orders can be paid again.
         </p>
       ) : null}
     </>

@@ -34,7 +34,8 @@ export async function GET(
 
   try {
     const rules = await getVendorPaymentRulesBySlug(slug);
-    return NextResponse.json({ rules });
+    // An admin who changes the cash limit expects the next checkout to show it.
+    return NextResponse.json({ rules }, { headers: { "Cache-Control": "no-store" } });
   } catch {
     // A failed lookup must not silently widen what is on offer. Cash only is
     // the narrow answer here: it is the method that needs no platform

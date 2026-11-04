@@ -4,6 +4,7 @@ import { Printer } from "lucide-react";
 import type { UiOrder } from "@/lib/utils/order-map";
 import { shortOrderId } from "@/lib/utils/order-map";
 import { formatINR } from "@/lib/utils/format";
+import { cashDue } from "@/lib/wallet/money";
 import { useT } from "@/components/providers/lang-provider";
 import type { T } from "@/lib/i18n/lang";
 
@@ -149,6 +150,12 @@ export function OrderReceipt({
             {formatINR(order.total)}
           </span>
         </div>
+        {(order.pointsUsed ?? 0) > 0 ? (
+          <dl className="mt-2 space-y-1 text-sm">
+            <Row label={t("Paid with points", "पॉइंट से भुगतान")} value={order.pointsUsed ?? 0} />
+            <Row label={t("Paid in cash", "नकद दिया")} value={cashDue(order.total, order.pointsUsed)} />
+          </dl>
+        ) : null}
 
         <p className="mt-5 border-t border-line pt-3 text-[11px] leading-relaxed text-muted">
           {t(
@@ -173,6 +180,11 @@ export function OrderReceipt({
 
 /** How the order was paid, as the receipt words it. */
 function paidWithLabel(order: UiOrder, t: T): string {
+  if ((order.pointsUsed ?? 0) > 0) {
+    return cashDue(order.total, order.pointsUsed) > 0
+      ? t("Points and cash", "पॉइंट और नकद")
+      : t("Wallet points", "वॉलेट पॉइंट");
+  }
   if (order.paymentMethod !== "online") {
     return t("Cash on delivery", "डिलीवरी पर नकद");
   }

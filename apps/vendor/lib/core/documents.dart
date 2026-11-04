@@ -43,7 +43,8 @@ String _when(DateTime? d) => d == null ? '—' : _date.format(d);
 String paymentLabel(String? method, String? status) {
   final m = method == 'online' ? 'Paid online' : 'Cash on delivery';
   if (method == 'online') return status == 'refunded' ? 'Online · refunded' : m;
-  return status == 'paid' ? 'Cash · collected' : m;
+  // Paid and still a cash order: the customer's wallet points covered the bill.
+  return status == 'paid' ? 'Paid in full' : m;
 }
 
 /// GST on the order, split evenly into its central and state halves (intra-state supply).
@@ -361,7 +362,7 @@ Future<Uint8List> statementPdf(Statement s, DocFonts f) async {
                   _kv('GST on commission (${s.commissionGstPct.toStringAsFixed(0)}%)', rupees(-s.commissionGst)),
                   if (s.otherCharges > 0)
                     _kv('Other charges (${rupees(s.otherChargesPerOrder)}/order)', rupees(-s.otherCharges)),
-                  if (s.refundsRecovered > 0) _kv('Refunds recovered', rupees(-s.refundsRecovered)),
+                  if (s.refundsRecovered > 0) _kv('Adjustments', rupees(-s.refundsRecovered)),
                   pw.Divider(color: _line),
                   _kv('Net payable', rupees(s.netPayable), bold: true, size: 12),
                 ],
@@ -372,7 +373,7 @@ Future<Uint8List> statementPdf(Statement s, DocFonts f) async {
         ),
         pw.SizedBox(height: 16),
         _table(
-          ['Order', 'Delivered', 'Pay', 'Sale', 'Charges', 'Refund', 'Earnings', 'To payout'],
+          ['Order', 'Delivered', 'Pay', 'Sale', 'Charges', 'Adjustment', 'Earnings', 'To payout'],
           [
             for (final l in s.lines)
               [
@@ -390,7 +391,7 @@ Future<Uint8List> statementPdf(Statement s, DocFonts f) async {
         ),
         pw.SizedBox(height: 10),
         pw.Text(
-          'Cash orders: the shop already holds the money, so Deligro deducts its charges from the payout ("To payout" is negative).',
+          'Cash orders: the rider collects the cash for Deligro, so these are paid to your shop like online orders. A shop owes Deligro only when earlier adjustments are more than its orders.',
           style: const pw.TextStyle(fontSize: 7.5, color: _muted),
         ),
       ],
@@ -419,7 +420,7 @@ Future<Uint8List> reportPdf(SalesReport r, String filterLabel, DocFonts f) async
               ('Cancelled', '${t.cancelled}'),
               ('Gross sales', rupees(t.grossSales)),
               ('Discounts', rupees(t.vendorDiscounts)),
-              ('Refunds', rupees(t.refunds)),
+              ('Adjustments', rupees(t.refunds)),
               ('Net sales', rupees(t.netSales)),
               if (t.charges != null) ('Charges', rupees(t.charges!)),
               if (t.earnings != null) ('Earnings', rupees(t.earnings!)),
@@ -491,7 +492,7 @@ List<String> reportHeaders(bool money) => [
   'Payment',
   'Gross sales',
   'Shop discount',
-  'Refund',
+  'Adjustment',
   'Net sales',
   if (money) ...['Deligro charges', 'Earnings', 'Settlement'],
 ];

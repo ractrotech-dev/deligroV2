@@ -26,11 +26,14 @@ import { Button } from "@/components/ui/button";
 import { AddAddressForm } from "@/components/addresses/add-address-form";
 import { AddressPickerSheet } from "@/components/addresses/address-picker-sheet";
 import { useSavedAddresses } from "@/hooks/use-saved-addresses";
+import { useFeature } from "@/components/features/features-provider";
 import { cn } from "@/lib/utils/cn";
 import { addressLocality } from "@/lib/utils/address-locality";
 import { formatINR } from "@/lib/utils/format";
 import { MAX_INSTRUCTIONS_LENGTH } from "@/lib/orders/instructions";
 import { computeChargesWith, TIP_OPTIONS } from "@/lib/pricing";
+import { cashDue, maxPointsFor } from "@/lib/wallet/money";
+import { WalletSection } from "@/components/checkout/wallet-section";
 import {
   blocksOrder,
   outOfRangeMessage,
@@ -98,6 +101,11 @@ export function CheckoutView({ config }: Readonly<{ config: CheckoutConfig }>) {
     }
     return idempotencyKeyRef.current;
   };
+
+  // Admin → App features. The server refuses these too (createOrder).
+  const canTip = useFeature("customer.tips");
+  const canUseCode = useFeature("customer.promo_codes");
+  const canAddNote = useFeature("customer.delivery_notes");
 
   const {
     addresses,
@@ -206,11 +214,16 @@ export function CheckoutView({ config }: Readonly<{ config: CheckoutConfig }>) {
     acceptOnline: config.onlinePayments,
   });
 
+  // Bumped when the order API refuses a payment: the admin changed the rules
+  // since this screen opened, so they are read again.
+  const [rulesRead, setRulesRead] = useState(0);
+
   useEffect(() => {
     if (!restaurantSlug || !isSupabaseConfigured) return;
     let live = true;
     fetch(
       `/api/restaurants/${encodeURIComponent(restaurantSlug)}/payment-options`,
+      { cache: "no-store" },
     )
       .then((r) => (r.ok ? r.json() : null))
       .then((d: { rules?: VendorPaymentRules } | null) => {
@@ -222,12 +235,45 @@ export function CheckoutView({ config }: Readonly<{ config: CheckoutConfig }>) {
     return () => {
       live = false;
     };
-  }, [restaurantSlug]);
+  }, [restaurantSlug, rulesRead]);
+
+  // ---- the wallet ----
+  // Read once. The server takes the points under a lock when the order is placed, so
+  // a stale balance costs a clear message, never a wrong charge. A failed read leaves
+  // the section hidden and the customer pays cash as usual.
+  const [walletInfo, setWalletInfo] = useState<{ enabled: boolean; balance: number } | null>(null);
+  const [walletRead, setWalletRead] = useState(0);
+  const [useWallet, setUseWallet] = useState(false);
+  const [walletAmount, setWalletAmount] = useState("");
+
+  useEffect(() => {
+    if (!isSupabaseConfigured) return;
+    let live = true;
+    fetch("/api/wallet", { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d: { wallet?: { enabled: boolean; balance: number } } | null) => {
+        if (live && d?.wallet) setWalletInfo({ enabled: d.wallet.enabled, balance: d.wallet.balance });
+      })
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, [walletRead]);
+
+  const walletMax = maxPointsFor(walletInfo?.balance ?? 0, payTotal);
+  const showWallet = Boolean(walletInfo?.enabled && (walletInfo?.balance ?? 0) > 0);
+  // Decided from the selection, not `payOnline`, which depends on the sum below. Points
+  // go with cash only for now, and they can bring a bill back under the cash limit.
+  const pointsUsed =
+    showWallet && useWallet && paymentMethod !== "online"
+      ? Math.min(Number(walletAmount) || 0, walletMax)
+      : 0;
+  const cashToPay = cashDue(payTotal, pointsUsed);
 
   // Measured against what the customer will actually hand over — after the
-  // coupon, including delivery and tax. That is the cash the rider collects.
-  const availability = paymentAvailability(vendorRules, payTotal);
-  const codHint = codLimitHint(vendorRules, payTotal);
+  // coupon and any points, including delivery and tax. That is the cash the rider collects.
+  const availability = paymentAvailability(vendorRules, cashToPay);
+  const codHint = codLimitHint(vendorRules, cashToPay);
   // The same facts as `availability.notice` / `codHint`, in the customer's
   // language. The rules decide; these only word the outcome.
   const codLimit = formatINR(Math.max(0, Math.round(vendorRules.codMaxOrder)));
@@ -678,13 +724,16 @@ export function CheckoutView({ config }: Readonly<{ config: CheckoutConfig }>) {
             idempotencyKey: getIdempotencyKey(),
             // The tip is money: the server re-derives the total including it,
             // rather than us telling it what to charge.
-            tip,
+            tip: canTip ? tip : 0,
             // A request, not an instruction — the server re-checks that online
             // payment is on offer and refuses the order if it isn't.
             paymentMethod: payOnline ? "online" : "cod",
             // The code only. What it is worth is re-derived server-side from
             // the order's own items, so the quote above is a preview.
-            couponCode: coupon?.code,
+            couponCode: canUseCode ? coupon?.code : undefined,
+            // How many points to use, never what they're worth to the bill: the server
+            // checks them against the balance and takes them under a lock.
+            ...(!payOnline && pointsUsed > 0 ? { walletPoints: pointsUsed } : {}),
             address: {
               label: selectedAddress.label,
               line: [
@@ -702,7 +751,7 @@ export function CheckoutView({ config }: Readonly<{ config: CheckoutConfig }>) {
             // The note for the rider travels on its own, not folded into the
             // address: the rider app shows it as instructions, and the server
             // caps and stores it separately.
-            instructions: courierInstructions.trim() || undefined,
+            instructions: canAddNote ? courierInstructions.trim() || undefined : undefined,
           }),
         });
 
@@ -740,6 +789,9 @@ export function CheckoutView({ config }: Readonly<{ config: CheckoutConfig }>) {
           // verbatim rather than paraphrasing it into something vaguer.
           if (data.message) {
             setError(data.message);
+            setRulesRead((n) => n + 1);
+            // The points may be why: read the balance again.
+            if (data.error === "wallet_refused") setWalletRead((n) => n + 1);
             setStatus("ready");
             return;
           }
@@ -913,7 +965,9 @@ export function CheckoutView({ config }: Readonly<{ config: CheckoutConfig }>) {
             </span>
             <span className="min-w-0 flex-1">
               <span className="block text-[15px] font-bold">
-                {t("Delivery instructions", "डिलीवरी के निर्देश")}
+                {canAddNote
+                  ? t("Delivery instructions", "डिलीवरी के निर्देश")
+                  : t("Address details", "पते की जानकारी")}
               </span>
               <span className="block truncate text-xs text-muted">
                 {detailsSummary ||
@@ -992,10 +1046,15 @@ export function CheckoutView({ config }: Readonly<{ config: CheckoutConfig }>) {
       return (
         <p className="mb-2 flex items-center gap-1.5 text-center text-sm font-medium text-deal">
           <AlertTriangle className="size-4 shrink-0" />
-          {t(
-            "This shop cannot take payment right now.",
-            "यह दुकान अभी भुगतान नहीं ले पा रही है।",
-          )}
+          {availability.codRefusal === "over_limit"
+            ? t(
+                `Orders above ${codLimit} can't be placed right now.`,
+                `${codLimit} से ज़्यादा के ऑर्डर अभी नहीं हो सकते।`,
+              )
+            : t(
+                "This shop cannot take payment right now.",
+                "यह दुकान अभी भुगतान नहीं ले पा रही है।",
+              )}
         </p>
       );
     }
@@ -1071,7 +1130,7 @@ export function CheckoutView({ config }: Readonly<{ config: CheckoutConfig }>) {
             ? t("Pay & place order", "भुगतान करें और ऑर्डर करें")
             : t("Place order", "ऑर्डर करें")}
         </span>
-        <span>{formatINR(payTotal)}</span>
+        <span>{formatINR(payOnline ? payTotal : cashToPay)}</span>
       </>
     );
   }
@@ -1102,28 +1161,28 @@ export function CheckoutView({ config }: Readonly<{ config: CheckoutConfig }>) {
                 {paymentNotice}
               </p>
             ) : null}
-            <PaymentOption
-              icon={<Banknote className="size-5" />}
-              label={t("Cash on delivery", "डिलीवरी पर नकद")}
-              desc={
-                availability.codRefusal === "over_limit"
-                  ? t(
-                      "Not available for this amount.",
-                      "इस रकम के लिए उपलब्ध नहीं।",
-                    )
-                  : (codHintText ??
-                    t(
-                      "Pay the courier when your order arrives.",
-                      "ऑर्डर आने पर डिलीवरी वाले को भुगतान करें।",
-                    ))
-              }
-              selected={availability.cod && !payOnline}
-              // Genuinely disabled, not merely styled that way — and the order
-              // API refuses a cash order over the ceiling regardless.
-              disabled={!availability.cod}
-              badge={codBadgeText(availability, t)}
-              onSelect={() => setPaymentMethod("cod")}
-            />
+            {/* Above the cash limit cash is not shown at all; the notice above
+                says why. The order API refuses it regardless. */}
+            {availability.codRefusal === "over_limit" ? null : (
+              <PaymentOption
+                icon={<Banknote className="size-5" />}
+                label={t("Cash on delivery", "डिलीवरी पर नकद")}
+                desc={
+                  pointsUsed > 0 && cashToPay === 0
+                    ? t("Your points cover this order.", "आपके पॉइंट से पूरा ऑर्डर हो गया।")
+                    : codHintText ??
+                      t(
+                        "Pay the courier when your order arrives.",
+                        "ऑर्डर आने पर डिलीवरी वाले को भुगतान करें।",
+                      )
+                }
+                selected={availability.cod && !payOnline}
+                // Genuinely disabled, not merely styled that way.
+                disabled={!availability.cod}
+                badge={codBadgeText(availability, t)}
+                onSelect={() => setPaymentMethod("cod")}
+              />
+            )}
             <PaymentOption
               icon={<CreditCard className="size-5" />}
               label={t("Pay online", "ऑनलाइन भुगतान")}
@@ -1139,6 +1198,25 @@ export function CheckoutView({ config }: Readonly<{ config: CheckoutConfig }>) {
           </div>
         </section>
 
+        {showWallet ? (
+          <WalletSection
+            balance={walletInfo?.balance ?? 0}
+            max={walletMax}
+            use={useWallet}
+            amount={walletAmount}
+            cashDue={cashToPay}
+            online={payOnline}
+            t={t}
+            onUse={(on) => {
+              setUseWallet(on);
+              // Starts at the most they can use; they can type less.
+              if (on) setWalletAmount(String(walletMax));
+            }}
+            onAmount={setWalletAmount}
+          />
+        ) : null}
+
+        {canTip ? (
         <section className="card p-4">
           <div className="flex gap-4">
             <div className="grid size-20 shrink-0 place-items-center rounded-2xl bg-accent-soft">
@@ -1172,12 +1250,15 @@ export function CheckoutView({ config }: Readonly<{ config: CheckoutConfig }>) {
             ))}
           </div>
         </section>
+        ) : null}
 
         <section className="card p-4">
+          {canUseCode ? (
           <h2 className="text-[15px] font-bold">
             {t("Have a code?", "कूपन कोड है?")}
           </h2>
-          {coupon ? (
+          ) : null}
+          {!canUseCode ? null : coupon ? (
             <div className="mt-3 flex items-center justify-between gap-3 rounded-xl bg-green-soft px-3.5 py-3">
               <div className="min-w-0">
                 <p className="text-data truncate text-sm font-bold text-green">
@@ -1264,9 +1345,15 @@ export function CheckoutView({ config }: Readonly<{ config: CheckoutConfig }>) {
                 <span className="text-data">−{formatINR(discount)}</span>
               </div>
             ) : null}
+            {pointsUsed > 0 ? (
+              <div className="flex justify-between font-medium text-green">
+                <span>{t("Paid with points", "पॉइंट से भुगतान")}</span>
+                <span className="text-data">−{formatINR(pointsUsed)}</span>
+              </div>
+            ) : null}
             <div className="flex justify-between pt-1.5 text-[15px] font-bold text-ink">
-              <span>{t("To pay", "कुल भुगतान")}</span>
-              <span className="text-data">{formatINR(payTotal)}</span>
+              <span>{pointsUsed > 0 ? t("Cash to pay", "नकद देना है") : t("To pay", "कुल भुगतान")}</span>
+              <span className="text-data">{formatINR(payOnline ? payTotal : cashToPay)}</span>
             </div>
           </div>
         </section>
@@ -1503,8 +1590,8 @@ function paymentMethodsText(availability: PaymentAvailability, t: T): string {
     );
   }
   return t(
-    "Payment is not available for this shop right now.",
-    "इस दुकान पर अभी भुगतान की सुविधा नहीं है।",
+    "Payment is not available for this order right now.",
+    "इस ऑर्डर के लिए अभी भुगतान की सुविधा नहीं है।",
   );
 }
 
@@ -1513,9 +1600,6 @@ function codBadgeText(
   availability: PaymentAvailability,
   t: T,
 ): string | undefined {
-  if (availability.codRefusal === "over_limit") {
-    return t("Over cash limit", "नकद सीमा से ज़्यादा");
-  }
   if (availability.codRefusal === "cod_off") {
     return t("Not accepted", "नहीं लेते");
   }
@@ -1544,12 +1628,8 @@ function paymentNoticeText(
   t: T,
 ): string | null {
   if (!availability.notice) return null;
-  if (!availability.cod && !availability.online) {
-    return t(
-      "This shop cannot take payment right now. Please try again a little later.",
-      "यह दुकान अभी भुगतान नहीं ले पा रही है। थोड़ी देर बाद फिर कोशिश करें।",
-    );
-  }
+  // Before the general line below: above the limit with online off, the customer
+  // can still order by removing items, so that is what they are told.
   if (availability.codRefusal === "over_limit") {
     return availability.online
       ? t(
@@ -1557,9 +1637,15 @@ function paymentNoticeText(
           `${codLimit} से ज़्यादा के ऑर्डर का भुगतान ऑनलाइन करना होगा।`,
         )
       : t(
-          `This shop takes cash only up to ${codLimit}. Remove a few items to place this order.`,
-          `यह दुकान ${codLimit} तक ही नकद लेती है। ऑर्डर करने के लिए कुछ आइटम हटाएं।`,
+          `Orders above ${codLimit} can't be placed right now. Remove a few items to order.`,
+          `${codLimit} से ज़्यादा के ऑर्डर अभी नहीं हो सकते। ऑर्डर करने के लिए कुछ आइटम हटाएं।`,
         );
+  }
+  if (!availability.cod && !availability.online) {
+    return t(
+      "This shop cannot take payment right now. Please try again a little later.",
+      "यह दुकान अभी भुगतान नहीं ले पा रही है। थोड़ी देर बाद फिर कोशिश करें।",
+    );
   }
   if (availability.codRefusal === "cod_off") {
     return t(
@@ -1709,6 +1795,8 @@ function DetailsSheet({
   setCourierInstructions: (v: string) => void;
 }>) {
   const t = useT();
+  const canAddNote = useFeature("customer.delivery_notes");
+  const canSaveAddresses = useFeature("customer.saved_addresses");
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
@@ -1775,6 +1863,7 @@ function DetailsSheet({
             value={buildingName}
             onChange={setBuildingName}
           />
+          {canAddNote ? (
           <CheckoutField
             label={t(
               "Instructions for the courier",
@@ -1788,12 +1877,15 @@ function DetailsSheet({
             onChange={setCourierInstructions}
             maxLength={MAX_INSTRUCTIONS_LENGTH}
           />
+          ) : null}
+          {canSaveAddresses ? (
           <Link
             href="/profile/addresses"
             className="block pt-1 text-center text-sm font-semibold text-accent-ink"
           >
             {t("Manage saved addresses", "सेव पते बदलें")}
           </Link>
+          ) : null}
         </div>
         <div className="border-t border-line p-4 pb-[calc(1rem+env(safe-area-inset-bottom))]">
           <button

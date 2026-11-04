@@ -28,6 +28,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       showSnack(context, 'Couldn\'t check right now.');
     } else if (!v.updateAvailable) {
       showSnack(context, 'You\'re on the latest version.');
+    } else if (isBlocking(v)) {
+      // The router takes it from here: no dialog with a way out.
+      ref.read(updateProvider.notifier).adopt(v);
     } else {
       await showUpdateDialog(context, v);
     }

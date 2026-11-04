@@ -22,12 +22,15 @@ import { captureError } from "@/lib/obs/emit";
 import { isRiderSchemaPending } from "@/lib/data-access/rider-status";
 import { getRiderRatingsForAdmin } from "@/lib/data-access/rider-insights";
 import { getRiderForAdmin, getRiderMoney, type RiderMoney, type RiderPhase } from "@/lib/data-access/admin-riders";
+import { adminPaymentMode, waitingPaymentForRider } from "@/lib/data-access/admin-rider-payments";
 import { MIGRATION_MISSING, formatDay, formatMoney } from "@/lib/rider/admin-money";
 import { istDay } from "@/lib/rider/earnings-math";
 import { formatDateTime, formatRelativeTime } from "@/lib/utils/relative-time";
 import { MoneyTab } from "./money-tab";
 import { AccountAccess } from "@/components/admin/feature-access/account-access";
 import { ProfileTab } from "./profile-tab";
+import { getStaffAccount } from "@/lib/data-access/staff-access";
+import { StaffAccessControls } from "@/app/admin/settings/employees/staff-access-controls";
 import { DocumentsTab } from "./documents-tab";
 import { getRiderProfileForAdmin, type AdminRiderProfile } from "@/lib/data-access/admin-rider-profile";
 import { getPayoutAccountForAdmin } from "@/lib/data-access/rider-payout-accounts";
@@ -41,10 +44,6 @@ export const metadata: Metadata = { title: "Rider · Admin · Deligro" };
  * account in full, change requests), Documents (view, verify, reject), Money
  * and Access (which sections of the rider app this rider may use: the
  * per-person feature switches).
- *
- * Platform: BOTH. The tab is a query parameter, not state: it survives a
- * reload and can be sent to a colleague. The Money tab's tables are
- * `DataTable`s and its forms size against their own container.
  */
 export const dynamic = "force-dynamic";
 
@@ -69,7 +68,7 @@ export default async function AdminRiderPage({
 }: Readonly<{ params: Promise<{ id: string }>; searchParams: Promise<Search> }>) {
   // The layout is not a guard: Next skips it when the client already holds that
   // segment, so the page that reads service-role data checks for itself.
-  await requireRole("admin");
+  const admin = await requireRole("admin");
 
   const { id } = await params;
   const sp = await searchParams;
@@ -77,6 +76,9 @@ export default async function AdminRiderPage({
 
   const rider = await getRiderForAdmin(id);
   if (!rider) notFound();
+
+  const account = await getStaffAccount(id);
+  const stopped = account !== null && account.accountStatus !== "active";
 
   const tab: Tab = (TABS as readonly string[]).includes(sp.tab ?? "") ? (sp.tab as Tab) : "overview";
   const base = `/admin/riders/${id}`;
@@ -94,9 +96,14 @@ export default async function AdminRiderPage({
 
   let money: RiderMoney | null = null;
   let moneyPending = false;
+  let mayPayNow = false;
+  let waiting: { amount: number; askedBy: string } | null = null;
   if (tab === "money") {
     try {
       money = await getRiderMoney(id, { from: sp.from, to: sp.to, cursor: sp.cursor ?? null });
+      const [mode, request] = await Promise.all([adminPaymentMode(), waitingPaymentForRider(admin, id)]);
+      mayPayNow = mode === true;
+      waiting = request ? { amount: request.amount, askedBy: request.requestedBy.name } : null;
     } catch (e) {
       if (isRiderSchemaPending(e)) moneyPending = true;
       else {
@@ -146,13 +153,22 @@ export default async function AdminRiderPage({
         title={rider.name ?? "Unnamed rider"}
         description={[rider.riderCode, rider.phone].filter(Boolean).join(" · ") || undefined}
         back={{ href: "/admin/riders", label: "Riders" }}
-        status={<StatusBadge tone={PHASE_TONE[rider.phase]}>{PHASE_LABEL[rider.phase]}</StatusBadge>}
+        status={
+          stopped ? (
+            <StatusBadge tone="red">Stopped</StatusBadge>
+          ) : (
+            <StatusBadge tone={PHASE_TONE[rider.phase]}>{PHASE_LABEL[rider.phase]}</StatusBadge>
+          )
+        }
         actions={
-          rider.phone ? (
-            <a href={`tel:${rider.phone}`} className="c-btn c-btn-outline press">
-              Call
-            </a>
-          ) : undefined
+          <>
+            {rider.phone ? (
+              <a href={`tel:${rider.phone}`} className="c-btn c-btn-outline">
+                Call
+              </a>
+            ) : null}
+            <StaffAccessControls id={id} name={rider.name ?? "this rider"} role="driver" stopped={stopped} />
+          </>
         }
       />
 
@@ -179,7 +195,7 @@ export default async function AdminRiderPage({
             <Figure
               label="Owed"
               value={rider.pending === null ? "-" : formatMoney(rider.pending)}
-              note={rider.pending === null ? "Rider money (0083) isn't applied yet" : "Not yet paid out"}
+              note={rider.pending === null ? "Rider money isn't set up yet" : "Not yet paid out"}
             />
           </FigureRow>
 
@@ -247,7 +263,7 @@ export default async function AdminRiderPage({
               <Link href={`${base}?tab=money`} className="font-semibold text-accent-ink hover:underline">
                 Open the Money tab
               </Link>{" "}
-              to see earnings, record a payout or add a bonus or deduction.
+              to see salary, record a payment or add a deduction.
             </p>
           </Section>
 
@@ -301,7 +317,7 @@ export default async function AdminRiderPage({
           {MIGRATION_MISSING}. Earnings, payouts and adjustments appear here once it is.
         </PreviewNotice>
       ) : (
-        <MoneyTab riderId={id} money={money} today={today} cursor={sp.cursor ?? null} payTo={payTo} />
+        <MoneyTab mayPayNow={mayPayNow} waiting={waiting} riderId={id} money={money} today={today} cursor={sp.cursor ?? null} payTo={payTo} />
       )}
     </>
   );

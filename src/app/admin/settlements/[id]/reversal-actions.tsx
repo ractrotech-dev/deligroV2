@@ -6,10 +6,10 @@ import { Button } from "@/components/ui/button";
 import { approveReversalAction, requestReversalAction } from "@/app/admin/settlements/actions";
 
 /**
- * A PAID settlement's one action. A paid record is never undone by one person
- * (0156): if the transfer did not reach the vendor, someone asks for a
- * reversal and someone else approves it, which voids the payout so its orders
- * can be paid again.
+ * A PAID settlement's one action. If the transfer did not reach the vendor,
+ * someone asks for a reversal and it is then approved here, which voids the
+ * payout so its orders can be paid again: by someone else, or by the admin who
+ * asked under the one-admin rule (0152), with a reason.
  */
 export function ReversalActions({
   id,
@@ -52,22 +52,22 @@ export function ReversalActions({
 
   let message: string;
   if (!reversal) {
-    message = "Paid. If the transfer didn't reach the vendor (it bounced), ask for a reversal. Someone else approves it, and then the orders can be paid again.";
+    message = "Paid. If the money didn't reach the shop, ask for a reversal. Once it is approved, the orders can be paid again.";
   } else if (mine && !mayApproveOwn) {
     message = "You asked for this reversal. Someone else has to approve it.";
   } else {
-    message = `${mine ? "You" : reversal.requestedByName} asked for this payout to be reversed${reversal.note ? `: “${reversal.note}”` : ""}. Approve only once you've confirmed with the bank that the money didn't arrive.`;
+    message = `${mine ? "You" : reversal.requestedByName} asked for this payment to be reversed${reversal.note ? `: “${reversal.note}”` : ""}. Approve only once you've confirmed with the bank that the money didn't arrive.`;
   }
 
   return (
-    <div className="space-y-3 rounded-xl border border-line bg-surface p-4">
+    <div className="space-y-3 rounded-[var(--c-r)] border border-line bg-surface p-4">
       <p className="text-sm font-semibold text-ink">Reversal</p>
       <p className="text-sm leading-relaxed text-muted">{message}</p>
       {!reversal || canApprove ? (
         <label className="block space-y-1.5 text-sm">
           <span className="font-medium text-ink">{reversal ? "Note" : "Why should it be reversed?"}</span>
           <input
-            className="h-11 w-full rounded-xl border border-line bg-bg px-3 text-ink"
+            className="h-9 w-full rounded-[var(--c-r)] border border-line bg-bg px-3 text-ink"
             value={reason}
             onChange={(e) => setReason(e.target.value)}
             placeholder={reversal ? "e.g. Bank confirmed the return" : "e.g. Bank returned UTR 1234"}

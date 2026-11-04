@@ -22,7 +22,7 @@ export function VendorAvatar({
   return (
     <span
       className={cn(
-        "relative grid shrink-0 place-items-center overflow-hidden rounded-xl ring-1 ring-line",
+        "relative grid shrink-0 place-items-center overflow-hidden rounded-[var(--c-r)] ring-1 ring-line",
         className ?? "size-9"
       )}
     >

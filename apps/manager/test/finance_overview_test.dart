@@ -15,7 +15,7 @@ void main() {
     'Platform commission',
     'Vendor-funded discounts',
     'Deligro-funded discounts',
-    'Refunds and adjustments',
+    'Old refunds and adjustments',
     'Delivery fees collected',
     'Rider delivery earnings',
     'Vendor earnings payable',
@@ -33,7 +33,7 @@ void main() {
   test('refunds on cancelled orders are explained, not silently left out', () {
     final j = p6('finance_overview');
     (j['sales'] as Map<String, dynamic>)['refunds'] = {'total': 900, 'count': 3, 'onCancelled': 250};
-    final refunds = salesFigures(FinanceOverview.fromJson(j)).firstWhere((f) => f.label == 'Refunds and adjustments');
+    final refunds = salesFigures(FinanceOverview.fromJson(j)).firstWhere((f) => f.label == 'Old refunds and adjustments');
     expect(refunds.detail, contains('₹250 on cancelled orders'));
     expect(refunds.detail, contains('not off net sales'));
   });
@@ -50,8 +50,8 @@ void main() {
     final commission = salesFigures(o).firstWhere((f) => f.label == 'Platform commission');
     expect(commission.detail, contains('GST ₹4,923'));
     expect(paymentFigures(o).firstWhere((f) => f.label == 'Vendor payments due').route, '/finance/vendor-dues');
-    expect(paymentFigures(o).firstWhere((f) => f.label == 'Pending approvals').route,
-        '/more/approvals?kind=vendor_settlement');
+    // The tile counts every kind waiting, so it opens the list of every kind.
+    expect(paymentFigures(o).firstWhere((f) => f.label == 'Pending approvals').route, '/more/approvals');
   });
 
   testWidgets('renders every figure label in order, cancelled apart', (t) async {

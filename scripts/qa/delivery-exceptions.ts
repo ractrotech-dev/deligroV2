@@ -444,34 +444,19 @@ const server = http.createServer((req, res) => {
       }
 
       if (fn === "ops_cancel_order") {
-        // 0142's cancellation: refund of a paid order (the rest of the total),
-        // order cancelled by the actor's role with the reason, any live
-        // delivery cancelled, a failed one left — one transaction.
+        // 0191's cancellation: order cancelled by the actor's role with the reason,
+        // any live delivery cancelled, a failed one left, no refund. One transaction.
         const order = t("orders").find((o) => o.id === args.p_order);
         if (!order) return raise("42501", "forbidden");
         if (replayed()) return send(200, { replayed: true, refund_amount: null });
         if (order.status === "delivered" || order.status === "cancelled") return raise("22023", "terminal");
         const role = (t("profiles").find((x) => x.id === args.p_actor)?.role as string | undefined) ?? "manager";
-        let refund: number | null = null;
-        if (order.payment_status === "paid") {
-          const already = t("refunds")
-            .filter((r) => r.order_id === order.id && (r.status === "pending" || r.status === "approved"))
-            .reduce((sum, r) => sum + Number(r.amount ?? 0), 0);
-          const rest = Number(order.total ?? 0) - already;
-          if (rest > 0) {
-            refund = rest;
-            t("refunds").push({
-              id: randomUUID(), order_id: order.id, amount: rest, status: "pending", reason: args.p_reason,
-              requested_by: args.p_actor, origin: role,
-            });
-          }
-        }
         Object.assign(order, { status: "cancelled", cancelled_by: role, cancellation_reason: args.p_reason });
         for (const d of t("deliveries").filter((r) => r.order_id === order.id)) {
           if (["unassigned", "assigned", "picked_up"].includes(String(d.status))) d.status = "cancelled";
         }
         t("ops_audit_log").push({ actor_id: args.p_actor, action: "order.cancel", entity_id: order.id, client_action_id: args.p_client_action_id });
-        return send(200, { replayed: false, refund_amount: refund });
+        return send(200, { replayed: false, refund_amount: 0 });
       }
 
       return send(200, null);
@@ -584,6 +569,7 @@ function seedOrder(over: Row = {}): Row {
     restaurant_id: "r1",
     address: { label: "Home", line: "12 Lane, Civil Lines", area: "Civil Lines", lat: 21.25, lng: 81.63 },
     restaurants: { name: "Saffron Kitchen", owner_id: OWNER },
+    profiles: { phone: "+919800000009" },
     pickup_otp: "1234",
     delivery_otp: "5678",
     ...over,
@@ -672,7 +658,7 @@ async function dataTier(): Promise<void> {
     cancelOrder: async (orderId: string, o: { by: string; reason?: string | null; requestedBy: string }) => {
       log.push(`cancel:${orderId}:${o.by}:${o.reason}:${o.requestedBy}`);
       order(orderId).status = "cancelled";
-      return { ok: true as const, refundQueued: false };
+      return { ok: true as const };
     },
     dispatch: async (orderId: string, stage: string, o: { excludeRiderIds?: string[] } = {}) => {
       log.push(`dispatch:${orderId}:${stage}:${(o.excludeRiderIds ?? []).join("+")}`);
@@ -1189,30 +1175,32 @@ async function dataTier(): Promise<void> {
     assert.equal(log.filter((l) => l.startsWith("cancel:")).length, 0);
   });
 
-  await group("cancelOrderAsOps: refund first for a paid order, cancelled_by the deciding role, a failed delivery left as it is", async () => {
+  await group("cancelOrderAsOps: no refund even on a paid order, cancelled_by the deciding role, a failed delivery left as it is", async () => {
     fresh({ payment_method: "online", payment_status: "paid", total: 420 }, { status: "failed", failed_at: nowIso(), failure_reason: "failed_delivery: x" });
     const r = await cancellation.cancelOrderAsOps(O1, { by: "manager", reason: "delivery_failed: failed_delivery", requestedBy: MGR });
-    assert.deepEqual(r, { ok: true, refundQueued: true });
+    assert.deepEqual(r, { ok: true });
     assert.equal(order().status, "cancelled");
     assert.equal(order().cancelled_by, "manager");
     assert.equal(order().cancellation_reason, "delivery_failed: failed_delivery");
-    const refund = t("refunds")[0];
-    assert.equal(refund?.amount, 420);
-    assert.equal(refund?.requested_by, MGR);
+    assert.equal(t("refunds").length, 0, "no refund row");
+    assert.equal(order().payment_status, "paid", "the money question is the owner's, nothing marks it refunded");
     assert.equal(delivery().status, "failed");
-    // The refund this order already carries is reported (pendingRefund), so the console can point at it.
-    assert.deepEqual(await cancellation.cancelOrderAsOps(O1, { by: "admin", requestedBy: ADM }), {
+    assert.deepEqual(await cancellation.cancelOrderAsOps(O1, { by: "admin", reason: "again", requestedBy: ADM }), {
       ok: false,
       error: "already_cancelled",
-      pendingRefund: true,
     });
   });
 
-  await group("cancelOrderAsOps: a delivered order is not cancelled; a COD order queues no refund; a live delivery is cancelled", async () => {
-    fresh({ status: "delivered" });
-    assert.deepEqual(await cancellation.cancelOrderAsOps(O1, { by: "admin", requestedBy: ADM }), { ok: false, error: "delivered" });
+  await group("cancelOrderAsOps: a reason is required; a delivered order is not cancelled; a live delivery is cancelled", async () => {
     fresh();
-    assert.deepEqual(await cancellation.cancelOrderAsOps(O1, { by: "admin", reason: "customer asked", requestedBy: ADM }), { ok: true, refundQueued: false });
+    for (const reason of ["", "  ", "ab"]) {
+      assert.deepEqual(await cancellation.cancelOrderAsOps(O1, { by: "admin", reason, requestedBy: ADM }), { ok: false, error: "reason_required" });
+    }
+    assert.notEqual(order().status, "cancelled", "a refused cancel changes nothing");
+    fresh({ status: "delivered" });
+    assert.deepEqual(await cancellation.cancelOrderAsOps(O1, { by: "admin", reason: "customer asked", requestedBy: ADM }), { ok: false, error: "delivered" });
+    fresh();
+    assert.deepEqual(await cancellation.cancelOrderAsOps(O1, { by: "admin", reason: "customer asked", requestedBy: ADM }), { ok: true });
     assert.equal(t("refunds").length, 0);
     assert.equal(delivery().status, "cancelled");
   });

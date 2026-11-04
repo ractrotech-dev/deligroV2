@@ -1,12 +1,12 @@
 import { requireRole } from "@/lib/auth";
 import { AdminHero, PreviewNotice } from "@/components/admin/admin-ui";
-import { ConsoleOnly } from "@/components/admin/console-only";
 import {
   getSettingsSnapshot,
   riderCashLimitsReady,
   riderDocsSettingReady,
-  riderTargetsReady,
+  cashLimitReady as readCashLimitReady,
   settingsBackendReady,
+  walletSettingsReady,
 } from "@/lib/settings";
 import { isRazorpayConfigured } from "@/lib/payments/razorpay";
 import {
@@ -39,8 +39,9 @@ export default async function PlatformSettingsPage() {
     commissionCoverage,
     singleAdminPayments,
     cashLimitsReady,
-    targetsReady,
+    cashLimitReady,
     docsSettingReady,
+    walletReady,
   ] = await Promise.all([
     getSettingsSnapshot(),
     settingsBackendReady(),
@@ -50,8 +51,9 @@ export default async function PlatformSettingsPage() {
     // A failed read shows the pre-0152 notice rather than a wrong state.
     singleAdminPaymentsOn().catch(() => null),
     riderCashLimitsReady(),
-    riderTargetsReady(),
+    readCashLimitReady(),
     riderDocsSettingReady(),
+    walletSettingsReady(),
   ]);
   const settings = snapshot.settings;
 
@@ -90,28 +92,20 @@ export default async function PlatformSettingsPage() {
         </PreviewNotice>
       ) : null}
 
-      {/* Console-only: six two-column sections and a docked save bar, over the
-          highest-blast-radius config in the product — fees, tax, commission,
-          rider payout. Not something to edit from a phone by accident. */}
-      <ConsoleOnly
-        variant="page"
-        tool="Platform configuration"
-        why="Fees, tax, commission and rider dispatch reach every order on the platform — too far to change by thumb, on purpose."
-      >
-        {/* Whether the gateway keys exist is a server fact; the form needs it to
-            tell an admin that the payments toggle alone won't do anything. */}
-        <SettingsForm
-          settings={settings}
-          razorpayConfigured={isRazorpayConfigured}
-          vendorCommissionPct={vendorCommissionPct}
-          commissionGstPct={commissionGstPct}
-          commissionCoverage={commissionCoverage}
-          cashLimitsReady={cashLimitsReady}
-          targetsReady={targetsReady}
-          docsSettingReady={docsSettingReady}
-        />
-        <PaymentApprovals enabled={singleAdminPayments} />
-      </ConsoleOnly>
+      {/* Whether the gateway keys exist is a server fact; the form needs it to
+          tell an admin that the payments toggle alone won't do anything. */}
+      <SettingsForm
+        settings={settings}
+        razorpayConfigured={isRazorpayConfigured}
+        vendorCommissionPct={vendorCommissionPct}
+        commissionGstPct={commissionGstPct}
+        commissionCoverage={commissionCoverage}
+        cashLimitsReady={cashLimitsReady}
+        cashLimitReady={cashLimitReady}
+        docsSettingReady={docsSettingReady}
+        walletReady={walletReady}
+      />
+      <PaymentApprovals enabled={singleAdminPayments} />
     </>
   );
 }

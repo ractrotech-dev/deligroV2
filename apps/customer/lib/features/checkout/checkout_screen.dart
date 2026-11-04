@@ -7,6 +7,7 @@ import 'package:go_router/go_router.dart';
 import 'package:razorpay_flutter/razorpay_flutter.dart';
 
 import '../../core/api.dart';
+import '../../core/customer_features.dart';
 import '../../core/errors.dart';
 import '../../core/format.dart';
 import '../../core/pricing.dart';
@@ -14,6 +15,7 @@ import '../../data/checkout_repository.dart';
 import '../../models/address.dart';
 import '../../models/order.dart';
 import '../../models/settings.dart';
+import '../../models/wallet.dart';
 import '../../state/cart.dart';
 import '../../state/location.dart';
 import '../../state/providers.dart';
@@ -23,6 +25,7 @@ import '../../widgets/common.dart';
 import '../location/address_form.dart';
 import '../location/map_picker.dart';
 import 'delivery_details.dart';
+import 'wallet_choice.dart';
 
 /// Checkout (components/checkout/checkout-view.tsx). Everything here is a
 /// preview: `/api/orders` re-prices, re-checks the area and the payment rules,
@@ -79,12 +82,14 @@ class _Availability {
   bool get noMethod => !cod && !online;
 
   String? get notice {
-    if (noMethod) return 'This shop cannot take payment right now. Please try again a little later.';
+    // Before the general line: above the limit with online off, the customer can
+    // still order by removing items, so that is what they are told.
     if (overLimit) {
       return online
           ? 'Orders above ${rupees(limit)} must be paid online.'
-          : 'This shop takes cash only up to ${rupees(limit)}. Remove a few items to place this order.';
+          : 'Orders above ${rupees(limit)} can\'t be placed right now. Remove a few items to order.';
     }
+    if (noMethod) return 'This shop cannot take payment right now. Please try again a little later.';
     if (codOff) return 'This shop takes online payment only.';
     return null;
   }
@@ -93,9 +98,18 @@ class _Availability {
     if (cod && online) return 'Pay now by UPI or card, or pay the courier on delivery.';
     if (online) return 'Pay now by UPI, card, netbanking or wallet.';
     if (cod) return 'Pay the courier in cash when your order arrives.';
-    return 'Payment is not available for this shop right now.';
+    return 'Payment is not available for this order right now.';
   }
 }
+
+/// The order API's payment refusals (PaymentRefusalCode in cod-rules.ts).
+const _paymentRefusals = {
+  'cod_limit_exceeded',
+  'cod_not_available',
+  'online_not_available',
+  'no_payment_method',
+  'online_payments_unavailable',
+};
 
 const _couponReasons = {
   'not_started',
@@ -132,6 +146,8 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
   final _floor = TextEditingController();
   final _building = TextEditingController();
   final _note = TextEditingController();
+  final _walletPoints = TextEditingController();
+  bool _useWallet = false;
 
   int _tip = 0;
   String _method = 'cod';
@@ -160,6 +176,11 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
   void initState() {
     super.initState();
     _couponCtrl.addListener(() => setState(() {}));
+    // Fees and taxes as they are now, not as they were when the app started: the
+    // preview below stays right, and a change after this is caught at Place order.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) ref.invalidate(settingsProvider);
+    });
     // A quote is only good for the basket it was priced against.
     ref.listenManual<CartState>(cartProvider, (prev, next) {
       final c = _coupon;
@@ -178,7 +199,7 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
   @override
   void dispose() {
     _razorpay?.clear();
-    for (final c in [_apartment, _entry, _floor, _building, _note, _couponCtrl]) {
+    for (final c in [_apartment, _entry, _floor, _building, _note, _couponCtrl, _walletPoints]) {
       c.dispose();
     }
     super.dispose();
@@ -335,6 +356,8 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
         floor: _floor,
         building: _building,
         note: _note,
+        canAddNote: ref.read(customerFeaturesProvider).can(deliveryNotesFeature),
+        canManageAddresses: ref.read(customerFeaturesProvider).can(savedAddressesFeature),
       ),
     );
     if (mounted) setState(() {});
@@ -495,12 +518,55 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
     };
   }
 
+  /// The server's bill was not the one on screen. Shows it and asks; true when
+  /// the customer wants to go ahead at that total. Fresh fees are fetched so the
+  /// bill on the page says the same if they stay.
+  Future<bool> _confirmNewTotal(int shown, Map<String, dynamic> bill) async {
+    ref.invalidate(settingsProvider);
+    int n(String k) => (bill[k] as num?)?.round() ?? 0;
+    final total = n('total');
+    final go = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        key: const Key('total-changed'),
+        title: const Text('Your total has changed'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text('A price, fee or tax changed. It was ${rupees(shown)}, and now it is ${rupees(total)}.'),
+            const SizedBox(height: 12),
+            BillRow('Subtotal', rupees(n('subtotal'))),
+            BillRow('Delivery fee', rupees(n('deliveryFee'))),
+            BillRow('Taxes', rupees(n('taxes'))),
+            if (n('tip') > 0) BillRow('Tip', rupees(n('tip'))),
+            if (n('discount') > 0) BillRow('Discount', '−${rupees(n('discount'))}'),
+            BillRow('Total', rupees(total), bold: true),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Not now')),
+          FilledButton(
+            key: const Key('total-changed-place'),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text('Place for ${rupees(total)}'),
+          ),
+        ],
+      ),
+    );
+    return go == true;
+  }
+
   Future<void> _place({
     required CartState cart,
     required SavedAddress address,
     required bool payOnline,
+    required int shownTotal,
+    int walletPoints = 0,
   }) async {
     if (_phase != _Phase.ready) return;
+    final features = ref.read(customerFeaturesProvider);
     final slug = cart.slug!;
     setState(() {
       _phase = _Phase.placing;
@@ -517,13 +583,15 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
             ],
             addressLabel: address.label,
             addressLine: _fullLine(address),
-            instructions: deliveryInstructions(_note.text),
+            instructions: features.can(deliveryNotesFeature) ? deliveryInstructions(_note.text) : null,
             lat: address.lat,
             lng: address.lng,
-            tip: _tip,
+            tip: features.can(tipsFeature) ? _tip : 0,
             paymentMethod: payOnline ? 'online' : 'cod',
-            couponCode: _coupon?.code,
+            couponCode: features.can(promoCodesFeature) ? _coupon?.code : null,
             idempotencyKey: _idempotencyKey!,
+            expectedTotal: shownTotal,
+            walletPoints: walletPoints,
           );
     } on ApiException catch (e) {
       if (!mounted) return;
@@ -531,6 +599,18 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
       if (e.unauthorized) {
         context.push('/login?next=/checkout');
         return;
+      }
+      if (e.code == 'total_changed' && e.body['bill'] is Map) {
+        final bill = Map<String, dynamic>.from(e.body['bill'] as Map);
+        if (!await _confirmNewTotal(shownTotal, bill) || !mounted) return;
+        return _place(
+          cart: cart,
+          address: address,
+          payOnline: payOnline,
+          shownTotal: (bill['total'] as num).round(),
+          // Never more than the new bill: a lower bill can't be overpaid.
+          walletPoints: min(walletPoints, (bill['total'] as num).round()),
+        );
       }
       if (e.code.startsWith('coupon_')) {
         // Re-priced at submit and refused (lapsed, or used up elsewhere).
@@ -542,8 +622,16 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
         });
         return;
       }
+      // The points may have been used elsewhere a moment ago: read the balance again.
+      if (e.code == 'wallet_refused') ref.invalidate(walletProvider);
       if (e.code == 'restaurant_closed' || e.code == 'restaurant_not_found') {
         ref.invalidate(restaurantProvider(slug));
+      }
+      // The admin changed the payment rules since this screen opened: read them
+      // again, so the options match the sentence the server just sent.
+      if (_paymentRefusals.contains(e.code)) {
+        _rulesFor = null;
+        ref.invalidate(settingsProvider);
       }
       setState(() => _error = _placeError(e));
       return;
@@ -586,6 +674,8 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
       );
       if (!mounted) return;
     }
+    // The balance on the profile and the next checkout has just moved.
+    ref.invalidate(walletProvider);
     context.go('/orders/${order.id}?placed=1');
   }
 
@@ -652,20 +742,35 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
     final addressesAsync = ref.watch(addressesProvider);
     final addresses = addressesAsync.value;
     final selected = addresses == null ? null : _resolve(addresses, loc);
+    // Admin → App features. The server refuses these too.
+    final features = ref.watch(customerFeaturesProvider);
+    final canTip = features.can(tipsFeature);
+    final canUseCode = features.can(promoCodesFeature);
 
     _ensureRules(slug);
     if (selected != null) _ensureArea(slug, selected);
 
     // ---- money ----
     final subtotal = cart.subtotal;
-    final coupon = _coupon != null && _coupon!.pricedAt == subtotal && _coupon!.slug == slug ? _coupon : null;
+    final coupon = canUseCode && _coupon != null && _coupon!.pricedAt == subtotal && _coupon!.slug == slug ? _coupon : null;
     final discount = coupon?.discount ?? 0;
-    final charges = computeCharges(settings.charges, subtotal, tip: _tip, discount: discount);
+    final charges = computeCharges(settings.charges, subtotal, tip: canTip ? _tip : 0, discount: discount);
     final total = charges.total;
+
+    // ---- the wallet ----
+    // Decided from the selection, not payOnline, which depends on this sum. Points go
+    // with cash only for now, and they can bring a bill back under the cash limit.
+    final wallet = ref.watch(walletProvider).value;
+    final walletMax = wallet == null ? 0 : maxPointsFor(wallet.balance, total);
+    final showWallet = wallet != null && wallet.enabled && wallet.balance > 0;
+    final pointsUsed =
+        showWallet && _useWallet && _method != 'online' ? min(int.tryParse(_walletPoints.text) ?? 0, walletMax) : 0;
+    final cashDue = total - pointsUsed;
 
     // ---- payment ----
     final rules = _rules ?? PaymentRules(true, settings.featureOnlinePayment, 0);
-    final avail = _Availability(rules, settings.featureOnlinePayment, total);
+    // Judged on the cash the rider collects, as the server does.
+    final avail = _Availability(rules, settings.featureOnlinePayment, cashDue);
     // The selection is a request; this is what it resolves to.
     final payOnline = avail.online && (!avail.cod || _method == 'online');
 
@@ -701,7 +806,9 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
       blockReason =
           'Add ${rupees(settings.minOrder - subtotal)} more to reach the ${rupees(settings.minOrder)} minimum.';
     } else if (avail.noMethod) {
-      blockReason = 'This shop cannot take payment right now.';
+      blockReason = avail.overLimit
+          ? 'Orders above ${rupees(avail.limit)} can\'t be placed right now.'
+          : 'This shop cannot take payment right now.';
     } else if (addressesLoading) {
       blockLabel = 'Loading your addresses…';
     } else if (selected == null) {
@@ -770,12 +877,34 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
                 ),
               ),
               const SizedBox(height: 12),
-              _tipSection(busy),
-              const SizedBox(height: 12),
-              _couponSection(slug, subtotal, coupon, busy),
-              const SizedBox(height: 12),
+              if (canTip) ...[
+                _tipSection(busy),
+                const SizedBox(height: 12),
+              ],
+              if (canUseCode) ...[
+                _couponSection(slug, subtotal, coupon, busy),
+                const SizedBox(height: 12),
+              ],
               _paymentSection(avail, payOnline, settings.featureOnlinePayment, busy),
               const SizedBox(height: 12),
+              if (showWallet) ...[
+                WalletChoice(
+                  balance: wallet.balance,
+                  max: walletMax,
+                  use: _useWallet,
+                  controller: _walletPoints,
+                  cashDue: cashDue,
+                  online: payOnline,
+                  enabled: !busy,
+                  onUse: (on) => setState(() {
+                    _useWallet = on;
+                    // Starts at the most they can use; they can type less.
+                    if (on) _walletPoints.text = '$walletMax';
+                  }),
+                  onAmount: () => setState(() {}),
+                ),
+                const SizedBox(height: 12),
+              ],
               Panel(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -802,6 +931,10 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
                       ),
                     const Divider(height: 22),
                     BillRow('Total', rupees(total), bold: true),
+                    if (pointsUsed > 0) ...[
+                      BillRow('Paid with points', rupees(pointsUsed), negative: true),
+                      BillRow('Cash to pay', rupees(cashDue), bold: true),
+                    ],
                     const SizedBox(height: 8),
                     Text('Final amount confirmed when you place the order.',
                         style: TextStyle(color: c.muted, fontSize: 12.5)),
@@ -812,7 +945,8 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
           ),
         ),
         bottomNavigationBar: _Dock(
-          total: total,
+          // What this customer still pays. The bill itself is what the server compares.
+          total: payOnline ? total : cashDue,
           payOnline: payOnline,
           phase: _phase,
           blockReason: blockReason,
@@ -821,7 +955,13 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
           addressLabel: selected?.label,
           onPlace: blocked || busy || selected == null
               ? null
-              : () => _place(cart: cart, address: selected, payOnline: payOnline),
+              : () => _place(
+                    cart: cart,
+                    address: selected,
+                    payOnline: payOnline,
+                    shownTotal: total,
+                    walletPoints: payOnline ? 0 : pointsUsed,
+                  ),
         ),
       ),
     );
@@ -993,7 +1133,10 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text('Delivery instructions', style: TextStyle(fontWeight: FontWeight.w700)),
+                      Text(
+                        ref.watch(customerFeaturesProvider).can(deliveryNotesFeature) ? 'Delivery instructions' : 'Address details',
+                        style: const TextStyle(fontWeight: FontWeight.w700),
+                      ),
                       Text(
                         details.isEmpty ? 'Flat, floor, landmark. Optional.' : details,
                         maxLines: 1,
@@ -1166,22 +1309,19 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
             ),
             const SizedBox(height: 10),
           ],
-          _PayOption(
-            icon: Icons.payments_outlined,
-            label: 'Cash on delivery',
-            desc: avail.overLimit
-                ? 'Not available for this amount.'
-                : (codHint ?? 'Pay the courier when your order arrives.'),
-            selected: avail.cod && !payOnline,
-            disabled: !avail.cod || busy,
-            badge: avail.overLimit
-                ? 'Over cash limit'
-                : avail.codOff
-                    ? 'Not accepted'
-                    : null,
-            onTap: () => setState(() => _method = 'cod'),
-          ),
-          const SizedBox(height: 8),
+          // Above the cash limit cash is not shown at all; the notice says why.
+          if (!avail.overLimit) ...[
+            _PayOption(
+              icon: Icons.payments_outlined,
+              label: 'Cash on delivery',
+              desc: codHint ?? 'Pay the courier when your order arrives.',
+              selected: avail.cod && !payOnline,
+              disabled: !avail.cod || busy,
+              badge: avail.codOff ? 'Not accepted' : null,
+              onTap: () => setState(() => _method = 'cod'),
+            ),
+            const SizedBox(height: 8),
+          ],
           _PayOption(
             icon: Icons.credit_card_rounded,
             label: 'Pay online (UPI, cards)',
@@ -1503,7 +1643,7 @@ class _Dock extends StatelessWidget {
                       Expanded(
                         child: Text(
                           [
-                            payOnline ? 'Paying online' : 'Cash on delivery',
+                            payOnline ? 'Paying online' : (total == 0 ? 'Paid with points' : 'Cash on delivery'),
                             if (addressLabel != null) 'to $addressLabel',
                           ].join(' · '),
                           maxLines: 1,
@@ -1614,6 +1754,8 @@ class _DetailsSheet extends StatelessWidget {
     required this.floor,
     required this.building,
     required this.note,
+    required this.canAddNote,
+    required this.canManageAddresses,
   });
 
   final TextEditingController apartment;
@@ -1621,6 +1763,8 @@ class _DetailsSheet extends StatelessWidget {
   final TextEditingController floor;
   final TextEditingController building;
   final TextEditingController note;
+  final bool canAddNote;
+  final bool canManageAddresses;
 
   @override
   Widget build(BuildContext context) {
@@ -1632,7 +1776,7 @@ class _DetailsSheet extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text('Delivery instructions', style: Theme.of(context).textTheme.titleLarge),
+            Text(canAddNote ? 'Delivery instructions' : 'Address details', style: Theme.of(context).textTheme.titleLarge),
             const SizedBox(height: 4),
             Text('All optional. Flat, floor and gate are added to your address; your note goes to the courier.',
                 style: TextStyle(color: context.colors.muted, fontSize: 13)),
@@ -1668,21 +1812,24 @@ class _DetailsSheet extends StatelessWidget {
               textInputAction: TextInputAction.next,
               decoration: const InputDecoration(labelText: 'Building name'),
             ),
-            const SizedBox(height: 10),
-            TextField(
-              controller: note,
-              textInputAction: TextInputAction.done,
-              textCapitalization: TextCapitalization.sentences,
-              maxLength: maxDeliveryInstructions,
-              decoration: const InputDecoration(labelText: 'Instructions for the courier'),
-            ),
-            TextButton(
-              onPressed: () {
-                Navigator.pop(context);
-                context.push('/profile/addresses');
-              },
-              child: const Text('Manage saved addresses'),
-            ),
+            if (canAddNote) ...[
+              const SizedBox(height: 10),
+              TextField(
+                controller: note,
+                textInputAction: TextInputAction.done,
+                textCapitalization: TextCapitalization.sentences,
+                maxLength: maxDeliveryInstructions,
+                decoration: const InputDecoration(labelText: 'Instructions for the courier'),
+              ),
+            ],
+            if (canManageAddresses)
+              TextButton(
+                onPressed: () {
+                  Navigator.pop(context);
+                  context.push('/profile/addresses');
+                },
+                child: const Text('Manage saved addresses'),
+              ),
             const SizedBox(height: 4),
             FilledButton(onPressed: () => Navigator.pop(context), child: const Text('Done')),
           ],

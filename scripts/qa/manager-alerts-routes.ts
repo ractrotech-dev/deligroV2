@@ -67,6 +67,8 @@ console.log("\n── threshold bounds ──");
 const rule = (kind: string, threshold: unknown, windowMinutes: unknown = null) =>
   parseRuleBody({ kind, zoneId: Z, enabled: true, threshold, windowMinutes, clientActionId: CID });
 const badThreshold = (r: ReturnType<typeof rule>) => !r.ok && r.error === "bad_threshold";
+check("an on/off alert with no threshold is fine (what the app now sends)", rule("delivery_failed", null).ok);
+check("an on/off alert with 0 → bad_threshold (what the app used to send)", badThreshold(rule("delivery_failed", 0)));
 check("minutes 0 → bad_threshold", badThreshold(rule("order_unassigned", 0)));
 check("minutes 1441 → bad_threshold", badThreshold(rule("order_unassigned", 1441)));
 check("minutes 7 → ok", rule("order_unassigned", 7).ok);

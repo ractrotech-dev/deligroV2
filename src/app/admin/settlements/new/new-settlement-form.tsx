@@ -5,8 +5,8 @@ import { useTransition } from "react";
 import { DatePicker } from "@/components/ui/date-picker";
 
 /**
- * GET-driven filters: changing vendor/dates navigates so the server can
- * recompute the preview. Creating the draft is a separate form on the preview.
+ * GET-driven filters: changing the shop or dates navigates so the server can
+ * recompute what is shown. Creating the payment is a separate button below.
  */
 export function NewSettlementForm({
   vendors,
@@ -15,16 +15,11 @@ export function NewSettlementForm({
   toDate,
   cycleNote = null,
 }: Readonly<{
-  vendors: {
-    id: string;
-    name: string;
-    commissionPct: number;
-    inheritsPlatformRate: boolean;
-  }[];
+  vendors: { id: string; name: string }[];
   restaurantId: string;
   fromDate: string;
   toDate: string;
-  /** Which cycle this vendor is on, and what the pre-filled dates mean. */
+  /** Which cycle this shop is on, and what the pre-filled dates mean. */
   cycleNote?: string | null;
 }>) {
   const router = useRouter();
@@ -38,10 +33,10 @@ export function NewSettlementForm({
     const usp = new URLSearchParams();
     const rid = next.restaurantId ?? restaurantId;
     if (rid) usp.set("restaurantId", rid);
-    // Changing the VENDOR deliberately drops the dates: the next vendor may be
-    // on a different cycle, and carrying over a weekly range onto a monthly
-    // vendor is exactly the mis-typed period the cycle exists to prevent. The
-    // server then re-derives the default for whoever was picked.
+    // Changing the shop deliberately drops the dates: the next shop may be on a
+    // different cycle, and carrying over a weekly range onto a monthly shop is
+    // exactly the mis-typed period the cycle exists to prevent. The server then
+    // re-derives the default for whoever was picked.
     if (!next.restaurantId) {
       const from = next.from ?? fromDate;
       const to = next.to ?? toDate;
@@ -54,46 +49,42 @@ export function NewSettlementForm({
   }
 
   return (
-    <div className="space-y-3">
-      {cycleNote ? (
-        <p className="rounded-xl border border-line bg-surface-2 px-3.5 py-2.5 text-[13px] text-muted">
-          {cycleNote}
-        </p>
-      ) : null}
-      <div className="grid gap-3 rounded-xl border border-line bg-surface p-4 @3xl:grid-cols-3">
-      <label className="block space-y-1.5 text-sm">
-        <span className="font-medium text-ink">Vendor</span>
-        <select
-          className="h-11 w-full rounded-xl border border-line bg-bg px-3 text-ink"
-          value={restaurantId}
-          disabled={pending}
-          onChange={(e) => navigate({ restaurantId: e.target.value })}
-        >
-          <option value="">Select a restaurant…</option>
-          {vendors.map((v) => (
-            <option key={v.id} value={v.id}>
-              {v.name} ({v.commissionPct}%{v.inheritsPlatformRate ? " platform" : ""})
-            </option>
-          ))}
-        </select>
-      </label>
-      <label className="block space-y-1.5 text-sm">
-        <span className="font-medium text-ink">From (IST)</span>
-        <DatePicker
-          value={fromDate}
-          disabled={pending}
-          onChange={(v) => navigate({ from: v })}
-        />
-      </label>
-      <label className="block space-y-1.5 text-sm">
-        <span className="font-medium text-ink">To (IST)</span>
-        <DatePicker
-          value={toDate}
-          disabled={pending}
-          onChange={(v) => navigate({ to: v })}
-        />
-      </label>
+    <div className="space-y-2">
+      <div className="grid grid-cols-[2fr_1fr_1fr] items-end gap-3">
+        <label className="block space-y-1 text-[12.5px]">
+          <span className="font-medium text-muted">Shop</span>
+          <select
+            className="h-9 w-full rounded-[var(--c-r)] border border-line bg-surface px-2.5 text-[13px] text-ink"
+            value={restaurantId}
+            disabled={pending}
+            onChange={(e) => navigate({ restaurantId: e.target.value })}
+          >
+            <option value="">Choose a shop</option>
+            {vendors.map((v) => (
+              <option key={v.id} value={v.id}>
+                {v.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="block space-y-1 text-[12.5px]">
+          <span className="font-medium text-muted">From</span>
+          <DatePicker
+            value={fromDate}
+            disabled={pending}
+            onChange={(v) => navigate({ from: v })}
+          />
+        </label>
+        <label className="block space-y-1 text-[12.5px]">
+          <span className="font-medium text-muted">To</span>
+          <DatePicker
+            value={toDate}
+            disabled={pending}
+            onChange={(v) => navigate({ to: v })}
+          />
+        </label>
       </div>
+      {cycleNote ? <p className="text-[12.5px] text-muted">{cycleNote}</p> : null}
     </div>
   );
 }

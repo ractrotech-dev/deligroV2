@@ -57,6 +57,10 @@ export async function updateVendorRestaurantAction(
 ) {
   await requireRestaurantRole();
   await assertVendorFeature("vendor.shop_profile");
+  // Hours and the weekly off are "open and close" too, as on PATCH /api/vendor/store.
+  if (input.openingTime !== undefined || input.closingTime !== undefined || input.weeklyOff !== undefined) {
+    await assertVendorFeature("vendor.open_toggle");
+  }
   const ok = await updateVendorRestaurant(input);
   if (!ok) throw new Error("not_found");
   revalidatePath("/vendor", "layout");

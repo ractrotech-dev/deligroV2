@@ -188,12 +188,9 @@ void main() {
   });
 
   group('the figures', () {
-    testWidgets('targets, times, rates and hours', (tester) async {
+    testWidgets('times, rates and hours, and no targets', (tester) async {
       await _pump(tester, repo: _Fake(_json()));
-      expect(_in('ring-daily', find.text('5')), findsOneWidget);
-      expect(_in('ring-daily', find.text('of 12')), findsOneWidget);
-      expect(_in('ring-weekly', find.text('38')), findsOneWidget);
-      expect(_in('ring-weekly', find.text('of 60')), findsOneWidget);
+      expect(find.textContaining('arget'), findsNothing);
       expect(_in('stat-accept-deliver', find.text('37 min')), findsOneWidget);
       expect(_in('stat-pickup-deliver', find.text('24 min')), findsOneWidget);
       expect(_in('stat-acceptance', find.text('86.5%')), findsOneWidget);
@@ -234,8 +231,6 @@ void main() {
         expect(_in(k, find.text('—')), findsOneWidget, reason: k);
       }
       expect(find.textContaining('%'), findsNothing);
-      expect(_in('ring-daily', find.text('No target')), findsOneWidget);
-      expect(_in('ring-weekly', find.text('No target')), findsOneWidget);
       expect(_in('stat-online', find.text('0 h')), findsOneWidget);
       expect(find.textContaining('No ratings yet'), findsOneWidget);
       expect(find.textContaining('NaN'), findsNothing);
@@ -279,20 +274,8 @@ void main() {
       expect(find.text('Earned'), findsNothing);
     });
 
-    testWidgets('earnings show only when the ledger sent them', (tester) async {
+    testWidgets('no money column, even if an older server sends one', (tester) async {
       await _pump(tester, repo: _Fake(_json(earnings: true)));
-      expect(find.text('Earned'), findsOneWidget);
-      expect(find.text('₹2,500'), findsOneWidget);
-    });
-
-    testWidgets('earnings switch off hides the column even if sent', (
-      tester,
-    ) async {
-      await _pump(
-        tester,
-        repo: _Fake(_json(earnings: true)),
-        me: _me(features: const {'driver.earnings': false}),
-      );
       expect(find.text('Earned'), findsNothing);
       expect(find.textContaining('₹'), findsNothing);
     });
@@ -388,7 +371,7 @@ void main() {
       repo.error = null;
       await tester.tap(find.text('Try again'));
       await _settle(tester);
-      expect(find.byKey(const Key('targets-card')), findsOneWidget);
+      expect(find.byKey(const Key('stat-online')), findsOneWidget);
     });
   });
 
@@ -412,13 +395,6 @@ void main() {
   });
 
   group('model', () {
-    test('a target with nothing to do never divides by zero', () {
-      const t = TargetProgress(target: 0, done: 4);
-      expect(t.fraction, 0);
-      expect(t.hasTarget, isFalse);
-      expect(const TargetProgress(target: 4, done: 9).fraction, 1);
-    });
-
     test('a missing block is an empty one', () {
       final p = RiderPerformance.fromJson(const {});
       expect(p.months, isEmpty);

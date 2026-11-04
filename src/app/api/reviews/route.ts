@@ -3,6 +3,7 @@ import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { createClient } from "@/lib/supabase/server";
 import { submitReview } from "@/lib/data-access/reviews";
 import { rateLimit, tooManyRequests } from "@/lib/rate-limit";
+import { customerFeatureOn, featureOffResponse } from "@/lib/features/guards.server";
 
 /** The HTTP status for a refused review. */
 function reviewErrorStatus(error?: string): number {
@@ -25,6 +26,7 @@ export async function POST(request: Request) {
     const limit = await rateLimit(`reviews:${user.id}`, 20, 60_000);
     if (!limit.ok) return tooManyRequests(limit);
   }
+  if (!(await customerFeatureOn("customer.reviews"))) return featureOffResponse("customer.reviews");
 
   let body: { orderId?: string; rating?: number; comment?: string };
   try {

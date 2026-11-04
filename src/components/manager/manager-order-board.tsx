@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { formatINR } from "@/lib/utils/format";
+import { cashDue } from "@/lib/wallet/money";
 import { advanceOrder, assignRider, riderCandidatesFor } from "@/app/manager/actions";
 import type { ManagerOrderRow } from "@/lib/data-access/manager-orders";
 import type { RiderCandidate } from "@/lib/ops/order-contract";
@@ -89,7 +90,10 @@ export function ManagerOrderBoard({
 
 /** How the order is being paid for, for the payment pill. */
 function paymentLabel(o: ManagerOrderRow): string {
-  if (o.paymentMethod !== "online") return "Cash";
+  if (o.paymentMethod !== "online") {
+    if (!o.pointsUsed) return "Cash";
+    return cashDue(o.total, o.pointsUsed) > 0 ? "Cash and points" : "Points";
+  }
   return o.paymentStatus === "paid" ? "Prepaid" : "Online · unpaid";
 }
 

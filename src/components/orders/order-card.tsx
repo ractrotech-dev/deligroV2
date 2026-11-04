@@ -7,11 +7,11 @@ import type { Order } from "@/types";
 import { useCart } from "@/stores/cart-store";
 import { useUI } from "@/stores/ui-store";
 import { useReorderReview } from "@/stores/reorder-review-store";
+import { useFeature } from "@/components/features/features-provider";
 import { STATUS_META } from "@/lib/utils/order-status";
 import {
   cancellationNote,
   formatOrderPlacedAt,
-  isOrderPaid,
   type UiOrder,
 } from "@/lib/utils/order-map";
 import {
@@ -49,6 +49,7 @@ export function OrderCard({ order }: Readonly<{ order: UiOrder }>) {
   const router = useRouter();
   const { lang, t } = useLang();
   const reorder = useCart((s) => s.reorder);
+  const canReorder = useFeature("customer.reorder");
   const openCart = useUI((s) => s.openCart);
   const showReorderReview = useReorderReview((s) => s.show);
   const [reordering, setReordering] = useState(false);
@@ -59,17 +60,6 @@ export function OrderCard({ order }: Readonly<{ order: UiOrder }>) {
   const placedAt = order.createdAt
     ? formatOrderPlacedAt(order.createdAt, lang)
     : order.placedAt;
-
-  /**
-   * Cancelled, and the money is still ours to give back.
-   *
-   * `payment_status` moves to `refunded` when it has actually gone back, so
-   * "paid" on a cancelled order is a fact about the ledger and not a guess:
-   * we are holding it. Worded as the state rather than as a promise, because a
-   * request may already be in flight and "refund available" would then be
-   * telling the customer to do something they have done.
-   */
-  const owesRefund = cancelled && isOrderPaid(order);
 
   /**
    * Null for a cancellation we cannot attribute — a row from before migration
@@ -156,14 +146,6 @@ export function OrderCard({ order }: Readonly<{ order: UiOrder }>) {
             </span>
             <span aria-hidden>·</span>
             <span>{placedAt}</span>
-            {owesRefund ? (
-              <>
-                <span aria-hidden>·</span>
-                <span className="font-semibold text-[color:var(--c-ink-amber)]">
-                  {t("Refund not issued", "रिफ़ंड अभी नहीं हुआ")}
-                </span>
-              </>
-            ) : null}
           </p>
           {why ? (
             <p className="mt-1 truncate text-[12px] leading-snug text-muted">
@@ -176,6 +158,7 @@ export function OrderCard({ order }: Readonly<{ order: UiOrder }>) {
       {/* Labelled, not a bare glyph. "Order it again" is the single most
           repeated thing anyone does on this screen and it was an unnamed circle
           that also happens to replace whatever is in the basket. */}
+      {canReorder ? (
       <button
         onClick={handleReorder}
         disabled={reordering}
@@ -188,6 +171,7 @@ export function OrderCard({ order }: Readonly<{ order: UiOrder }>) {
         )}
         {t("Again", "फिर से")}
       </button>
+      ) : null}
     </div>
   );
 }

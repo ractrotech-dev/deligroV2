@@ -78,7 +78,7 @@ export function VendorSearchBar({ categories }: Readonly<{ categories: string[] 
           <button
             type="button"
             onClick={() => setQ("")}
-            className="press absolute right-1.5 top-1/2 grid size-6 -translate-y-1/2 place-items-center rounded-full text-muted hover:text-ink"
+            className="absolute right-1.5 top-1/2 grid size-6 -translate-y-1/2 place-items-center rounded-full text-muted hover:text-ink"
             aria-label="Clear search"
           >
             <X className="size-3.5" />

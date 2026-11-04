@@ -8,7 +8,7 @@ import '../../state/providers.dart' show riderKeyProvider;
 import '../../theme/app_theme.dart';
 import '../../widgets/common.dart';
 
-/// Every payout made to the rider, newest first.
+/// Every payment made to the rider, newest first.
 class PayoutsScreen extends ConsumerWidget {
   const PayoutsScreen({super.key});
 
@@ -16,7 +16,7 @@ class PayoutsScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final payouts = ref.watch(payoutsProvider(ref.watch(riderKeyProvider)));
     return Scaffold(
-      appBar: AppBar(title: const Text('Payouts')),
+      appBar: AppBar(title: const Text('Payments')),
       body: SafeArea(
         bottom: false,
         child: RefreshIndicator(
@@ -37,7 +37,7 @@ class PayoutsScreen extends ConsumerWidget {
                         constraints: const BoxConstraints(minHeight: 420),
                         child: const EmptyState(
                           icon: Icons.account_balance_outlined,
-                          title: 'No payouts yet',
+                          title: 'No payments yet',
                           body: 'When Deligro pays you, it shows up here.',
                         ),
                       ),

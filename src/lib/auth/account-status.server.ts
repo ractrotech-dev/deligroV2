@@ -44,12 +44,16 @@ export async function currentCustomerStatus(userId: string): Promise<string | nu
  * if the database refuses it, the ban still holds and access tokens lapse at expiry.
  */
 export async function applyAuthBan(userId: string, action: AccountAction, actorId: string): Promise<{ sessionsEnded: boolean }> {
-  const admin = createAdminClient();
-  const { error } = await admin.auth.admin.updateUserById(userId, {
-    ban_duration: action === "suspend" ? "876000h" : "none",
+  await setAuthBan(userId, action === "suspend");
+  if (action !== "suspend") return { sessionsEnded: false };
+  const { error: endError } = await createAdminClient().rpc("ops_revoke_customer_sessions", { p_actor: actorId, p_customer: userId });
+  return { sessionsEnded: !endError };
+}
+
+/** Block or allow sign-in and token refresh in Supabase Auth. Throws if Auth refuses. */
+export async function setAuthBan(userId: string, banned: boolean): Promise<void> {
+  const { error } = await createAdminClient().auth.admin.updateUserById(userId, {
+    ban_duration: banned ? "876000h" : "none",
   });
   if (error) throw error;
-  if (action !== "suspend") return { sessionsEnded: false };
-  const { error: endError } = await admin.rpc("ops_revoke_customer_sessions", { p_actor: actorId, p_customer: userId });
-  return { sessionsEnded: !endError };
 }

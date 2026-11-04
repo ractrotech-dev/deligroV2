@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart' show ValueNotifier;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -8,6 +9,7 @@ import '../core/active_cache.dart';
 import '../core/api.dart';
 import '../data/auth_repository.dart';
 import '../data/fixtures/fixture_backend.dart';
+import '../data/wallet_change_repository.dart';
 import '../data/jobs_repository.dart';
 import '../data/rider_repository.dart';
 import '../models/rider_me.dart';
@@ -17,7 +19,21 @@ import 'prefs.dart';
 
 final supabaseProvider = Provider<SupabaseClient>((_) => Supabase.instance.client);
 
-final apiProvider = Provider<ApiClient>((ref) => ApiClient(ref.watch(supabaseProvider).auth));
+/// Ticks when any route says this rider has been suspended or rejected. A signal,
+/// because `/me` is built on [apiProvider] and the client cannot read it back: the
+/// router listens and asks `/me` again.
+final riderBlockedSignalProvider = Provider<ValueNotifier<int>>((ref) {
+  final signal = ValueNotifier<int>(0);
+  ref.onDispose(signal.dispose);
+  return signal;
+});
+
+final apiProvider = Provider<ApiClient>(
+  (ref) => ApiClient(
+    ref.watch(supabaseProvider).auth,
+    onRiderBlocked: () => ref.read(riderBlockedSignalProvider).value++,
+  ),
+);
 
 final authRepoProvider = Provider(
   (ref) => AuthRepository(ref.watch(supabaseProvider), ref.watch(apiProvider)),
@@ -30,6 +46,12 @@ final riderRepoProvider = Provider((ref) => RiderRepository(ref.watch(apiProvide
 final jobsRepoProvider = Provider<JobsRepository>((ref) {
   if (fixturesEnabled) return FixtureJobsRepository.create();
   return ApiJobsRepository(ref.watch(apiProvider));
+});
+
+/// Adding change to a customer's wallet. Never through the offline queue.
+final walletChangeRepoProvider = Provider<WalletChangeRepository>((ref) {
+  if (fixturesEnabled) return FixtureWalletChangeRepository();
+  return ApiWalletChangeRepository(ref.watch(apiProvider));
 });
 
 /// The delivery the rider is carrying, kept for when the signal drops.
@@ -141,8 +163,8 @@ RiderMe? readCurrentMe(Ref ref) {
 }
 
 /// Who the signed-in rider is: `GET /api/rider/me`. The router's gate reads it
-/// (403 → not-rider, 404 → needs-update, otherwise home); `ref.invalidate` it
-/// to re-ask. Rebuilds when the signed-in user changes, and a 401 means the
+/// (403 → not-rider or, for a suspended or rejected rider, the blocked screen;
+/// 404 → needs-update; otherwise home); `ref.invalidate` it to re-ask. Rebuilds when the signed-in user changes, and a 401 means the
 /// session is no good, so it signs the app out (the router then shows login).
 ///
 /// No automatic retry: Riverpod 3 would re-ask a failed provider on a backoff
@@ -155,6 +177,7 @@ final meProvider = FutureProvider<RiderMe>(retry: (_, _) => null, (ref) async {
     return await ref.watch(riderRepoProvider).me();
   } on ApiException catch (e) {
     if (e.unauthorized) await ref.read(authRepoProvider).signOut();
+    if (e.riderBlocked) throw RiderBlockedException(uid, e);
     rethrow;
   }
 });

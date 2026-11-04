@@ -119,7 +119,7 @@ export function VendorPasswordCell({
   );
 
   const chip =
-    "press grid size-7 shrink-0 place-items-center rounded-lg text-muted transition-colors hover:bg-surface-2 hover:text-ink disabled:opacity-40";
+    "grid size-7 shrink-0 place-items-center rounded-lg text-muted transition-colors hover:bg-surface-2 hover:text-ink disabled:opacity-40";
 
   return (
     <div className="flex items-center gap-1">

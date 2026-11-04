@@ -3,8 +3,6 @@
     "amount": 520, "since": "2026-10-21T08:00:00Z", "subject": { "kind": "order", "id": "o-1", "label": "AB12CD34" }, "reference": "pay_123" },
   { "type": "stuck_payment", "severity": "warning", "title": "Payment stuck", "detail": null,
     "amount": 310, "since": "2026-10-21T07:00:00Z", "subject": { "kind": "order", "id": "o-2", "label": "XY98ZT11" }, "reference": "pay_456" },
-  { "type": "refund_unsent", "severity": "warning", "title": "Refund not sent", "detail": null,
-    "amount": 120, "since": "2026-10-19T07:00:00Z", "subject": { "kind": "refund", "id": "rf-1", "label": "AB12CD34" }, "reference": null },
   { "type": "settlement_delayed", "severity": "warning", "title": "Settlement overdue", "detail": "Weekly cycle, 13 days unpaid",
     "amount": 6420, "since": "2026-10-08T07:00:00Z", "subject": { "kind": "vendor", "id": "v-1", "label": "Spice Hub" }, "reference": null },
   { "type": "draft_stale", "severity": "warning", "title": "Draft settlement untouched", "detail": null,
@@ -16,4 +14,4 @@
   { "type": "brand_new_kind", "severity": "weird", "title": "Something new", "detail": null,
     "amount": null, "since": "2026-10-21T00:00:00Z", "subject": { "kind": "planet", "id": "x", "label": "X" }, "reference": null }
  ], "nextCursor": null,
- "counts": { "failed_payment": 1, "stuck_payment": 1, "refund_unsent": 1, "settlement_delayed": 1, "draft_stale": 1, "approval_overdue": 1, "rider_payout_delayed": 1 } }
+ "counts": { "failed_payment": 1, "stuck_payment": 1, "settlement_delayed": 1, "draft_stale": 1, "approval_overdue": 1, "rider_payout_delayed": 1 } }

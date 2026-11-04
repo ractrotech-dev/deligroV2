@@ -1,11 +1,13 @@
 import "server-only";
+import { randomUUID } from "node:crypto";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { readByIds } from "@/lib/data-access/scoped-riders";
+import { readOrderPoints } from "@/lib/data-access/wallet";
 import { scopeZoneIds, type ManagerScope } from "@/lib/auth/manager-scope";
 import { COUNTED_ORDER_FILTER, factsFromQueueRow, queueCounts, queueOrderIds, type QueueFactRow, type QueueFacts } from "@/lib/ops/queue";
 import type { DbOrderStatus, DeliveryStatus, OrderDetail, OrderListItem } from "@/lib/ops/order-contract";
 import { canShowCustomerPhone, mergeTimeline, toOrderDetail, type ActorIn } from "@/lib/ops/order-detail";
-import { encodeCursor, type OrderQuery } from "@/lib/ops/order-query";
+import { encodeCursor, orderSearchFilter, type OrderQuery, type OrderSearch, type OrderSearchMatch } from "@/lib/ops/order-query";
 import { toOrderListItem, type OpsOrderRow } from "@/lib/ops/order-row";
 
 /**
@@ -30,6 +32,8 @@ const LIST_COLS = [
 
 /** Ids per `in.(…)` read: keeps the request URL well under PostgREST's limits. */
 const ID_CHUNK = 150;
+/** An id no order has: a filter that finds nothing. */
+const NO_ORDER = "00000000-0000-0000-0000-000000000000";
 
 interface Address { label?: string; line?: string; landmark?: string; lat?: number; lng?: number }
 interface ListRow {
@@ -44,6 +48,7 @@ interface ListRow {
   restaurant_id: string;
   total: number | null;
   payment_method: string | null;
+  wallet_points_used?: number | null;
   payment_status: string | null;
   channel: string | null;
   cancelled_by: string | null;
@@ -100,7 +105,12 @@ export function toOpsRow(r: ListRow, riders: Map<string, RiderInfo>): OpsOrderRo
     customerName: one(r.customer)?.full_name?.trim() || null,
     total: r.total ?? 0,
     itemCount: r.order_items?.length ?? 0,
-    payment: { method: r.payment_method, status: r.payment_status },
+    payment: {
+      method: r.payment_method,
+      status: r.payment_status,
+      // 0198. `total` stays the bill; cash due = total − this.
+      pointsUsed: r.wallet_points_used ?? 0,
+    },
     byPhone: r.channel === "phone",
     delivery: d ? { status: d.status, driverId: d.driver_id, pickedUpAt: d.picked_up_at, failedAt: d.failed_at } : null,
     riderName: rider?.name ?? null,
@@ -111,7 +121,18 @@ export function toOpsRow(r: ListRow, riders: Map<string, RiderInfo>): OpsOrderRo
   };
 }
 
+/**
+ * Wallet points on these orders (0198), read on their own so the Manager app keeps
+ * working between deploying this code and applying the migration. Shown to staff, never
+ * used to ask anyone for money, so a failed read shows none rather than failing the list.
+ */
+async function attachPoints(rows: { id: string; wallet_points_used?: number | null }[]): Promise<void> {
+  const points = await readOrderPoints(createAdminClient(), rows.map((r) => r.id)).catch(() => new Map<string, number>());
+  for (const r of rows) r.wallet_points_used = points.get(r.id) ?? 0;
+}
+
 async function withRiders(rows: ListRow[]): Promise<OpsOrderRow[]> {
+  await attachPoints(rows);
   const riders = await loadRiderInfo(rows.map((r) => one(r.deliveries)?.driver_id ?? "").filter(Boolean));
   return rows.map((r) => toOpsRow(r, riders));
 }
@@ -145,6 +166,11 @@ function applyFilters(query: Chain, q: OrderQuery): Chain {
   let out = query;
   if (q.q?.kind === "id") out = out.eq("id", q.q.id);
   if (q.q?.kind === "code") out = out.like("short_code", `${q.q.prefix}%`);
+  const codePrefix = q.q?.kind === "text" ? q.q.codePrefix : undefined;
+  if (q.match) {
+    // listManagerOrders answers an empty match before it gets here; the fallback finds nothing.
+    out = out.or(orderSearchFilter(q.match, codePrefix) ?? `id.eq.${NO_ORDER}`);
+  }
   if (q.from) out = out.gte("created_at", q.from);
   if (q.to) out = out.lt("created_at", q.to);
   if (q.vendor) out = out.eq("restaurant_id", q.vendor);
@@ -153,9 +179,53 @@ function applyFilters(query: Chain, q: OrderQuery): Chain {
   if (q.paymentMethods) out = out.in("payment_method", q.paymentMethods);
   if (q.paymentStatuses) out = out.in("payment_status", q.paymentStatuses);
   // Unpaid online checkouts are not orders — exactly as the dashboard tiles
-  // count them — unless the manager typed that order's own id or code.
-  if (!q.q) out = out.or(COUNTED_ORDER_FILTER);
+  // count them — unless the manager typed that order's own id or code. Two
+  // ANDed `or`s: (counted or code) and (match or code) is "code, or a counted match".
+  if (!q.q || q.q.kind === "text" || q.q.kind === "phone") {
+    out = out.or(codePrefix ? `${COUNTED_ORDER_FILTER},short_code.like.${codePrefix}*` : COUNTED_ORDER_FILTER);
+  }
   return out;
+}
+
+/** Most customers and shops one search may name: keeps the request URL under PostgREST's limits. */
+const SEARCH_CUSTOMERS = 100;
+const SEARCH_SHOPS = 50;
+
+/**
+ * Who a name or phone search means, inside the scope. Names: customers with an
+ * order in these zones (0162's ops_customer_list, which also leaves out anyone
+ * else) and these zones' shops. A phone: 0162's audited search, which records the
+ * last four digits only; the route has already checked the permission.
+ */
+async function findSearchMatch(scope: ManagerScope, search: OrderSearch, actorId: string | null): Promise<OrderSearchMatch> {
+  const none: OrderSearchMatch = { customerIds: [], shopIds: [] };
+  const zones = scopeZoneIds(scope);
+  if (zones && zones.length === 0) return none;
+  const supabase = createAdminClient();
+  if (search.kind === "phone") {
+    if (!actorId) return none;
+    const { data, error } = await supabase.rpc("ops_search_customer_by_phone", {
+      p_actor: actorId, p_phone: search.phone, p_client_action_id: randomUUID(),
+    });
+    if (error) throw error;
+    return { customerIds: (data ?? []) as string[], shopIds: [] };
+  }
+  if (search.kind !== "text") return none;
+  let shops: Chain = supabase.from("restaurants").select("id").ilike("name", `%${search.text}%`).limit(SEARCH_SHOPS);
+  if (zones) shops = shops.in("zone_id", zones as string[]);
+  const [people, places] = await Promise.all([
+    supabase.rpc("ops_customer_list", {
+      p_zones: zones ? (zones as string[]) : null, p_q: search.text, p_status: null, p_sort: "recent",
+      p_after_key: null, p_after_id: null, p_limit: SEARCH_CUSTOMERS, p_ids: null,
+    }),
+    shops,
+  ]);
+  if (people.error) throw people.error;
+  if (places.error) throw places.error;
+  return {
+    customerIds: ((people.data ?? []) as { id: string }[]).map((c) => c.id),
+    shopIds: ((places.data ?? []) as { id: string }[]).map((s) => s.id),
+  };
 }
 
 /**
@@ -187,13 +257,26 @@ export interface OrderListResult {
   counts: { delayed: number; unassigned: number };
 }
 
-export async function listManagerOrders(scope: ManagerScope, q: OrderQuery, opts: { now: Date }): Promise<OrderListResult> {
+export async function listManagerOrders(
+  scope: ManagerScope,
+  query: OrderQuery,
+  opts: { now: Date; actorId?: string },
+): Promise<OrderListResult> {
   const { now } = opts;
 
   // Counts for the queue chips: every in-flight order in scope, unfiltered,
   // from the lean facts — no embeds, no cap that drops the oldest orders.
   const facts = await loadQueueFacts(scope);
   const counts = queueCounts(facts, now);
+
+  let q = query;
+  if (q.q?.kind === "text" || q.q?.kind === "phone") {
+    const match = await findSearchMatch(scope, q.q, opts.actorId ?? null);
+    if (orderSearchFilter(match, q.q.kind === "text" ? q.q.codePrefix : undefined) === null) {
+      return { items: [], nextCursor: null, counts };
+    }
+    q = { ...q, match };
+  }
 
   if (q.queue === "delayed" || q.queue === "unassigned") {
     const rows = await loadOrderRowsByIds(scope, queueOrderIds(facts, now, q.queue), q);
@@ -206,17 +289,17 @@ export async function listManagerOrders(scope: ManagerScope, q: OrderQuery, opts
 
   const supabase = createAdminClient();
   const deliveries = q.rider ? `deliveries!inner(${DELIVERY_COLS})` : `deliveries(${DELIVERY_COLS})`;
-  let query: Chain = supabase.from("orders").select(`${LIST_COLS}, ${deliveries}`);
+  let read: Chain = supabase.from("orders").select(`${LIST_COLS}, ${deliveries}`);
   const zones = scopeZoneIds(scope);
-  if (zones) query = query.in("zone_id", zones as string[]);
-  query = applyFilters(query, q);
+  if (zones) read = read.in("zone_id", zones as string[]);
+  read = applyFilters(read, q);
   const statuses = q.queue === "cancelled" ? ["cancelled"] : q.statuses;
-  if (statuses) query = query.in("status", statuses);
+  if (statuses) read = read.in("status", statuses);
   if (q.cursor) {
     const c = q.cursor;
-    query = query.or(`created_at.lt."${c.createdAt}",and(created_at.eq."${c.createdAt}",id.lt.${c.id})`);
+    read = read.or(`created_at.lt."${c.createdAt}",and(created_at.eq."${c.createdAt}",id.lt.${c.id})`);
   }
-  const { data, error } = await query
+  const { data, error } = await read
     .order("created_at", { ascending: false })
     .order("id", { ascending: false })
     .limit(q.limit + 1);
@@ -279,6 +362,7 @@ export async function getManagerOrderDetail(
   if (error) throw error;
   if (!data) return null;
   const r = data as unknown as DetailRow;
+  await attachPoints([r]);
   const d = one(r.deliveries);
 
   const [statusEv, deliveryEv, notes, audits, tickets, fix] = await Promise.all([
@@ -381,6 +465,7 @@ export async function getManagerOrderDetail(
         tax: r.tax_amount ?? 0,
         tip: r.tip ?? 0,
         total: r.total ?? 0,
+        pointsUsed: r.wallet_points_used ?? 0,
       },
       pickup: {
         name: shop?.name?.trim() || row.vendor.name,

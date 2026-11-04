@@ -143,10 +143,25 @@ check("the actions route opens with managerApiContext and rate-limits", /manager
 const ridersRoute = readFileSync("src/app/api/manager/orders/[id]/riders/route.ts", "utf8");
 check("the riders route opens with managerApiContext", /managerApiContext\(/.test(ridersRoute));
 const cancellation = readFileSync("src/lib/data-access/order-cancellation.ts", "utf8");
-check("cancelOrderAsOps has the Rider plan's signature",
-  // The Rider branch's shape (reason optional, the result its CancelOpsResult),
-  // plus the caller's idempotency key.
-  /export async function cancelOrderAsOps\(\s*orderId: string,\s*opts: \{ by: "admin" \| "manager"; reason\?: string \| null; requestedBy: string; clientActionId\?: string \}\s*\): Promise<CancelOpsResult>/.test(cancellation));
+check("cancelOrderAsOps needs a written reason (rule book)",
+  // The Rider branch's shape (the result its CancelOpsResult), plus the caller's
+  // idempotency key. The reason stopped being optional with the owner's rules.
+  /export async function cancelOrderAsOps\(\s*orderId: string,\s*opts: \{ by: "admin" \| "manager"; reason: string; requestedBy: string; clientActionId\?: string \}\s*\): Promise<CancelOpsResult>/.test(cancellation)
+    && /reason\.length < MIN_CANCEL_REASON/.test(cancellation));
+const adminCancel = readFileSync("src/app/admin/orders/actions.ts", "utf8");
+check("the admin cancel action refuses a reason under 3 characters on the server",
+  /why\.length < MIN_CANCEL_REASON/.test(adminCancel) && !/Cancelled by Deligro support/.test(adminCancel));
+const adminForm = readFileSync("src/components/admin/order-intervention.tsx", "utf8");
+check("the admin order page asks for the reason and sends it",
+  /id="cancel-reason"/.test(adminForm) && /cancelOrderAsAdmin\(orderId, reason\.trim\(\)\)/.test(adminForm) && !/refund/i.test(adminForm));
+const m0191 = readFileSync("supabase/migrations/0191_cancel_and_refund_rules.sql", "utf8");
+check("the database refuses a staff reason under 3 characters too", /char_length\(why\) < 3/.test(m0191));
+const customerCancel = readFileSync("src/app/api/orders/[id]/cancel/route.ts", "utf8");
+check("the customer cancel route lets the database decide, on the caller's session",
+  /supabase\.rpc\("customer_cancel_order"/.test(customerCancel) && !/createAdminClient/.test(customerCancel) && !/Date\.now/.test(customerCancel));
+const kitchen = readFileSync("src/lib/data-access/vendor-orders.ts", "utf8");
+check("a shop can reject a new order and cancel nothing else",
+  /placed: \["kitchen", "cancelled"\],\s*kitchen: \["ready"\],\s*ready: \[\],/.test(kitchen));
 
 async function live(): Promise<void> {
   console.log("\n── live (optional) ──");

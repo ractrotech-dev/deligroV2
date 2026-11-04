@@ -13,10 +13,6 @@ export const metadata: Metadata = { title: "Riders · Admin · Deligro" };
  * now (online, on a break, online but with no recent position, offline), the
  * order they are carrying, today's deliveries and what they are owed.
  *
- * Platform: BOTH. One page, a real table in the console and stacked cards in
- * the phone frame (DataTable's container query). Read-only; the money lives on
- * the rider's own page (Money tab).
- *
  * Verification and Documents (0086): where each rider stands and how many of
  * their documents expire within 30 days; "Needs review" lists riders with a
  * pending verification, document or change request. Before 0086 both columns

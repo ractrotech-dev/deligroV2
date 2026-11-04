@@ -71,6 +71,7 @@ String cancellationLine(Cancellation c) {
 
 String paymentLabel(Payment p) {
   final method = switch (p.method) {
+    PaymentMethod.cod when p.pointsUsed > 0 => p.status == PaymentStatus.paid ? 'Points' : 'Cash and points',
     PaymentMethod.cod => 'Cash',
     PaymentMethod.online => 'Online',
     PaymentMethod.unknown || null => null,

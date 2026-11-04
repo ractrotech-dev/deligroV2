@@ -1,4 +1,3 @@
-import 'package:uuid/uuid.dart';
 
 import 'json_util.dart';
 import 'rider.dart' show Payout;
@@ -123,7 +122,7 @@ class FinanceSales {
   final Discounts discounts;
   final CountAmount refunds;
 
-  /// Approved refunds on orders later cancelled: in the refunds report, never off net sales.
+  /// Old approved refunds on orders later cancelled: in the report, never off net sales.
   final int refundsOnCancelled;
   final CountAmount correctionsOutstanding;
   final CountAmount correctionsApplied;
@@ -264,7 +263,7 @@ class VendorDue {
   final DateTime? oldestUnsettledAt;
   final int payable;
 
-  /// What the shop owes Deligro (cash-order commission not yet recovered).
+  /// What the shop owes Deligro: its old adjustments came to more than its orders.
   final int recoverable;
   final int outstandingCorrections;
   final DateTime? lastPaidAt;
@@ -371,7 +370,6 @@ class DueTotals {
 enum FinanceIssueType {
   failedPayment('failed_payment', 'Online payments failed'),
   stuckPayment('stuck_payment', 'Payments stuck'),
-  refundUnsent('refund_unsent', 'Refunds not sent'),
   settlementDelayed('settlement_delayed', 'Vendor settlements overdue'),
   draftStale('draft_stale', 'Draft settlements untouched'),
   approvalOverdue('approval_overdue', 'Approvals waiting too long'),
@@ -387,7 +385,6 @@ enum FinanceIssueType {
   static const known = [
     failedPayment,
     stuckPayment,
-    refundUnsent,
     settlementDelayed,
     draftStale,
     approvalOverdue,
@@ -406,7 +403,6 @@ enum IssueSubjectKind {
   order,
   vendor,
   settlement,
-  refund,
   paymentRequest,
   rider,
   unknown;
@@ -503,153 +499,6 @@ class RiderPayoutPage {
   final double totalAmount;
   final int count;
 }
-
-// ── Refunds ──────────────────────────────────────────────────────────────────
-
-enum RefundStatus {
-  pending('pending', 'Waiting'),
-  approved('approved', 'Approved'),
-  denied('denied', 'Denied'),
-  unknown('unknown', 'Unknown');
-
-  const RefundStatus(this.wire, this.label);
-  final String wire;
-  final String label;
-
-  static RefundStatus parse(Object? s) => jEnum(values, s, unknown, (v) => v.wire);
-}
-
-enum RefundOrigin {
-  customer('customer', 'Customer asked'),
-  vendorRejected('vendor_rejected', 'Shop rejected the order'),
-  admin('admin', 'Deligro'),
-  system('system', 'System'),
-  unknown('unknown', 'Other');
-
-  const RefundOrigin(this.wire, this.label);
-  final String wire;
-  final String label;
-
-  static RefundOrigin parse(Object? s) => jEnum(values, s, unknown, (v) => v.wire);
-}
-
-class RefundOrder {
-  const RefundOrder({required this.id, required this.code, this.total = 0, this.paymentMethod, this.placedAt});
-  factory RefundOrder.fromJson(Map<String, dynamic>? j) => RefundOrder(
-        id: jStrOr(j?['id']),
-        code: jStrOr(j?['code']),
-        total: jInt(j?['total']),
-        paymentMethod: jStr(j?['paymentMethod']),
-        placedAt: jDate(j?['placedAt']),
-      );
-  final String id;
-  final String code;
-  final int total;
-  final String? paymentMethod;
-  final DateTime? placedAt;
-}
-
-class RefundItem {
-  const RefundItem({
-    required this.id,
-    required this.order,
-    required this.amount,
-    required this.status,
-    required this.origin,
-    this.vendor,
-    this.reason,
-    this.requestedAt,
-    this.decidedBy,
-    this.providerRefundId,
-    this.settlementEffect,
-  });
-
-  factory RefundItem.fromJson(Map<String, dynamic> j) => RefundItem(
-        id: jStrOr(j['id']),
-        order: RefundOrder.fromJson(jMap(j['order'])),
-        vendor: PersonRef.fromJson(j['vendor']),
-        amount: jInt(j['amount']),
-        reason: jStr(j['reason']),
-        origin: RefundOrigin.parse(j['origin']),
-        status: RefundStatus.parse(j['status']),
-        requestedAt: jDate(j['requestedAt']),
-        decidedBy: PersonRef.fromJson(j['decidedBy']),
-        providerRefundId: jStr(j['providerRefundId']),
-        settlementEffect: jStr(j['settlementEffect']),
-      );
-
-  final String id;
-  final RefundOrder order;
-  final PersonRef? vendor;
-  final int amount;
-  final String? reason;
-  final RefundOrigin origin;
-  final RefundStatus status;
-  final DateTime? requestedAt;
-  final PersonRef? decidedBy;
-  final String? providerRefundId;
-
-  /// `none`, `draft_flagged`, `correction_created`, or null.
-  final String? settlementEffect;
-}
-
-class RefundPage {
-  const RefundPage({required this.items, this.nextCursor, this.pendingCount = 0});
-  factory RefundPage.fromJson(Map<String, dynamic> j) => RefundPage(
-        items: [for (final r in jMaps(j['items'])) RefundItem.fromJson(r)],
-        nextCursor: jStr(j['nextCursor']),
-        pendingCount: jInt(jMap(j['counts'])?['pending']),
-      );
-  final List<RefundItem> items;
-  final String? nextCursor;
-  final int pendingCount;
-}
-
-const _uuid = Uuid();
-
-/// Approve or deny one refund. The id is made once, so a retry after
-/// `effect_failed` (decision saved, finishing it failed) is the same decision.
-class RefundDecision {
-  RefundDecision({required this.approve, required this.reason, String? clientActionId})
-      : clientActionId = clientActionId ?? _uuid.v4();
-  final bool approve;
-  final String reason;
-  final String clientActionId;
-
-  Map<String, dynamic> toJson() =>
-      {'clientActionId': clientActionId, 'decision': approve ? 'approve' : 'deny', 'reason': reason.trim()};
-}
-
-/// The refund-decision failures [refundFailure] has its own words for.
-const refundFailureCodes = {
-  'effect_failed', 'recorded_failed_after_gateway', 'gateway_unknown', 'gateway_failed', 'in_progress', 'gateway_paid',
-};
-
-/// What to tell the manager when a refund decision fails, and whether Retry is
-/// safe. The server claims each refund before calling Razorpay (0156), so a
-/// retry after `effect_failed` records the decision without paying twice; the
-/// cases where money may have moved without a record get no Retry at all.
-({String message, bool retry}) refundFailure(String code) => switch (code) {
-      'effect_failed' => (
-          message: 'The money was refunded but the decision didn\'t save. Retry finishes it — it won\'t pay twice.',
-          retry: true,
-        ),
-      'recorded_failed_after_gateway' => (
-          message: "Money was sent but not recorded — don't retry. Tell an admin so it can be reconciled.",
-          retry: false,
-        ),
-      'gateway_unknown' => (
-          message: "Razorpay didn't answer, so we can't tell if the money went. Don't retry — an admin checks Razorpay first.",
-          retry: false,
-        ),
-      'gateway_failed' => (message: 'Razorpay refused the refund. Nothing was returned; you can try again.', retry: true),
-      'in_progress' => (
-          message: 'This refund is being processed, or an earlier attempt is waiting for an admin to check Razorpay.',
-          retry: false,
-        ),
-      'gateway_paid' => (message: 'Razorpay already returned this money. Approve it to record that.', retry: false),
-      _ => (message: "That didn't go through. Try again.", retry: true),
-    };
 
 // ── Reconciliation ───────────────────────────────────────────────────────────
 

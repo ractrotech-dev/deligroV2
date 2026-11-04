@@ -10,7 +10,6 @@ import {
   notifyRiderHandedOver,
 } from "@/lib/notifications/order-events";
 import { captureError } from "@/lib/obs/emit";
-import { notifyNewIncentiveAwards } from "@/lib/data-access/rider-earnings";
 import { isPlausibleFix } from "@/lib/geo/fix";
 import { assertRealType } from "@/lib/utils/file-signature";
 import { DISPATCH_COLUMNS } from "@/lib/dispatch/rider-dispatch";
@@ -21,6 +20,8 @@ import {
   latchFor,
 } from "@/lib/data-access/driver-orders";
 import { RiderSchemaPendingError } from "@/lib/data-access/rider-status";
+import { readOrderPoints } from "@/lib/data-access/wallet";
+import { cashDue } from "@/lib/wallet/money";
 import {
   columnKnownMissing,
   isMissingColumn,
@@ -72,7 +73,7 @@ import type { PaymentMethod, PaymentStatus, PlatformSettings, PodPhotoRule } fro
  *
  * Ruling P8-R6: a step replayed from the app's offline queue is stamped with
  * the server's receive time (`now()`), never a time the phone sends — client
- * clocks are not trusted for money or incentive days.
+ * clocks are not trusted for money.
  *
  * ## Before 0081 / 0082
  *
@@ -104,6 +105,7 @@ const MAX_PROOF_BYTES = 5 * 1024 * 1024;
 export type DeliveryActionError =
   | "bad_state"
   | "order_not_active"
+  | "food_not_ready"
   | "photo_required"
   | "manual_not_approved"
   | "not_yours";
@@ -131,8 +133,6 @@ export interface DeliveryNotifier {
   delivered: (orderId: string) => Promise<unknown>;
   riderArrived: (orderId: string, riderName: string | null) => Promise<unknown>;
   riderHandedOver: (driverId: string, orderId: string) => Promise<unknown>;
-  /** Push the rider any incentive the completion just earned (0083 awards; ruling P3-R1). */
-  incentiveAwards: (driverId: string) => Promise<unknown>;
 }
 
 const PUSH: DeliveryNotifier = {
@@ -140,7 +140,6 @@ const PUSH: DeliveryNotifier = {
   delivered: notifyDelivered,
   riderArrived: notifyRiderArrived,
   riderHandedOver: notifyRiderHandedOver,
-  incentiveAwards: notifyNewIncentiveAwards,
 };
 
 /**
@@ -223,6 +222,8 @@ interface OrderRow {
   total: number | null;
   payment_method?: PaymentMethod | null;
   payment_status?: PaymentStatus | null;
+  /** Wallet points on the order (0198). Cash due = total − this. */
+  wallet_points_used?: number;
 }
 
 /**
@@ -236,12 +237,13 @@ async function readOrder(
 ): Promise<{ order: OrderRow | null }> {
   const read = (columns: string) =>
     supabase.from("orders").select(columns).eq("id", orderId).maybeSingle().overrideTypes<OrderRow>();
+  const pointsUsed = (await readOrderPoints(supabase, [orderId])).get(orderId) ?? 0;
 
   if (!columnKnownMissing(PAYMENT_COLUMNS)) {
     const { data, error } = await read("status, total, payment_method, payment_status");
     if (!error) {
       rememberColumn(PAYMENT_COLUMNS, true);
-      return { order: data };
+      return { order: data ? { ...data, wallet_points_used: pointsUsed } : data };
     }
     if (!isMissingColumn(error)) throw error;
     rememberColumn(PAYMENT_COLUMNS, false);
@@ -274,6 +276,7 @@ function machineState(row: DeliveryRow, order: OrderRow | null): MachineState {
 export function isCashOrder(
   order: { payment_method?: PaymentMethod | null; payment_status?: PaymentStatus | null } | null
 ): boolean {
+  // A fully covered wallet order is `paid` (0198), so it stops here too.
   if (order?.payment_status === "paid" || order?.payment_status === "refunded") return false;
   return order?.payment_method == null || order.payment_method === "cod";
 }
@@ -721,7 +724,7 @@ export interface CompleteDeliveryOptions {
 /**
  * Complete a picked-up delivery: the order to `delivered`, the delivery to
  * `delivered` with how it was proved, the cash-on-delivery record, and the
- * customer's push, and the rider's push for any incentive the delivery earned
+ * customer's push
  * (ruling P3-R1). The one implementation of "it was delivered" (ruling P2-R1):
  * the rider's `deliver` step calls it after checking the code and the photo,
  * and an ops approval of `complete_without_code` calls it with
@@ -830,7 +833,6 @@ export async function completeDelivery(
   // ops-approved completion pushes the award too (ruling P3-R1). Only on this
   // path: a duplicate completion returned above, and its award was announced
   // by the call that completed it.
-  deferNotify(() => notify.incentiveAwards(delivery.driverId));
   return { ok: true };
 }
 
@@ -857,6 +859,11 @@ async function deliveryStatus(
  * collect and is left alone; with no payment columns at all (pre-0025) every
  * order was cash by construction.
  *
+ * The amount is the cash due: the bill less any wallet points (0198). Fully covered,
+ * the status is `paid` and there is nothing to record. A rider who added change has
+ * already recorded the full amount received, in the same transaction as the credit:
+ * this write finds the stamp set and leaves it alone.
+ *
  * Once only (`cod_collected_at is null`), so a second completion path can never
  * overwrite the first. Best-effort: a delivery must complete whether or not this
  * write succeeds. The columns are 0047's, and a write naming them on a database
@@ -870,6 +877,7 @@ export async function recordCodCollection(
     total: number | null;
     payment_method?: PaymentMethod | null;
     payment_status?: PaymentStatus | null;
+    wallet_points_used?: number | null;
   } | null
 ): Promise<void> {
   if (!isCashOrder(order)) return;
@@ -880,7 +888,7 @@ export async function recordCodCollection(
         ? supabase
             .from("deliveries")
             .update({
-              cod_collected_amount: order?.total ?? 0,
+              cod_collected_amount: cashDue(order?.total, order?.wallet_points_used),
               cod_collected_at: new Date().toISOString(),
             })
             .eq("id", deliveryId)
@@ -917,8 +925,14 @@ async function removeProofs(supabase: AdminClient, paths: string[]): Promise<voi
  * by what the phone declared. The path is `<deliveryId>/<uuid>.<ext>` — built
  * here, never from the request — in the private `delivery-proofs` bucket, and
  * it is recorded on `deliveries.pod_photo_path`, which is what `deliver`
- * compares the app's `photoPath` against. Only while the rider holds the
- * delivery at `picked_up`. A retake replaces the path and removes the old file.
+ * compares the app's `photoPath` against. A retake replaces the path and
+ * removes the old file.
+ *
+ * Before the pickup (`assigned`) the same route takes a photo for a report at
+ * the shop ("Problem at the shop?"). That photo is evidence, not proof of
+ * delivery: it is stored but NOT recorded as `pod_photo_path`, so it cannot
+ * satisfy the door's photo rule, and no later upload removes it.
+ * `raiseException` accepts it because it is in this delivery's own folder.
  */
 export async function uploadDeliveryProof(
   driverId: string,
@@ -932,7 +946,7 @@ export async function uploadDeliveryProof(
   const supabase = createAdminClient();
   const { row, schema } = await readDeliveryRow(supabase, orderId);
   if (!row || row.driver_id !== driverId) return { ok: false, error: "not_yours" };
-  if (row.status !== "picked_up") return { ok: false, error: "bad_state" };
+  if (row.status !== "picked_up" && row.status !== "assigned") return { ok: false, error: "bad_state" };
   if (schema !== "0082") throw new RiderSchemaPendingError();
 
   try {
@@ -949,6 +963,9 @@ export async function uploadDeliveryProof(
     if (/bucket not found/i.test(uploadError.message)) throw new RiderSchemaPendingError();
     throw uploadError;
   }
+
+  // A report's photo from before the pickup: kept in the folder, not as proof.
+  if (row.status === "assigned") return { ok: true, path };
 
   const { data, error } = await supabase
     .from("deliveries")

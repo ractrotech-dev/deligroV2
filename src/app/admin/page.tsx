@@ -26,7 +26,8 @@ import { ExceptionQueue } from "@/components/ops/exception-queue";
 import { EmergencyBanner } from "@/components/ops/emergency-banner";
 import type { EmergencyItem } from "@/components/ops/emergency-types";
 import { listEmergenciesAction } from "@/app/manager/support-actions";
-import { getSettlementStats } from "@/lib/data-access/admin-settlements";
+import { countUnfinishedPayments } from "@/lib/data-access/admin-settlements";
+import { totalShopDues } from "@/lib/data-access/manager-finance";
 import { listVendorRanking } from "@/lib/data-access/admin-vendor-ranking";
 import {
   getPlatformEarnings,
@@ -56,12 +57,12 @@ import {
   type TrendMetric,
 } from "@/components/admin/charts/chart-theme";
 import { TrendChart } from "@/components/admin/charts/lazy";
-import { ConsoleOnly } from "@/components/admin/console-only";
 import { LiveBoard } from "@/components/admin/live-board";
 import { ApprovalQueue } from "@/components/admin/approval-queue";
 import { RangeTabs } from "@/components/admin/admin-ui";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { formatINR, formatWaited } from "@/lib/utils/format";
+import { captureError } from "@/lib/obs/emit";
 
 /**
  * Admin home — the operations command centre.
@@ -98,13 +99,6 @@ import { formatINR, formatWaited } from "@/lib/utils/format";
  * sparkline and no place in the chart's metric switch: a per-day earnings
  * series needs a per-vendor rate recompute the series query does not do, and
  * deriving one from revenue would be arithmetic that looks like a measurement.
- *
- * ## One page, two shells
- *
- * The wrapping rows collapse to a single column inside the phone frame and
- * become the console's split at width. The chart and the live feed are
- * `ConsoleOnly`: both are console-scale, and both have a phone-readable
- * summary beside them that stays.
  */
 export const dynamic = "force-dynamic";
 
@@ -131,7 +125,6 @@ const EMPTY_SERIES: AdminSeries = {
 
 const NO_COUNTS: AdminNavCounts = {
   pendingApprovals: 0,
-  pendingRefunds: 0,
   liveOrders: 0,
 };
 
@@ -148,33 +141,23 @@ function deltaLabel(t: Trend): string {
 /**
  * The attention row.
  *
- * The four queues an operator always wants to see, shown even at zero so the
+ * The queues an operator always wants to see, shown even at zero so the
  * row is stable and a clear queue reads as clear. Every figure is counted
  * from the database. Orders with no rider and failed payments are added only
  * when something is in them.
  */
 function attentionItems({
-  counts,
   board,
-  draftSettlements,
+  owed,
   pendingShops,
   failedPayments,
 }: {
-  counts: AdminNavCounts;
   board: { atRisk: number; unassigned: number };
-  draftSettlements: number;
+  owed: ShopsOwed;
   pendingShops: number;
   failedPayments: number;
 }): AttentionItem[] {
   return [
-    {
-      href: "/admin/refunds",
-      title: "Refunds pending review",
-      detail: "Customers waiting on their money",
-      count: counts.pendingRefunds,
-      tone: counts.pendingRefunds > 0 ? "red" : "green",
-      action: "Review all",
-    },
     {
       href: "/admin/orders",
       title: "Deliveries running late",
@@ -183,14 +166,7 @@ function attentionItems({
       tone: board.atRisk > 0 ? "red" : "green",
       action: "View orders",
     },
-    {
-      href: "/admin/settlements",
-      title: "Shop payments ready",
-      detail: "Worked out, not sent yet",
-      count: draftSettlements,
-      tone: draftSettlements > 0 ? "amber" : "green",
-      action: "Open drafts",
-    },
+    shopsOwedItem(owed),
     {
       href: "/admin/vendors",
       title: "Shops waiting to go live",
@@ -202,7 +178,7 @@ function attentionItems({
     ...(
       [
         {
-          href: "/admin/orders",
+          href: "/admin/orders?rider=none",
           title: "Orders with no rider",
           detail: "Nobody assigned after 8 minutes",
           count: board.unassigned,
@@ -210,7 +186,7 @@ function attentionItems({
           action: "View orders",
         },
         {
-          href: "/admin/orders?status=PLACED",
+          href: "/admin/orders?payment=failed",
           title: "Failed payments",
           detail: "Customer tried to pay and could not",
           count: failedPayments,
@@ -220,6 +196,38 @@ function attentionItems({
       ] satisfies AttentionItem[]
     ).filter((d) => d.count > 0),
   ];
+}
+
+/** Null: it could not be added up, which must never read as a green ₹0. */
+type ShopsOwed = { amount: number; shops: number; unfinished: number } | null;
+
+/** One SQL rollup and one count, so this costs Home less than what it replaced. */
+async function loadShopsOwed(): Promise<ShopsOwed> {
+  try {
+    const [dues, unfinished] = await Promise.all([totalShopDues(), countUnfinishedPayments()]);
+    return { ...dues, unfinished };
+  } catch (e) {
+    captureError(e, { source: "admin-home/shops-owed", attrs: { event: "shops_owed_failed" } });
+    return null;
+  }
+}
+
+function shopsOwedItem(owed: ShopsOwed): AttentionItem {
+  const base = { href: "/admin/settlements", title: "Owed to shops", action: "Open Settlements" };
+  if (!owed) {
+    return { ...base, figure: "—", count: 0, detail: "Could not add this up just now", tone: "amber" };
+  }
+  if (owed.amount <= 0) {
+    return { ...base, figure: formatINR(0), count: 0, detail: "No shop is owed money", tone: "green" };
+  }
+  const unfinished = owed.unfinished > 0 ? `, ${owed.unfinished} not finished` : "";
+  return {
+    ...base,
+    figure: formatINR(owed.amount),
+    count: owed.shops,
+    detail: `${owed.shops} shop${owed.shops === 1 ? "" : "s"}${unfinished}`,
+    tone: "amber",
+  };
 }
 
 /**
@@ -247,8 +255,8 @@ function loadOverview(days: number) {
       ? getAdminNavCounts().catch(() => NO_COUNTS)
       : Promise.resolve(NO_COUNTS),
     isSupabaseConfigured
-      ? getSettlementStats().catch(() => ({ draftCount: 0 }))
-      : Promise.resolve({ draftCount: 0 }),
+      ? loadShopsOwed()
+      : Promise.resolve<ShopsOwed>({ amount: 0, shops: 0, unfinished: 0 }),
     isSupabaseConfigured
       ? getPlatformEarnings().catch(() => NO_EARNINGS)
       : Promise.resolve(NO_EARNINGS),
@@ -288,7 +296,7 @@ export default async function AdminOverviewPage({
       payments,
       board,
       counts,
-      settlements,
+      owed,
       earnings,
       failedPayments,
       ranking,
@@ -387,9 +395,8 @@ export default async function AdminOverviewPage({
   ];
 
   const attention = attentionItems({
-    counts,
     board,
-    draftSettlements: settlements.draftCount,
+    owed,
     pendingShops: pending.length,
     failedPayments,
   });
@@ -458,7 +465,7 @@ export default async function AdminOverviewPage({
         description={`Live operational overview · ${now} IST`}
         status={<LiveBadge />}
         actions={
-          <div className="hidden @3xl:block">
+          <div className="block">
             <RangeTabs options={RANGES} active={days} hrefFor={rangeHref} />
           </div>
         }
@@ -498,23 +505,14 @@ export default async function AdminOverviewPage({
             actions={
               <Link
                 href="/admin/orders"
-                className="press text-[11.5px] font-semibold text-accent-ink"
+                className="text-[11.5px] font-semibold text-accent-ink"
               >
                 View all orders →
               </Link>
             }
           >
-            {/* Console-only: a 720px table with no card fallback and no
-                pagination — it scrolls sideways by design. The counts in the
-                heading and the link stay on a phone, and /admin/orders is the
-                same data in a form that stacks. */}
             <div className="px-[var(--c-pad-x)] pb-3">
-              <ConsoleOnly
-                tool="The live order feed"
-                why="View all orders, above, is the same orders in a list that stacks — that is the phone version of this."
-              >
-                <LiveBoard rows={board.rows} />
-              </ConsoleOnly>
+              <LiveBoard rows={board.rows} />
             </div>
           </Panel>
         </SectionCol>
@@ -576,17 +574,9 @@ export default async function AdminOverviewPage({
                 on={metric === "aov"}
               />
             </div>
-            {/* The three figures above cover the same period and are the part
-                worth reading on a phone; a 30-day plot in a 370px column is
-                not, and it costs a charting library to draw. */}
-            <ConsoleOnly
-              tool="The trend chart"
-              why="The three totals above it cover the same period, and they are the part worth reading on a phone anyway."
-            >
-              <div className="h-[220px]">
-                <TrendChart days={series.days} metric={metric} />
-              </div>
-            </ConsoleOnly>
+            <div className="h-[220px]">
+              <TrendChart days={series.days} metric={metric} />
+            </div>
           </Panel>
         </SectionCol>
 
@@ -608,7 +598,7 @@ export default async function AdminOverviewPage({
             actions={
               <Link
                 href="/admin/cash-ledger"
-                className="press text-[11.5px] font-semibold text-accent-ink"
+                className="text-[11.5px] font-semibold text-accent-ink"
               >
                 Cash ledger →
               </Link>
@@ -627,7 +617,7 @@ export default async function AdminOverviewPage({
           pending.length > APPROVALS_SHOWN ? (
             <Link
               href="/admin/vendors"
-              className="press text-[11.5px] font-semibold text-accent-ink"
+              className="text-[11.5px] font-semibold text-accent-ink"
             >
               All {pending.length} →
             </Link>

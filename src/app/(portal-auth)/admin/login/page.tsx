@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { DesktopOnlyGate } from "@/components/admin/desktop-only-notice";
 import { PortalLoginScreen } from "@/components/auth/portal-login-screen";
 
 export const metadata: Metadata = { title: "Admin sign-in · Deligro" };
@@ -11,5 +12,10 @@ export default function AdminLoginPage({
 }: Readonly<{
   searchParams: Promise<{ next?: string; denied?: string }>;
 }>) {
-  return <PortalLoginScreen portalKey="admin" searchParams={searchParams} />;
+  return (
+    <>
+      <DesktopOnlyGate />
+      <PortalLoginScreen portalKey="admin" searchParams={searchParams} />
+    </>
+  );
 }

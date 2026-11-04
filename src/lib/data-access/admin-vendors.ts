@@ -8,7 +8,10 @@ import {
   getVendorCommissionDefault,
 } from "@/lib/data-access/admin-commission";
 import type { VendorStatus } from "@/lib/vendor-status";
-import { assertCanGoLive, isPinned } from "@/lib/vendors/readiness";
+import { VendorEditRefused, assertCanGoLive, assertKeepsPin, isPinned } from "@/lib/vendors/readiness";
+import { ownerAccountOutcome, type OwnerOutcome } from "@/lib/vendors/owner-account";
+import { vendorEditAudit } from "@/lib/vendors/edit-audit";
+import { auditedChange, logOpsAction } from "@/lib/data-access/ops-audit";
 import {
   DEFAULT_SETTLEMENT_CYCLE,
   isSettlementCycle,
@@ -56,6 +59,7 @@ export interface VendorCounts {
   inactive: number;
   pending: number;
   suspended: number;
+  rejected: number;
   categories: number;
   /**
    * Shops with no map pin, across the whole roster. Counted separately from the
@@ -64,6 +68,10 @@ export interface VendorCounts {
    * cannot range-check. See `lib/vendors/readiness.ts`.
    */
   unpinned: number;
+  /** Shops missing a photo, category, address, phone or pin, across the whole roster. */
+  incomplete: number;
+  /** Shops with no contact email on file, across the whole roster. */
+  noEmail: number;
 }
 
 export interface VendorListItem {
@@ -73,9 +81,8 @@ export interface VendorListItem {
   ownerName: string | null;
   ownerMobile: string | null;
   /**
-   * The address the owner signs in with. Required since 0039 — a vendor with no
-   * email cannot be issued a password, and mobile+password login resolves the
-   * account through it.
+   * The contact address on the shop row. Not the login: that is the auth user's
+   * own email, which editing this does not change (see `getVendorLogin`).
    */
   ownerEmail: string | null;
   category: string | null;
@@ -186,6 +193,8 @@ export interface VendorDetail extends VendorListItem {
   /** When an admin last issued a login password — see resetVendorPassword. */
   passwordResetAt: string | null;
   ownerPhoneVerified: boolean;
+  /** The delivery zone this shop's new orders go to (0141). Null before 0141. */
+  zoneId: string | null;
 }
 
 /** The admin-editable business fields (not slug, not status, not the account). */
@@ -208,6 +217,12 @@ export interface VendorInput {
   address: string | null;
   landmark: string | null;
   pincode: string | null;
+  /** The map pin. Both, or neither. */
+  lat: number | null;
+  lng: number | null;
+  imageUrl: string | null;
+  /** The delivery zone. Null leaves the zone as it is. */
+  zoneId: string | null;
   upiId: string | null;
   bankAccountName: string | null;
   bankAccountNumber: string | null;
@@ -317,6 +332,8 @@ interface VendorRow {
   created_at: string;
   password_reset_at?: string | null;
   owner_phone_verified?: boolean | null;
+  zone_id?: string | null;
+  closed_until?: string | null;
   // 0034 — read through a separate probe, see PAYMENT_RULE_SELECT.
   accept_cod?: boolean | null;
   accept_online?: boolean | null;
@@ -402,8 +419,6 @@ function mapDetail(
     weeklyOff: (row.weekly_off ?? []) as string[],
     landmark: row.landmark ?? null,
     pincode: row.pincode ?? null,
-    lat: row.lat ?? null,
-    lng: row.lng ?? null,
     upiId: row.upi_id ?? null,
     bankAccountName: row.bank_account_name ?? null,
     bankAccountNumber: row.bank_account_number ?? null,
@@ -430,6 +445,9 @@ function mapDetail(
     menuItemCount,
     passwordResetAt: row.password_reset_at ?? null,
     ownerPhoneVerified: row.owner_phone_verified ?? false,
+    zoneId: row.zone_id ?? null,
+    // A timed close (closed_until) is closed, whatever is_open says.
+    isOpen: row.is_open && !(row.closed_until && Date.parse(row.closed_until) > Date.now()),
     // Attached by getVendorDetail from the resilient positions read (0021).
     sortPosition: null,
   };
@@ -535,7 +553,11 @@ export async function getVendorCounts(): Promise<VendorCounts> {
         .eq("status", status)
     );
 
-  const [total, active, inactive, pending, suspended, categories, unpinned] =
+  // owner_mobile and owner_email are revoked from `authenticated` (0022), so these
+  // two go through the service role. Every caller is admin-gated.
+  const admin = createAdminClient();
+
+  const [total, active, inactive, pending, suspended, rejected, categories, unpinned, incomplete, noEmail] =
     await Promise.all([
       countOf(() =>
         supabase.from("restaurants").select("id", { count: "exact", head: true })
@@ -544,6 +566,7 @@ export async function getVendorCounts(): Promise<VendorCounts> {
       byStatus("inactive"),
       byStatus("pending"),
       byStatus("suspended"),
+      byStatus("rejected"),
       countOf(() =>
         supabase
           .from("vendor_categories")
@@ -560,9 +583,24 @@ export async function getVendorCounts(): Promise<VendorCounts> {
           .select("id", { count: "exact", head: true })
           .or("lat.is.null,lng.is.null")
       ),
+      // The same five gaps as `storefrontGaps`, over every shop.
+      countOf(() =>
+        admin
+          .from("restaurants")
+          .select("id", { count: "exact", head: true })
+          .or(
+            "image_url.is.null,image_url.eq.,category.is.null,category.eq.,address.is.null,address.eq.,owner_mobile.is.null,owner_mobile.eq.,lat.is.null,lng.is.null"
+          )
+      ),
+      countOf(() =>
+        admin
+          .from("restaurants")
+          .select("id", { count: "exact", head: true })
+          .or("owner_email.is.null,owner_email.eq.")
+      ),
     ]);
 
-  return { total, active, inactive, pending, suspended, categories, unpinned };
+  return { total, active, inactive, pending, suspended, rejected, categories, unpinned, incomplete, noEmail };
 }
 
 export async function getVendorDetail(id: string): Promise<VendorDetail | null> {
@@ -591,9 +629,9 @@ export async function getVendorDetail(id: string): Promise<VendorDetail | null> 
     .eq("restaurant_id", id);
 
   const platformDefault = await getVendorCommissionDefault();
-  const rules = await readPaymentRuleColumns(id);
+  const [rules, placement] = await Promise.all([readPaymentRuleColumns(id), readPlacementColumns(id)]);
   const detail = mapDetail(
-    { ...(data as VendorRow), ...rules },
+    { ...(data as VendorRow), ...rules, ...placement },
     count ?? 0,
     platformDefault
   );
@@ -627,6 +665,40 @@ async function readPaymentRuleColumns(id: string): Promise<Partial<VendorRow>> {
   return (data ?? {}) as Partial<VendorRow>;
 }
 
+/**
+ * Which zone the shop is in and any timed close, or `{}` on a database without
+ * them. Apart from DETAIL_SELECT for the same reason as the payment rules.
+ */
+async function readPlacementColumns(id: string): Promise<Partial<VendorRow>> {
+  const { data, error } = await createAdminClient()
+    .from("restaurants")
+    .select("zone_id, closed_until")
+    .eq("id", id)
+    .maybeSingle();
+  if (error) {
+    if (isMissingColumn(error) || isMissingSchema(error)) return {};
+    throw error;
+  }
+  return (data ?? {}) as Partial<VendorRow>;
+}
+
+/**
+ * What the owner actually signs in with: the auth user's email and the phone on
+ * their profile. Not the shop row's contact fields, which can differ. Admin-gated
+ * by the caller.
+ */
+export async function getVendorLogin(ownerId: string): Promise<{ email: string | null; mobile: string | null }> {
+  if (!ownerId) return { email: null, mobile: null };
+  const admin = createAdminClient();
+  const [user, profile] = await Promise.all([
+    admin.auth.admin.getUserById(ownerId),
+    admin.from("profiles").select("phone").eq("id", ownerId).maybeSingle(),
+  ]);
+  const email = user.data?.user?.email ?? null;
+  const mobile = (profile.data as { phone: string | null } | null)?.phone ?? null;
+  return { email, mobile };
+}
+
 /** Input → DB columns. `updated_at` isn't on restaurants, so it isn't written. */
 function toRow(input: VendorInput) {
   return {
@@ -648,6 +720,11 @@ function toRow(input: VendorInput) {
     address: input.address,
     landmark: input.landmark,
     pincode: input.pincode,
+    lat: input.lat,
+    lng: input.lng,
+    image_url: input.imageUrl,
+    // Only when one was chosen: the column is NOT NULL (0141).
+    ...(input.zoneId ? { zone_id: input.zoneId } : {}),
     upi_id: input.upiId,
     bank_account_name: input.bankAccountName,
     bank_account_number: input.bankAccountNumber,
@@ -673,10 +750,45 @@ function toPaymentRuleRow(input: VendorInput) {
   };
 }
 
-export async function updateVendor(id: string, input: VendorInput): Promise<void> {
+/** An area may be left as it is, but a shop can only be moved into a zone that is on. */
+async function assertZoneUsable(zoneId: string | null, currentZone: string | null): Promise<void> {
+  if (!zoneId || zoneId === currentZone) return;
+  const { data, error } = await createAdminClient()
+    .from("delivery_zones")
+    .select("id, is_active")
+    .eq("id", zoneId)
+    .maybeSingle();
+  if (error) throw error;
+  if (!(data as { is_active: boolean } | null)?.is_active) {
+    throw new VendorEditRefused("That area is switched off. Pick another.");
+  }
+}
+
+/**
+ * Save the edit form. Logged first (`vendor.edit`, see lib/vendors/edit-audit.ts).
+ *
+ * Moving a shop to another zone only changes where its NEW orders go: an order
+ * keeps the zone it was placed in (0141 stamp_order_zone; the guard refuses a
+ * change), so orders already in progress stay with the old zone's manager.
+ */
+export async function updateVendor(id: string, input: VendorInput, actorId: string): Promise<void> {
   // Writes the payout / KYC columns, which 0022 revokes from `authenticated`
   // (see getVendorDetail). Service-role; the calling action re-gates on admin.
   const supabase = createAdminClient();
+
+  const { data: current, error: readError } = await supabase
+    .from("restaurants")
+    .select(DETAIL_SELECT)
+    .eq("id", id)
+    .maybeSingle();
+  if (readError) throw readError;
+  if (!current) throw new Error("vendor_not_found");
+  const placement = await readPlacementColumns(id);
+  const rules = await readPaymentRuleColumns(id);
+  const before = { ...(current as VendorRow), ...rules, ...placement };
+
+  assertKeepsPin(before.status, { lat: before.lat === null || before.lat === undefined ? null : Number(before.lat), lng: before.lng === null || before.lng === undefined ? null : Number(before.lng) }, { lat: input.lat, lng: input.lng });
+  await assertZoneUsable(input.zoneId, before.zone_id ?? null);
 
   const write = (withRules: boolean) =>
     supabase
@@ -686,19 +798,46 @@ export async function updateVendor(id: string, input: VendorInput): Promise<void
       )
       .eq("id", id);
 
-  const asked = !columnKnownMissing(PAYMENT_RULE_COLUMNS);
-  const { error } = await write(asked);
+  const audit = vendorEditAudit(before as unknown as Record<string, unknown>, { ...toRow(input), ...toPaymentRuleRow(input) });
+  if (audit.empty) return;
 
-  if (asked && error && isMissingColumn(error)) {
-    // Pre-0034. Save the rest of the form rather than losing an operator's
-    // edit to a set of toggles this database cannot store anyway.
-    rememberColumn(PAYMENT_RULE_COLUMNS, false);
-    const { error: retry } = await write(false);
-    if (retry) throw retry;
-    return;
-  }
+  await auditedChange(
+    { action: "vendor.edit", actorId, entityType: "vendor", entityId: id, zoneId: input.zoneId ?? before.zone_id ?? null, reason: "Changed in the admin console", before: audit.before, after: audit.after },
+    async () => {
+      const asked = !columnKnownMissing(PAYMENT_RULE_COLUMNS);
+      const { error } = await write(asked);
 
-  if (error) throw error;
+      if (asked && error && isMissingColumn(error)) {
+        // Pre-0034. Save the rest of the form rather than losing an operator's
+        // edit to a set of toggles this database cannot store anyway.
+        rememberColumn(PAYMENT_RULE_COLUMNS, false);
+        const { error: retry } = await write(false);
+        if (retry) throw retry;
+        return;
+      }
+
+      if (error) throw error;
+    }
+  );
+}
+
+/**
+ * Open or close a shop from Admin, for when `vendor.open_toggle` has taken the
+ * switch away from the owner. Clears any timed close, so "open" means open now.
+ */
+export async function setVendorOpen(id: string, isOpen: boolean, actorId: string): Promise<void> {
+  const admin = createAdminClient();
+  const { zone_id: zoneId } = await readPlacementColumns(id);
+  await auditedChange(
+    { action: "vendor.open_set", actorId, entityType: "vendor", entityId: id, zoneId: zoneId ?? null, reason: isOpen ? "Opened in the admin console" : "Closed in the admin console", after: { open: isOpen } },
+    async () => {
+      const write = (patch: Record<string, unknown>) => admin.from("restaurants").update(patch).eq("id", id);
+      let { error } = await write({ is_open: isOpen, closed_until: null });
+      // A database without closed_until (before 0062) has only the switch.
+      if (error && isMissingColumn(error)) ({ error } = await write({ is_open: isOpen }));
+      if (error) throw error;
+    }
+  );
 }
 
 /**
@@ -746,52 +885,90 @@ export async function setVendorStatus(
 
 export interface DeleteVendorResult {
   softDeleted: boolean;
+  /** What happened to the owner's login. */
+  ownerLogin: "removed" | "kept" | "failed";
+}
+
+/** The facts `ownerAccountOutcome` decides on. A failed read throws: nothing is deleted on a guess. */
+async function readOwnerFacts(ownerId: string, shopId: string) {
+  const admin = createAdminClient();
+  const [profile, shops, orders, addresses] = await Promise.all([
+    admin.from("profiles").select("role").eq("id", ownerId).maybeSingle(),
+    admin.from("restaurants").select("id", { count: "exact", head: true }).eq("owner_id", ownerId).neq("id", shopId),
+    admin.from("orders").select("id", { count: "exact", head: true }).eq("customer_id", ownerId),
+    admin.from("addresses").select("id", { count: "exact", head: true }).eq("user_id", ownerId),
+  ]);
+  for (const r of [profile, shops, orders, addresses]) if (r.error) throw r.error;
+  return {
+    role: (profile.data as { role: string } | null)?.role ?? null,
+    otherShops: shops.count ?? 0,
+    customerOrders: orders.count ?? 0,
+    addresses: addresses.count ?? 0,
+  };
 }
 
 /**
  * Delete a vendor. `orders.restaurant_id` is `on delete restrict`, so a vendor
  * that has ever taken an order can't be hard-deleted — we soft-delete it to
  * 'inactive' instead (its order history stays intact). Only an order-free vendor
- * is hard-removed: the restaurant row (menu cascades), and the owner's auth
- * account too when they own nothing else.
+ * is hard-removed: the restaurant row (menu cascades), and the owner's login only
+ * when it was purely a vendor login (see lib/vendors/owner-account.ts). Deleting
+ * the shop row is what removes the vendor link for everyone else.
  */
-export async function deleteVendor(id: string): Promise<DeleteVendorResult> {
-  const supabase = await createClient();
+export async function deleteVendor(id: string, actorId: string): Promise<DeleteVendorResult> {
+  const admin = createAdminClient();
 
-  const { count: orderCount } = await supabase
+  const { count: orderCount, error: countError } = await admin
     .from("orders")
     .select("id", { count: "exact", head: true })
     .eq("restaurant_id", id);
+  if (countError) throw countError;
 
   if ((orderCount ?? 0) > 0) {
     await setVendorStatus(id, "inactive", "Deleted in the admin console; disabled because it has order history");
-    return { softDeleted: true };
+    return { softDeleted: true, ownerLogin: "kept" };
   }
 
-  const { data: owned } = await supabase
+  const { data: shop, error: shopError } = await admin
     .from("restaurants")
-    .select("owner_id")
+    .select("name, owner_id, zone_id")
     .eq("id", id)
     .maybeSingle();
-  const ownerId = (owned as { owner_id: string } | null)?.owner_id;
+  if (shopError) throw shopError;
+  if (!shop) throw new Error("vendor_not_found");
+  const { name, owner_id: ownerId, zone_id: zoneId } = shop as { name: string; owner_id: string | null; zone_id: string | null };
 
-  // Service-role: the restaurant row + a possible auth-account cleanup.
-  const admin = createAdminClient();
-  const { error: delErr } = await admin.from("restaurants").delete().eq("id", id);
-  if (delErr) throw delErr;
+  const outcome: OwnerOutcome = ownerId ? ownerAccountOutcome(await readOwnerFacts(ownerId, id)) : "keep_login";
 
-  if (ownerId) {
-    const { count: remaining } = await admin
-      .from("restaurants")
-      .select("id", { count: "exact", head: true })
-      .eq("owner_id", ownerId);
-    if ((remaining ?? 0) === 0) {
-      // Owner has no other shop — remove the orphaned vendor login too.
-      await admin.auth.admin.deleteUser(ownerId);
+  await auditedChange(
+    { action: "vendor.delete", actorId, entityType: "vendor", entityId: id, zoneId, reason: "Deleted in the admin console", before: { name }, after: { owner_login: outcome } },
+    async () => {
+      const { error } = await admin.from("restaurants").delete().eq("id", id);
+      if (error) throw error;
     }
-  }
+  );
 
-  return { softDeleted: false };
+  if (!ownerId || outcome === "keep_login") return { softDeleted: false, ownerLogin: "kept" };
+
+  // The shop is gone either way, so a failure here is reported rather than thrown:
+  // "couldn't delete" would be untrue, and the login must not vanish silently.
+  const { error: ownerError } =
+    outcome === "remove_login"
+      ? await admin.auth.admin.deleteUser(ownerId)
+      : await admin.from("profiles").update({ role: "customer" }).eq("id", ownerId);
+  if (ownerError) {
+    captureError(ownerError, { source: "admin-vendors", attrs: { event: "vendor_owner_login_not_changed", outcome } });
+    await logOpsAction({
+      action: "audit.change_failed",
+      actorId,
+      entityType: "vendor",
+      entityId: id,
+      zoneId,
+      reason: `The shop was deleted, but its owner login could not be changed (${outcome})`,
+    }).catch(() => {});
+    return { softDeleted: false, ownerLogin: "failed" };
+  }
+  return { softDeleted: false, ownerLogin: outcome === "remove_login" ? "removed" : "kept" };
 }
 
 export interface ResetPasswordResult {

@@ -58,7 +58,7 @@ export const PORTALS: Record<PortalKey, Portal> = {
   admin: {
     key: "admin",
     label: "Admin console",
-    blurb: "Platform operations, refunds, vendors & settlements",
+    blurb: "Platform operations, vendors & settlements",
     home: "/admin",
     login: "/admin/login",
     roles: ["admin"],

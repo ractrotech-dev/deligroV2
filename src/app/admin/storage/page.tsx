@@ -101,7 +101,7 @@ function TabLink({
       role="tab"
       aria-selected={active}
       className={
-        "press shrink-0 whitespace-nowrap rounded-md px-[11px] py-[5px] transition-colors " +
+        "shrink-0 whitespace-nowrap rounded-md px-[11px] py-[5px] transition-colors " +
         (active
           ? "bg-ink font-semibold text-[color:var(--surface)]"
           : "font-medium text-muted hover:text-ink")
@@ -149,7 +149,7 @@ async function PhotosPanel({ query }: Readonly<{ query: string }>) {
         <FoodImageLibrary images={images} query={query} disabled={!ready} />
       )}
 
-      <div className="rounded-xl border border-line bg-surface px-3.5 py-3 text-[13px] leading-relaxed text-muted">
+      <div className="rounded-[var(--c-r)] border border-line bg-surface px-3.5 py-3 text-[13px] leading-relaxed text-muted">
         <p className="font-semibold text-ink">How the matching works</p>
         <p className="mt-1">
           Name each photo the way the dish is written on a menu — “Chicken

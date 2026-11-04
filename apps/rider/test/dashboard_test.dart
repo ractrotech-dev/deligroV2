@@ -41,14 +41,7 @@ Map<String, dynamic> _json({
         'cancelled': 6,
         'failed': 1,
       },
-  'money': money
-      ? {
-          'today': 185,
-          'total': 12450,
-          'pending': 650,
-          'incentivesThisWeek': 300,
-        }
-      : null,
+  'money': money ? {'pending': 650} : null,
   'availability': {
     'isOnline': true,
     'breakUntil': null,
@@ -84,7 +77,7 @@ Map<String, dynamic> _empty() => _json(
     'cancelled': 0,
     'failed': 0,
   },
-)..['money'] = {'today': 0, 'total': 0, 'pending': 0, 'incentivesThisWeek': 0};
+)..['money'] = {'pending': 0};
 
 class _Fake implements InsightsRepository {
   _Fake(this.json);
@@ -248,9 +241,7 @@ void main() {
       expect(_in('tile-cancelled', find.text('6')), findsOneWidget);
       expect(_in('tile-cancelled', find.text('Cancelled')), findsOneWidget);
       expect(_in('tile-cancelled', find.text('1 failed')), findsOneWidget);
-      // 7-9
-      expect(_in('tile-earnings-today', find.text('₹185')), findsOneWidget);
-      expect(_in('tile-earnings-total', find.text('₹12,450')), findsOneWidget);
+      // Salary to be paid
       expect(_in('tile-earnings-pending', find.text('₹650')), findsOneWidget);
       // 10
       expect(find.byType(AvailabilityCard), findsOneWidget);
@@ -261,39 +252,21 @@ void main() {
         _in('current-delivery', find.text('Reach the customer')),
         findsOneWidget,
       );
-      // 12
-      expect(_in('incentives-card', find.text('₹300')), findsOneWidget);
-      expect(
-        _in('incentives-card', find.text('Weekly warrior')),
-        findsOneWidget,
-      );
-      expect(_in('incentives-card', find.text('32 of 40')), findsOneWidget);
-      expect(
-        tester
-            .widget<LinearProgressIndicator>(
-              _in('incentives-card', find.byType(LinearProgressIndicator)),
-            )
-            .value,
-        closeTo(0.8, 1e-9),
-      );
       // the header and the refresh time
       expect(find.text('Ravi Kumar'), findsOneWidget);
       expect(find.text('DR-0042'), findsOneWidget);
       expect(find.text('Updated 12:04 PM'), findsOneWidget);
     });
 
-    testWidgets('the money says what the Earnings tab says', (tester) async {
+    testWidgets('Home shows salary to be paid, and no incentive or per-delivery figure', (tester) async {
       await _pump(tester, repo: _Fake(_json()));
-      const salary = 'Salary, bonuses and incentives, less deductions';
-      expect(_in('tile-earnings-today', find.text(salary)), findsOneWidget);
-      expect(_in('tile-earnings-total', find.text(salary)), findsOneWidget);
       expect(
-        _in(
-          'tile-earnings-pending',
-          find.text('Earned and waiting for your next payout'),
-        ),
+        _in('tile-earnings-pending', find.text('Waiting for your next payment')),
         findsOneWidget,
       );
+      for (final word in ['ncentive', 'onus', 'arget', 'earnings']) {
+        expect(find.textContaining(word), findsNothing, reason: word);
+      }
     });
 
     testWidgets('owing says it comes off the next payout', (tester) async {
@@ -303,7 +276,7 @@ void main() {
       expect(
         _in(
           'tile-earnings-pending',
-          find.text('You owe Deligro this — it comes off your next payout'),
+          find.text('You owe Deligro this — it comes off your next payment'),
         ),
         findsOneWidget,
       );
@@ -313,10 +286,7 @@ void main() {
       tester,
     ) async {
       await _pump(tester, repo: _Fake(_json(money: false)));
-      expect(find.byKey(const Key('tile-earnings-today')), findsNothing);
-      expect(find.byKey(const Key('tile-earnings-total')), findsNothing);
       expect(find.byKey(const Key('tile-earnings-pending')), findsNothing);
-      expect(find.byKey(const Key('incentives-card')), findsNothing);
       expect(find.textContaining('₹'), findsNothing);
       expect(find.byKey(const Key('tile-deliveries')), findsOneWidget);
       expect(find.byKey(const Key('tile-cancelled')), findsOneWidget);
@@ -332,21 +302,8 @@ void main() {
         repo: _Fake(_json()),
         me: _me(features: const {'driver.earnings': false}),
       );
-      expect(find.byKey(const Key('tile-earnings-today')), findsNothing);
-      expect(find.byKey(const Key('incentives-card')), findsNothing);
+      expect(find.byKey(const Key('tile-earnings-pending')), findsNothing);
       expect(find.textContaining('₹'), findsNothing);
-    });
-
-    testWidgets('driver.incentives off hides the incentives card, not the money', (
-      tester,
-    ) async {
-      await _pump(
-        tester,
-        repo: _Fake(_json()),
-        me: _me(features: const {'driver.incentives': false}),
-      );
-      expect(find.byKey(const Key('incentives-card')), findsNothing);
-      expect(find.byKey(const Key('tile-earnings-today')), findsOneWidget);
     });
 
     testWidgets('a brand-new rider sees zeros and dashes, no errors', (
@@ -364,12 +321,8 @@ void main() {
         expect(_in('tile-$k', find.text('0')), findsOneWidget, reason: k);
       }
       expect(find.textContaining('failed'), findsNothing);
-      expect(_in('tile-earnings-today', find.text('₹0')), findsOneWidget);
-      expect(_in('tile-earnings-total', find.text('₹0')), findsOneWidget);
       expect(_in('tile-earnings-pending', find.text('₹0')), findsOneWidget);
       expect(find.text('No active delivery'), findsOneWidget);
-      expect(_in('incentives-card', find.text('₹0')), findsOneWidget);
-      expect(_in('incentives-card', find.text('—')), findsOneWidget);
       expect(find.textContaining('NaN'), findsNothing);
       expect(tester.takeException(), isNull);
     });
@@ -521,7 +474,6 @@ void main() {
           );
           expect(tester.takeException(), isNull);
           expect(find.byKey(const Key('tile-cancelled')), findsOneWidget);
-          expect(find.byKey(const Key('incentives-card')), findsOneWidget);
         });
       }
     }
@@ -540,7 +492,7 @@ void main() {
           'failed': 0,
         },
       );
-      (j['money'] as Map<String, dynamic>)['total'] = 9999;
+      (j['money'] as Map<String, dynamic>)['pending'] = 9999;
       return j;
     }
 
@@ -554,7 +506,7 @@ void main() {
           repo: repo,
           meFn: () => _me(id: who),
         );
-        expect(_in('tile-earnings-total', find.text('₹9,999')), findsOneWidget);
+        expect(_in('tile-earnings-pending', find.text('₹9,999')), findsOneWidget);
         repo
           ..hold = Completer<void>()
           ..json = _json();
@@ -582,7 +534,7 @@ void main() {
           repo: repo,
           meFn: () => _me(id: who),
         );
-        expect(_in('tile-earnings-total', find.text('₹9,999')), findsOneWidget);
+        expect(_in('tile-earnings-pending', find.text('₹9,999')), findsOneWidget);
         repo.error = ApiException(500, 'server_error');
         who = 'rider-b';
         where.container.invalidate(meProvider);
@@ -712,9 +664,5 @@ void main() {
       expect(c.status, isNull);
     });
 
-    test('a target with nothing to do never divides by zero', () {
-      const t = NearestTarget(name: 'x', done: 3, target: 0, bonus: 10);
-      expect(t.fraction, 0);
-    });
   });
 }

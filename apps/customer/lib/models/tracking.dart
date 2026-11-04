@@ -51,6 +51,7 @@ class TrackingSnapshot {
     this.riderArrived = false,
     this.shopRunningLate = false,
     this.weather,
+    this.cancelSecondsLeft = 0,
   });
 
   final OrderStatus status;
@@ -74,6 +75,10 @@ class TrackingSnapshot {
 
   /// Rain or a storm in the shop's zone (0178): why the time went up; null when clear.
   final String? weather;
+
+  /// Whole seconds the customer can still cancel, from the database's clock
+  /// (0191). 0 when they can't, and from a server that doesn't send it.
+  final int cancelSecondsLeft;
 
   factory TrackingSnapshot.fromJson(Map<String, dynamic> j) {
     final eta = j['eta'] as Map?;
@@ -102,6 +107,7 @@ class TrackingSnapshot {
       riderArrived: j['riderArrived'] == true,
       shopRunningLate: j['shopRunningLate'] == true,
       weather: j['weather'] is String && (j['weather'] as String).trim().isNotEmpty ? (j['weather'] as String).trim() : null,
+      cancelSecondsLeft: j['cancelSecondsLeft'] is num ? (j['cancelSecondsLeft'] as num).floor() : 0,
     );
   }
 }

@@ -3,12 +3,17 @@
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { Download } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Figure, FigureRow } from "@/components/admin/console";
-import { formatINR } from "@/lib/utils/format";
 import {
+  Empty,
+  Section,
+  SectionCol,
+  SectionRow,
+} from "@/components/admin/console";
+import type { Column } from "@/components/admin/data-table";
+import {
+  PayFigure,
   PayoutLinesTable,
-  PayoutTotals,
+  PayToList,
   payWord,
 } from "@/components/admin/payout-breakdown";
 import { createSettlementAction } from "@/app/admin/settlements/actions";
@@ -20,16 +25,23 @@ import type {
   SettlementPreview,
 } from "@/lib/data-access/admin-settlements";
 
-function markPaidAction(line: SettlementLine) {
-  return (
-    <MarkOrderPaid
-      orderId={line.orderId}
-      code={line.code}
-      amount={line.contribution}
-    />
-  );
-}
+const PAY_ONE_COLUMN: Column<SettlementLine>[] = [
+  {
+    key: "payOne",
+    header: "",
+    align: "right",
+    cell: (line) =>
+      line.contribution > 0 ? (
+        <MarkOrderPaid
+          orderId={line.orderId}
+          code={line.code}
+          amount={line.contribution}
+        />
+      ) : null,
+  },
+];
 
+/** One shop, for the dates chosen: the amount to send, and a button to pay it. */
 export function SettlementPreviewPanel({
   preview,
   fromDate,
@@ -42,7 +54,6 @@ export function SettlementPreviewPanel({
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
-  const [notes, setNotes] = useState("");
 
   const create = () =>
     startTransition(async () => {
@@ -51,7 +62,6 @@ export function SettlementPreviewPanel({
       fd.set("restaurantId", preview.restaurantId);
       fd.set("fromDate", fromDate);
       fd.set("toDate", toDate);
-      if (notes.trim()) fd.set("notes", notes.trim());
 
       const result = await createSettlementAction(fd);
       if (!result.ok) {
@@ -62,22 +72,11 @@ export function SettlementPreviewPanel({
     });
 
   const owesPlatform = preview.netPayable < 0;
-
-  // What the customers paid across the run. The panel below it is all
-  // deductions, so without this line the screen never states the top of the
-  // subtraction it is performing.
   const customersPaid = preview.lines.reduce((sum, l) => sum + l.orderTotal, 0);
-  const cashOrders = preview.lines.filter((l) => l.paymentMethod === "cod");
-  const collectedInCash = cashOrders.reduce((sum, l) => sum + l.orderTotal, 0);
-  const avgOrder = preview.lines.length
-    ? Math.round(customersPaid / preview.lines.length)
-    : 0;
 
   /**
-   * The statement, as the vendor's accountant would want it: every order with
-   * what was in it, in rupees Excel can add up. Numbers go out as numbers —
-   * a "₹1,234" string is a cell nobody can sum, which is the whole point of
-   * exporting rather than screenshotting.
+   * The full statement for the shop's accountant. Numbers go out as numbers, so
+   * Excel can add them up. Every deduction stays itemised here, off the screen.
    */
   const toExcel = () =>
     downloadBrandedWorkbook({
@@ -92,7 +91,7 @@ export function SettlementPreviewPanel({
         ["Commission", `${preview.commissionPct}%`],
         ["GST on commission", `${preview.commissionGstPct}%`],
         [
-          owesPlatform ? "Vendor owes platform (₹)" : "Net payable (₹)",
+          owesPlatform ? "Shop owes Deligro (₹)" : "Send to the shop (₹)",
           Math.abs(preview.netPayable),
         ],
       ],
@@ -106,7 +105,7 @@ export function SettlementPreviewPanel({
         { key: "commission", label: "Commission (₹)" },
         { key: "gst", label: "GST (₹)" },
         { key: "other", label: "Other (₹)" },
-        { key: "refund", label: "Refund (₹)" },
+        { key: "refund", label: "Old refund (₹)" },
         { key: "shopGets", label: "Shop gets (₹)" },
       ],
       rows: preview.lines.map((l) => ({
@@ -135,130 +134,59 @@ export function SettlementPreviewPanel({
     });
 
   return (
-    <div className="space-y-4">
-      {/* The run in figures, before the subtraction that produces the payout. */}
-      <FigureRow>
-        <Figure
-          label="Orders"
-          value={preview.lines.length}
-          note={`Avg ${formatINR(avgOrder)} an order`}
-        />
-        <Figure
-          label="Customers paid"
-          value={formatINR(customersPaid)}
-          note="Everything collected across the run"
-        />
-        <Figure
-          label="Collected in cash"
-          value={formatINR(collectedInCash)}
-          note={`${cashOrders.length} of ${preview.lines.length} orders · already with the shop`}
-        />
-        <Figure
-          label="Platform commission"
-          value={formatINR(preview.commission + preview.commissionGst)}
-          note={`${preview.commissionPct}% + ${preview.commissionGstPct}% GST`}
-        />
-        <Figure
-          label={owesPlatform ? "Vendor owes platform" : "Net payable"}
-          value={formatINR(Math.abs(preview.netPayable))}
-          note={owesPlatform ? "Recover from the next payout" : "To send out"}
-        />
-      </FigureRow>
-
-      <div className="rounded-xl border border-line bg-surface p-4">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <p className="text-lg font-semibold text-ink">
-              {preview.restaurantName}
-            </p>
-            <p className="text-sm text-muted">
-              {preview.periodLabel} · {preview.lines.length} orders · commission{" "}
-              {preview.commissionPct}%
-            </p>
-          </div>
-          <div className="text-right">
-            <p className="text-xs font-medium uppercase tracking-wide text-muted">
-              {owesPlatform ? "Vendor owes platform" : "Net payable"}
-            </p>
-            <p
-              className={`text-2xl font-bold ${owesPlatform ? "text-deal" : "text-ink"}`}
-            >
-              {formatINR(Math.abs(preview.netPayable))}
-            </p>
-          </div>
-        </div>
-
-        <div className="mt-4 border-t border-line pt-3">
-          <PayoutTotals
-            totals={{
-              foodGross: preview.foodGross,
-              commission: preview.commission,
-              commissionGst: preview.commissionGst,
-              otherCharges: preview.otherCharges,
-              refundsRecovered: preview.refundsRecovered,
-              netPayable: preview.netPayable,
-            }}
-            commissionPct={preview.commissionPct}
-            commissionGstPct={preview.commissionGstPct}
-            orderCount={preview.lines.length}
+    <>
+      <SectionRow>
+        <SectionCol basis={340}>
+          <PayFigure
+            shop={preview.restaurantName}
+            amount={preview.netPayable}
+            note={`For ${preview.lines.length} order${preview.lines.length === 1 ? "" : "s"}, ${preview.periodLabel}.`}
           />
-        </div>
-
-        <p className="mt-3 border-t border-line pt-3 text-[12.5px] text-muted">
-          Pay to:{" "}
-          <span className="font-medium text-ink">
-            {preview.payout.upiId ||
-              (preview.payout.bankAccountNumber
-                ? `${preview.payout.bankName ?? "Bank"} ···${preview.payout.bankAccountNumber.slice(-4)}`
-                : "No payout account on file")}
-          </span>
-        </p>
-      </div>
-
-      {preview.lines.length === 0 ? (
-        <p className="rounded-xl border border-line bg-surface-2 px-3.5 py-3 text-sm text-muted">
-          No unpaid delivered orders in this range.
-        </p>
-      ) : (
-        <div className="space-y-2">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <p className="text-[13px] text-muted">
-              Every order in this run. Already settled one of them by hand? Mark
-              it paid and it leaves the batch.
-            </p>
-            <Button type="button" size="sm" variant="secondary" onClick={toExcel}>
-              <Download className="size-4" /> Export to Excel
-            </Button>
-          </div>
-
-          <PayoutLinesTable lines={preview.lines} rowAction={markPaidAction} />
-        </div>
-      )}
-
-      {preview.lines.length > 0 ? (
-        <div className="space-y-3 rounded-xl border border-line bg-surface p-4">
-          <label className="block space-y-1.5 text-sm">
-            <span className="font-medium text-ink">Notes (optional)</span>
-            <textarea
-              className="min-h-[72px] w-full rounded-xl border border-line bg-bg px-3 py-2 text-ink"
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              placeholder="e.g. Week 32 cycle"
-            />
-          </label>
-          {error ? (
-            <p className="text-sm text-deal">{error}</p>
+          {preview.netPayable > 0 ? (
+            <button
+              type="button"
+              disabled={pending}
+              onClick={create}
+              className="c-btn c-btn-dark mt-4 disabled:opacity-50"
+            >
+              {pending ? "One moment…" : "Pay these orders"}
+            </button>
           ) : null}
-          <Button
-            type="button"
-            size="sm"
-            disabled={pending}
-            onClick={create}
-          >
-            {pending ? "Creating…" : "Create draft"}
-          </Button>
-        </div>
-      ) : null}
-    </div>
+          {error ? (
+            <p className="mt-2 text-[12.5px] font-medium text-deal">{error}</p>
+          ) : null}
+        </SectionCol>
+        {preview.netPayable > 0 ? (
+          <SectionCol basis={340}>
+            <Section flush title="Send it to">
+              <PayToList payout={preview.payout} />
+            </Section>
+          </SectionCol>
+        ) : null}
+      </SectionRow>
+
+      <Section
+        title="Orders"
+        actions={
+          preview.lines.length > 0 ? (
+            <button
+              type="button"
+              onClick={toExcel}
+              className="c-btn c-btn-outline"
+            >
+              <Download className="size-3.5" /> Save as Excel
+            </button>
+          ) : null
+        }
+      >
+        <PayoutLinesTable
+          lines={preview.lines}
+          commissionPct={preview.commissionPct}
+          commissionGstPct={preview.commissionGstPct}
+          extraColumns={PAY_ONE_COLUMN}
+          empty={<Empty>No unpaid orders on these dates.</Empty>}
+        />
+      </Section>
+    </>
   );
 }

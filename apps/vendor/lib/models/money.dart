@@ -87,7 +87,7 @@ class Payments {
   final int totalEarnings;
   final int amountSettled;
 
-  /// Positive: Deligro owes the shop. Negative: the shop owes Deligro (cash it kept).
+  /// Positive: Deligro owes the shop. Negative: the shop owes Deligro (old adjustments).
   final int paymentDue;
   final int paidOrders;
   final int unpaidOrders;
@@ -171,7 +171,8 @@ class UnpaidOrder {
   final int charges;
   final int earnings;
 
-  /// What it adds to the next payout; negative for cash the shop kept.
+  /// What it adds to the next payout. Deligro holds the customer's money, cash or
+  /// online, so this is the shop's earning; negative only for a refund.
   final int contribution;
 }
 

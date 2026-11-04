@@ -2,7 +2,6 @@ import { requireRole } from "@/lib/auth";
 import { notFound } from "next/navigation";
 import { getBanner } from "@/lib/banners";
 import { AdminHero } from "@/components/admin/admin-ui";
-import { ConsoleOnly } from "@/components/admin/console-only";
 import { BannerForm } from "../banner-form";
 
 export const dynamic = "force-dynamic";
@@ -28,16 +27,7 @@ export default async function EditBannerPage({
         title={`Edit · ${banner.name}`}
         subtitle="Update creative, placement & status"
       />
-      {/* Console-only, same as /admin/banners/new — this is the same 400-line
-          creative form. The row actions on /admin/banners cover the phone case:
-          pausing or ending a live campaign. */}
-      <ConsoleOnly
-        variant="page"
-        tool="Editing a campaign"
-        why="If this one is live and you need it stopped now, the campaigns list has pause and end as row actions — both work on a phone."
-      >
-        <BannerForm banner={banner} />
-      </ConsoleOnly>
+      <BannerForm banner={banner} />
     </div>
   );
 }

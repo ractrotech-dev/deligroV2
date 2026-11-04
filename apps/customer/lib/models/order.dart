@@ -43,8 +43,9 @@ extension OrderStatusX on OrderStatus {
       this == OrderStatus.ready ||
       this == OrderStatus.onTheWay;
 
-  bool get customerCanCancel =>
-      this == OrderStatus.placed || this == OrderStatus.kitchen;
+  /// A new order the shop hasn't taken. The seconds left come from the server
+  /// (TrackingSnapshot.cancelSecondsLeft), which also decides on the tap.
+  bool get customerCanCancel => this == OrderStatus.placed;
 
   /// Position on the 5-step tracker (cancelled sits at 0).
   int get step => switch (this) {
@@ -104,7 +105,14 @@ class Order {
     required this.cancellationReason,
     required this.address,
     required this.etaMin,
+    this.pointsUsed = 0,
   });
+
+  /// Wallet points on this order. [total] stays the bill; see [cashDue].
+  final int pointsUsed;
+
+  /// What the rider collects: the bill less the points.
+  int get cashDue => total - pointsUsed < 0 ? 0 : total - pointsUsed;
 
   final String id;
   final OrderStatus status;
@@ -151,7 +159,9 @@ class Order {
           final it = Map<String, dynamic>.from(raw as Map);
           final mi = it['menu_items'] as Map?;
           return OrderLine(
-            itemId: '${mi?['external_id'] ?? ''}',
+            // `external_id ?? id`, as MenuItem.id: a dish the shop added itself has
+            // no external id, and is still the same dish on today's menu.
+            itemId: '${mi?['external_id'] ?? mi?['id'] ?? ''}',
             name: '${it['name'] ?? ''}',
             qty: _i(it['qty']),
             price: _i(it['price']),
@@ -177,6 +187,7 @@ class Order {
       discount: _i(r['discount']),
       couponCode: r['coupon_code'] as String?,
       total: _i(r['total']),
+      pointsUsed: _i(r['wallet_points_used']),
       paymentMethod: '${r['payment_method'] ?? 'cod'}',
       paymentStatus: '${r['payment_status'] ?? 'pending'}',
       cancelledBy: r['cancelled_by'] as String?,
@@ -215,6 +226,7 @@ class Order {
       discount: _i(c['discount']),
       couponCode: c['couponCode'] as String?,
       total: _i(j['total']),
+      pointsUsed: _i(j['pointsUsed']),
       paymentMethod: '${j['paymentMethod'] ?? 'cod'}',
       paymentStatus: '${j['paymentStatus'] ?? 'pending'}',
       cancelledBy: j['cancelledBy'] as String?,
@@ -230,9 +242,12 @@ class Order {
       'id, restaurant_id, status, total, delivery_fee, tax_amount, tip, '
       'payment_method, payment_status, discount, coupon_code, cancelled_by, '
       'cancellation_reason, created_at, address, '
-      'order_items(name, qty, price, menu_items(external_id, veg)), '
+      'order_items(name, qty, price, menu_items(id, external_id, veg)), '
       'restaurants(slug, name, image_url, accent_tint, eta_min, eta_max)';
 
-  /// [columns] plus each line's chosen size and add-ons (0062).
-  static final columnsWithOptions = columns.replaceFirst('order_items(name, qty, price,', 'order_items(name, qty, price, options,');
+  /// [columns] plus each line's chosen size and add-ons (0062) and the wallet points
+  /// used (0198). Falls back to [columns] on a database that hasn't got them.
+  static final columnsWithOptions = columns
+      .replaceFirst('order_items(name, qty, price,', 'order_items(name, qty, price, options,')
+      .replaceFirst('cancellation_reason, ', 'cancellation_reason, wallet_points_used, ');
 }

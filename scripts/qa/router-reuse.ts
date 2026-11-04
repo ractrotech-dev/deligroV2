@@ -55,7 +55,6 @@ console.log("\n═══ every customer mutation clears the router cache ══�
 const REFRESHING = [
   "src/components/auth/otp-login.tsx",
   "src/components/checkout/checkout-view.tsx",
-  "src/components/orders/refund-request.tsx",
   "src/components/orders/tracking-view.tsx",
   "src/components/profile/profile-avatar.tsx",
   "src/components/profile/profile-edit-sheet.tsx",
@@ -88,7 +87,10 @@ console.log("\n═══ no unclassified customer mutation ═══");
 // rider rating (it reads its own state from the API every time it mounts, and
 // no cached page shows it).
 const NOT_VISIBLE = new Set([
+  "src/lib/marketing/track-client.ts",
   "src/components/orders/rider-rating-card.tsx",
+  // Asks for a code and shows it in its own state: no cached page shows it.
+  "src/components/orders/wallet-code-card.tsx",
   "src/lib/obs/client.ts",
   "src/components/home/promo-banner-carousel.tsx",
   "src/components/notifications/onesignal-init.tsx",

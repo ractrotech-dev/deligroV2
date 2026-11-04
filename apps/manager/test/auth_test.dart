@@ -1,9 +1,24 @@
 import 'package:deligro_manager/core/api.dart';
+import 'package:deligro_manager/core/updates.dart';
 import 'package:deligro_manager/data/auth_repository.dart';
+import 'package:deligro_manager/data/manager_repository.dart';
+import 'package:deligro_manager/models/account.dart';
 import 'package:deligro_manager/models/manager_me.dart';
 import 'package:deligro_manager/router.dart';
+import 'package:deligro_manager/state/providers.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:mocktail/mocktail.dart';
+
+import 'helpers.dart';
+
+/// Answers the update check with whatever the test last set; null is no signal.
+class _UpdateRepo extends Mock implements ManagerRepository {
+  AppVersionInfo? answer;
+  @override
+  Future<AppVersionInfo?> appVersion() async => answer;
+}
 
 const meJson = {
   'profile': {'id': 'u1', 'fullName': 'Asha Verma', 'phone': '+919876543210', 'email': 'a@x.in', 'role': 'manager'},
@@ -59,6 +74,64 @@ void main() {
     test('refuses short or non-Indian-mobile numbers', () {
       expect(AuthRepository.normaliseMobile('12345'), isNull);
       expect(AuthRepository.normaliseMobile('5876543210'), isNull);
+    });
+  });
+
+  group('a required update', () {
+    test('holds every location, signed in or not, deep links included', () {
+      for (final path in ['/', '/login', '/orders/o-1', '/more/approvals']) {
+        expect(gateRedirect(signedIn: true, me: const AsyncData(null), path: path, updateRequired: true), updateRequiredPath);
+        expect(gateRedirect(signedIn: false, me: const AsyncData(null), path: path, updateRequired: true), updateRequiredPath);
+      }
+      expect(gateRedirect(signedIn: true, me: const AsyncData(null), path: updateRequiredPath, updateRequired: true), isNull);
+    });
+
+    test('lifted, the update screen lets go', () {
+      expect(gateRedirect(signedIn: false, me: const AsyncData(null), path: updateRequiredPath), '/');
+    });
+
+    AppVersionInfo info({required bool available, required bool force}) =>
+        AppVersionInfo(updateAvailable: available, forceUpdate: force, latestVersionCode: 9, apkUrl: '', notes: '');
+
+    test('only an available, forced update blocks', () {
+      expect(isBlocking(null), isFalse);
+      expect(isBlocking(info(available: true, force: false)), isFalse);
+      expect(isBlocking(info(available: false, force: true)), isFalse);
+      expect(isBlocking(info(available: true, force: true)), isTrue);
+    });
+
+    test('a recheck adopts an answer, and no answer changes nothing', () async {
+      final repo = _UpdateRepo();
+      final c = ProviderContainer(overrides: [managerRepoProvider.overrideWithValue(repo)]);
+      addTearDown(c.dispose);
+      repo.answer = info(available: false, force: false);
+      await c.read(updateProvider.future);
+      expect(isBlocking(c.read(updateProvider).value), isFalse);
+
+      // Published while the app was away: it holds on the way back.
+      repo.answer = info(available: true, force: true);
+      await c.read(updateProvider.notifier).recheck();
+      expect(isBlocking(c.read(updateProvider).value), isTrue);
+
+      // No signal must not lift it.
+      repo.answer = null;
+      await c.read(updateProvider.notifier).recheck();
+      expect(isBlocking(c.read(updateProvider).value), isTrue);
+
+      // The admin lifted it.
+      repo.answer = info(available: false, force: false);
+      await c.read(updateProvider.notifier).recheck();
+      expect(isBlocking(c.read(updateProvider).value), isFalse);
+    });
+
+    testWidgets('the screen has no way out but updating', (tester) async {
+      final repo = _UpdateRepo()..answer = AppVersionInfo(updateAvailable: true, forceUpdate: true, latestVersionCode: 9, apkUrl: 'https://example.com/a.apk', notes: '');
+      await tester.pumpWidget(await themed(const UpdateRequiredScreen(), overrides: [managerRepoProvider.overrideWithValue(repo)]));
+      await tester.pumpAndSettle();
+      expect(find.text('Update required'), findsOneWidget);
+      expect(find.byKey(const Key('update-download')), findsOneWidget);
+      expect(find.text('Later'), findsNothing);
+      expect(tester.widget<PopScope>(find.byType(PopScope).first).canPop, isFalse);
     });
   });
 

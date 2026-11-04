@@ -67,6 +67,8 @@ export interface ReportResult {
   highlights: { label: string; value: string; note?: string }[];
   /** Empty for a report whose subject is not time. */
   series: ReportDay[];
+  /** Which day charts the report's own columns can really draw. */
+  charts: { revenue: boolean; orders: boolean };
   table: ReportTable;
   /** Empty when the range has no data — the UI says so rather than showing 0s. */
   empty: boolean;

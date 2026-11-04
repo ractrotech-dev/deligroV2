@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
 import '../../core/api.dart';
+import '../../core/customer_features.dart';
 import '../../core/format.dart';
 import '../../models/order.dart';
 import '../../models/tracking.dart';
@@ -69,6 +70,7 @@ List<({String title, String sub})> trackingSteps({
 
 /// How the order was paid, as the receipt words it.
 String paymentLabel(Order o) {
+  if (o.pointsUsed > 0) return o.cashDue > 0 ? 'Points and cash' : 'Wallet points';
   if (o.paymentMethod != 'online') return 'Cash on delivery';
   return switch (o.paymentStatus) {
     'paid' => 'Paid online',
@@ -754,7 +756,6 @@ class _OrderRowState extends ConsumerState<_OrderRow> {
     final c = context.colors;
     final cancelled = o.status == OrderStatus.cancelled;
     final why = cancelled ? cancellationNote(o) : null;
-    final owesRefund = cancelled && o.paymentStatus == 'paid';
     final items = orderItemsSummary(o);
 
     return Padding(
@@ -809,10 +810,6 @@ class _OrderRowState extends ConsumerState<_OrderRow> {
                             children: [
                               OrderStatusChip(o.status),
                               Text(placedAt(o.createdAt), style: TextStyle(fontSize: 12, color: c.muted)),
-                              if (owesRefund)
-                                Text('Refund not issued',
-                                    style: TextStyle(
-                                        fontSize: 12, color: c.popInk, fontWeight: FontWeight.w700)),
                             ],
                           ),
                           if (why != null) ...[
@@ -831,6 +828,7 @@ class _OrderRowState extends ConsumerState<_OrderRow> {
             ),
           ),
           const SizedBox(width: 10),
+          if (ref.watch(customerFeaturesProvider).can(reorderFeature))
           OutlinedButton.icon(
             onPressed: _busy ? null : _again,
             style: OutlinedButton.styleFrom(

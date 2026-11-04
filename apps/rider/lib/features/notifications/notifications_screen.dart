@@ -43,7 +43,6 @@ IconData _iconFor(String category) => switch (category) {
       'pickup_reminders' => Icons.storefront_rounded,
       'delivery_updates' => Icons.edit_note_rounded,
       'payouts' => Icons.account_balance_wallet_outlined,
-      'incentives' => Icons.emoji_events_outlined,
       'announcements' => Icons.campaign_outlined,
       'support' => Icons.support_agent_rounded,
       'cash' => Icons.payments_outlined,

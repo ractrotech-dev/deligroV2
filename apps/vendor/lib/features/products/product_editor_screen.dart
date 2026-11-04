@@ -268,6 +268,18 @@ class _EditorState extends ConsumerState<_Editor> {
                   padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
                   child: Panel(tint: c.surface2, child: Text('Deligro has made your menu read-only.')),
                 ),
+              if (o != null && moderationNotice(o) != null)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                  child: Panel(
+                    tint: moderationNotice(o)!.serious ? c.dealSoft : c.surface2,
+                    child: Text(
+                      moderationNotice(o)!.long,
+                      key: const Key('moderation-notice'),
+                      style: TextStyle(color: moderationNotice(o)!.serious ? c.deal : c.ink, fontWeight: FontWeight.w700),
+                    ),
+                  ),
+                ),
               if (o != null) ...[
                 const SizedBox(height: 12),
                 Panel(

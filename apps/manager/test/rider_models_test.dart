@@ -150,12 +150,12 @@ void main() {
     expect(anyway.toJson()['override'], isTrue);
     expect(anyway.clientActionId, b.clientActionId);
     final adj = AddRiderAdjustment(
-      kind: AdjustmentKind.bonus,
+      kind: AdjustmentKind.deduction,
       amount: 500.5,
       effectiveOn: DateTime(2026, 10, 20),
       reason: 'Rain shift',
     ).toJson();
-    expect(adj['adjustment'], {'kind': 'bonus', 'amount': 500.5, 'effectiveOn': '2026-10-20', 'orderId': null});
+    expect(adj['adjustment'], {'kind': 'deduction', 'amount': 500.5, 'effectiveOn': '2026-10-20', 'orderId': null});
   });
 
   test('repository paths', () {

@@ -11,7 +11,8 @@ import { MarketingDecisionForm } from "./decision-form";
  * Admin → Marketing requests (Partner app requirements §6). Shops ask for
  * banners, featured slots, discount campaigns and the rest; this is where each
  * one is approved, rejected (always with a reason) or moved along, and every
- * step pushes to the shop's Partner app.
+ * step pushes to the shop's Partner app. A decision here only records a status:
+ * nothing goes live until someone sets up the campaign itself.
  */
 export const dynamic = "force-dynamic";
 
@@ -52,7 +53,7 @@ export default async function AdminMarketingPage({ searchParams }: Readonly<{ se
     <>
       <PageHeader
         title="Marketing requests"
-        description="Campaign asks from shops. Approve, reject with a reason, or move them along — the shop is told every time."
+        description="What shops have asked for. Your answer is sent to the shop. Nothing goes live from here."
       />
       {!migrated ? <PreviewNotice>Apply migration 0064 to take marketing requests.</PreviewNotice> : null}
       <Tabs
@@ -66,7 +67,7 @@ export default async function AdminMarketingPage({ searchParams }: Readonly<{ se
       {requests.length === 0 ? (
         <EmptyState icon={Megaphone} title="Nothing here" description="No marketing requests match." />
       ) : (
-        <div className="mt-4 grid gap-4 lg:grid-cols-2">
+        <div className="mt-4 grid gap-4 grid-cols-2">
           {requests.map((r) => (
             <article key={r.id} className="card space-y-3 p-5">
               <div className="flex items-start justify-between gap-3">

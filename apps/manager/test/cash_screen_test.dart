@@ -56,7 +56,7 @@ void main() {
     final before = fakes.cash.depositCalls.length;
     await tester.tap(find.byKey(const Key('deposit-confirm-cd-1')));
     await tester.pumpAndSettle();
-    expect(find.text('Already handled by someone else.'), findsOneWidget);
+    expect(find.text("A manager or the owner already decided this. It isn't counted twice."), findsOneWidget);
     expect(fakes.cash.depositCalls.length, greaterThan(before));
   });
 

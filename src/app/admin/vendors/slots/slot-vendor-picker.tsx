@@ -199,7 +199,7 @@ export function SlotVendorPicker({
         aria-expanded={open}
         aria-label={`Shop in slot ${position}`}
         className={cn(
-          "press flex h-9 w-[190px] items-center gap-1.5 rounded-lg border border-line bg-surface px-2.5 text-left text-[13px] transition-colors",
+          "flex h-9 w-[190px] items-center gap-1.5 rounded-lg border border-line bg-surface px-2.5 text-left text-[13px] transition-colors",
           "disabled:cursor-not-allowed disabled:opacity-50",
           open && "border-accent"
         )}
@@ -223,7 +223,7 @@ export function SlotVendorPicker({
       {open ? (
         <div
           className={cn(
-            "absolute right-0 z-20 w-[268px] overflow-hidden rounded-xl border border-line bg-surface shadow-lg",
+            "absolute right-0 z-20 w-[268px] overflow-hidden rounded-[var(--c-r)] border border-line bg-surface shadow-lg",
             dropUp ? "bottom-full mb-1.5" : "top-full mt-1.5"
           )}
         >
@@ -249,7 +249,7 @@ export function SlotVendorPicker({
                   inputRef.current?.focus();
                 }}
                 aria-label="Clear search"
-                className="press absolute right-2 top-1/2 grid size-6 -translate-y-1/2 place-items-center rounded-full text-muted hover:text-ink"
+                className="absolute right-2 top-1/2 grid size-6 -translate-y-1/2 place-items-center rounded-full text-muted hover:text-ink"
               >
                 <X className="size-3.5" />
               </button>

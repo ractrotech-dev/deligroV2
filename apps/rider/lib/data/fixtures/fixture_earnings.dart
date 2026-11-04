@@ -53,7 +53,6 @@ class FixtureEarningsRepository implements EarningsRepository {
   final String _today;
   final _records = <Map<String, dynamic>>[];
   final _payouts = <Map<String, dynamic>>[];
-  final _incentives = <Map<String, dynamic>>[];
 
   String _day(int ago) => addDays(_today, -ago);
 
@@ -139,7 +138,7 @@ class FixtureEarningsRepository implements EarningsRepository {
     if (_scenario == 'empty') return;
 
     // Riders are on a salary (ruling P3-R11): a delivery's earning row is ₹0
-    // and only counts towards incentive targets, so the app lists none of them.
+    // so the app lists none of them.
     for (var i = 0; i < 14; i++) {
       _records.add(
         _delivery(
@@ -251,41 +250,6 @@ class FixtureEarningsRepository implements EarningsRepository {
       );
     }
 
-    _incentives.addAll([
-      {
-        'ruleId': 'rule-1',
-        'name': 'Evening rush',
-        'period': 'daily',
-        'target': 10,
-        'done': 7,
-        'bonus': 100,
-        'window': '18:00–22:00',
-        'endsOn': _day(-9),
-        'earned': false,
-      },
-      {
-        'ruleId': 'rule-2',
-        'name': 'Weekly warrior',
-        'period': 'weekly',
-        'target': 40,
-        'done': 40,
-        'bonus': 500,
-        'window': null,
-        'endsOn': null,
-        'earned': true,
-      },
-      {
-        'ruleId': 'rule-3',
-        'name': 'Lunch hour',
-        'period': 'daily',
-        'target': 3,
-        'done': 1,
-        'bonus': 30.5,
-        'window': '12:00–15:00',
-        'endsOn': _day(-2),
-        'earned': false,
-      },
-    ]);
   }
 
   // -------------------------------------------------------------------------
@@ -304,28 +268,11 @@ class FixtureEarningsRepository implements EarningsRepository {
     _records.where((r) => r['_payout'] == null && r['status'] == 'pending'),
   );
 
-  /// Every ledger entry counts (salary, bonuses, incentives, adjustments less
-  /// deductions) except a delivery that was reversed.
-  bool _isPerformance(Map<String, dynamic> r) => r['reversed'] != true;
-
   EarningRecord _record(Map<String, dynamic> j) => EarningRecord.fromJson(j);
-
-  String _weekStart() {
-    final d = parseDay(_today)!;
-    return addDays(_today, -((d.weekday + 6) % 7));
-  }
 
   @override
   Future<EarningsSummary> summary() async {
     _requireOn();
-    double since(String from) => _sum(
-      _records.where(
-        (r) => _isPerformance(r) && (r['date'] as String).compareTo(from) >= 0,
-      ),
-    );
-    final live = _records
-        .where((r) => r['kind'] == 'delivery' && r['reversed'] != true)
-        .toList();
     final paid = _payouts.fold<double>(0, (a, p) => a + (p['amount'] as num));
     final latest = _payouts.isEmpty
         ? null
@@ -335,14 +282,14 @@ class FixtureEarningsRepository implements EarningsRepository {
               ))
               .first;
     return EarningsSummary.fromJson({
-      'today': since(_today),
-      'week': since(_weekStart()),
-      'month': since('${_today.substring(0, 8)}01'),
-      'total': since('0000-00-00'),
-      'perDeliveryAvg': null,
-      'deliveriesCounted': live.length,
-      'incentives': _sum(_records.where((r) => r['kind'] == 'incentive')),
-      'bonuses': _sum(_records.where((r) => r['kind'] == 'bonus')),
+      // Old rows, under one name: what the server's riderPaySummary sends.
+      'olderPay': _sum(
+        _records.where(
+          (r) =>
+              r['reversed'] != true &&
+              (r['kind'] == 'delivery' || r['kind'] == 'incentive' || r['kind'] == 'bonus'),
+        ),
+      ),
       'adjustments': _sum(
         _records.where(
           (r) => r['kind'] == 'adjustment' && r['reversesId'] == null,
@@ -413,12 +360,6 @@ class FixtureEarningsRepository implements EarningsRepository {
       _payouts,
     )..sort((a, b) => (b['paidOn'] as String).compareTo(a['paidOn'] as String));
     return [for (final p in sorted) Payout.fromJson(p)];
-  }
-
-  @override
-  Future<List<IncentiveProgress>> incentives() async {
-    _requireOn();
-    return [for (final i in _incentives) IncentiveProgress.fromJson(i)];
   }
 
   @override

@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+
+import '../../core/app_links.dart';
 import 'package:intl/intl.dart';
 
 import '../../core/format.dart';
@@ -148,7 +150,7 @@ class NotificationsScreen extends ConsumerWidget {
               onTap: () {
                 ref.read(inboxProvider.notifier).markRead(i.id);
                 final url = i.url;
-                if (url != null && url.startsWith('/')) context.push(url);
+                if (url != null && url.startsWith('/')) openAppLink(GoRouter.of(context), url);
               },
             ),
         ],

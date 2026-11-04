@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { AdminHero, Panel } from "@/components/admin/admin-ui";
 import { FilterChips } from "@/components/admin/admin-filters";
 import {
@@ -218,13 +217,7 @@ export default async function PaymentsHealthPage({
             <code className="text-data">payment.webhook</code> failures are usually a
             rotated <code className="text-data">RAZORPAY_WEBHOOK_SECRET</code> rather
             than forgery — but both mean real payments are being rejected, so treat
-            either as urgent.{" "}
-            <Link
-              href="/admin/refunds"
-              className="underline underline-offset-2"
-            >
-              Refund queue
-            </Link>
+            either as urgent.
           </p>
         </Panel>
       </div>

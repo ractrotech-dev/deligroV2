@@ -413,6 +413,13 @@ void main() {
       body = {'error': 'not_found'};
       expect((await act()).kind, ActionOutcomeKind.orderGone, reason: 'no longer this delivery');
 
+      // A manager can assign during cooking: "too early" is a refusal, never a lost job.
+      status = 409;
+      body = {'error': 'food_not_ready'};
+      final early = await act();
+      expect(early.kind, ActionOutcomeKind.rejected);
+      expect(early.code, 'food_not_ready');
+
       for (final code in ['photo_required', 'bad_state', 'bad_pickup_otp', 'manual_not_approved']) {
         status = 409;
         body = {'error': code};

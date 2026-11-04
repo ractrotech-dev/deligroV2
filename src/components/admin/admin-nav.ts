@@ -12,13 +12,11 @@ import {
   MapPinned,
   Megaphone,
   ReceiptText,
-  RotateCcw,
   Settings,
   SlidersHorizontal,
   Store,
   TicketPercent,
   ToggleRight,
-  Trophy,
   UserCog,
   Users,
   Wallet,
@@ -28,35 +26,11 @@ import {
 import type { FeatureKey } from "@/lib/features/catalog";
 
 /**
- * One nav definition, three consumers: the web sidebar, the phone bottom tabs,
- * and the top bar's page title. The phone frame can only carry five tabs, so
- * `primary` marks the five that earn a slot there — everything else the phone
- * can use is one tap away inside Settings, and the rail lists all of it.
- *
- * The five tabs are chosen for what an operator does *away from a desk*:
- * Dashboard, Orders, Refunds, Vendors, Settings. Campaigns is a rail item
- * rather than a tab because both of its authoring routes are console-only —
- * spending a fifth of the phone's navigation on "pause a banner" is a poor
- * trade against Refunds, which is a pure decision queue and carries a badge.
- *
- * Team and Platform configuration are settings *sub*-pages that the rail lists
- * directly: the console has the room, and burying a daily job like creating a
- * staff login two taps deep is only a phone compromise. The Settings menu drops
- * those rows in web mode (see admin/settings/page.tsx) so the rail is the one
- * place they appear there.
- *
- * `reach: "console"` marks the rail entries a phone should never be offered at
- * all, because the screen behind them is console-only. They stay in the rail
- * and keep their page title; they just don't appear in the phone's Settings
- * menu, where tapping through would only find a notice.
- *
- * It is a **route contract, not a nav filter** (AGENTS.md). Setting it here
- * obliges the route itself to render `<ConsoleOnly variant="page">` — dropping
- * the menu entry alone leaves the URL open, which is how a phone ended up
- * rendering the ten-tab observability console in a 370px column.
- * `npm run test:platform` fails if the two halves disagree.
+ * One nav definition for the admin console's left rail. Team and Platform
+ * configuration are settings *sub*-pages that the rail lists directly, because
+ * creating a staff login is a daily job.
  */
-export type BadgeKey = "pendingApprovals" | "pendingRefunds" | "liveOrders";
+export type BadgeKey = "pendingApprovals" | "liveOrders";
 
 export interface AdminNavItem {
   href: string;
@@ -64,18 +38,14 @@ export interface AdminNavItem {
   icon: React.ComponentType<{ className?: string; strokeWidth?: number }>;
   /** Which sidebar group it sits under. */
   group: "Overview" | "Operations" | "Catalogue" | "People" | "System";
-  /** Shown on the phone's five-slot bottom bar. */
-  primary?: boolean;
-  /** Rail and drawer only — never offered as a phone destination. */
-  reach?: "console";
   /**
-   * The Feature access switch (`admin.*`) that turns this screen off. Off drops
+   * The App features switch (`admin.*`) that turns this screen off. Off drops
    * the entry everywhere it is listed, and the route renders a notice.
    */
   feature?: FeatureKey;
   /** Live count rendered as a pill. */
   badge?: BadgeKey;
-  /** Colour used by the phone tab bar and the sidebar's active state. */
+  /** Colour used by the sidebar's active state. */
   tone: "green" | "blue" | "accent" | "deal" | "violet" | "pop";
   match: (pathname: string) => boolean;
 }
@@ -86,7 +56,6 @@ export const ADMIN_NAV: AdminNavItem[] = [
     label: "Dashboard",
     icon: LayoutDashboard,
     group: "Overview",
-    primary: true,
     tone: "green",
     match: (p) => p === "/admin",
   },
@@ -95,21 +64,9 @@ export const ADMIN_NAV: AdminNavItem[] = [
     label: "Orders",
     icon: ReceiptText,
     group: "Operations",
-    primary: true,
     badge: "liveOrders",
     tone: "blue",
     match: (p) => p.startsWith("/admin/orders"),
-  },
-  {
-    href: "/admin/refunds",
-    label: "Refunds",
-    icon: RotateCcw,
-    group: "Operations",
-    primary: true,
-    badge: "pendingRefunds",
-    tone: "deal",
-    feature: "admin.refunds",
-    match: (p) => p.startsWith("/admin/refunds"),
   },
   {
     href: "/admin/settlements",
@@ -124,7 +81,7 @@ export const ADMIN_NAV: AdminNavItem[] = [
     // slots under Vendors: paying a single order early is a daily job, and
     // activeNavItem's longest-href rule keeps Settlements highlighted elsewhere.
     href: "/admin/settlements/orders",
-    label: "Order payouts",
+    label: "Pay a shop",
     icon: HandCoins,
     group: "Operations",
     tone: "pop",
@@ -186,7 +143,6 @@ export const ADMIN_NAV: AdminNavItem[] = [
     label: "Vendors",
     icon: Store,
     group: "Catalogue",
-    primary: true,
     badge: "pendingApprovals",
     tone: "accent",
     match: (p) => p.startsWith("/admin/vendors"),
@@ -208,10 +164,7 @@ export const ADMIN_NAV: AdminNavItem[] = [
     icon: Images,
     group: "Catalogue",
     tone: "green",
-    match: (p) =>
-      p.startsWith("/admin/storage") ||
-      p.startsWith("/admin/food-images") ||
-      p.startsWith("/admin/settings/categories"),
+    match: (p) => p.startsWith("/admin/storage"),
   },
   {
     href: "/admin/banners",
@@ -238,24 +191,21 @@ export const ADMIN_NAV: AdminNavItem[] = [
     match: (p) => p.startsWith("/admin/customers"),
   },
   {
+    // What Deligro holds for customers as wallet points (0198).
+    href: "/admin/customer-wallets",
+    label: "Customer wallets",
+    icon: Wallet,
+    group: "People",
+    tone: "green",
+    match: (p) => p.startsWith("/admin/customer-wallets"),
+  },
+  {
     href: "/admin/riders",
     label: "Riders",
     icon: Bike,
     group: "People",
     tone: "pop",
     match: (p) => p.startsWith("/admin/riders"),
-  },
-  {
-    // A sub-route of Riders listed directly on the rail, like Featured slots
-    // under Vendors: incentive targets are a standing configuration an operator
-    // returns to, and activeNavItem's longest-href rule keeps Riders
-    // highlighted everywhere else.
-    href: "/admin/riders/incentives",
-    label: "Rider incentives",
-    icon: Trophy,
-    group: "People",
-    tone: "deal",
-    match: (p) => p.startsWith("/admin/riders/incentives"),
   },
   {
     href: "/admin/settings/employees",
@@ -282,10 +232,11 @@ export const ADMIN_NAV: AdminNavItem[] = [
     match: (p) => p.startsWith("/admin/settings/zones"),
   },
   {
+    // The URL keeps its old name, so links that exist keep working.
     href: "/admin/settings/feature-access",
-    label: "Feature access",
+    label: "App features",
     icon: ToggleRight,
-    group: "People",
+    group: "System",
     tone: "blue",
     match: (p) => p.startsWith("/admin/settings/feature-access"),
   },
@@ -302,7 +253,6 @@ export const ADMIN_NAV: AdminNavItem[] = [
     label: "Platform config",
     icon: SlidersHorizontal,
     group: "System",
-    reach: "console",
     tone: "blue",
     match: (p) => p.startsWith("/admin/settings/platform"),
   },
@@ -311,13 +261,14 @@ export const ADMIN_NAV: AdminNavItem[] = [
     label: "Settings",
     icon: Settings,
     group: "System",
-    primary: true,
     tone: "violet",
     // Deliberately broad: it also covers sub-pages with no rail entry of their
     // own. Where a sub-page *does* have one, activeNavItem's longest-href rule
     // hands the highlight to that entry instead — which is why consumers must
     // resolve the active item through it, not by calling match() per item.
-    match: (p) => p.startsWith("/admin/settings"),
+    // Settings → Alert thresholds belongs to Alerts, and "/admin/settings" is the
+    // longer href, so it has to step aside here or it would win the highlight.
+    match: (p) => p.startsWith("/admin/settings") && !p.startsWith("/admin/settings/alerts"),
   },
 ];
 
@@ -328,16 +279,6 @@ export const ADMIN_NAV_GROUPS = [
   "People",
   "System",
 ] as const;
-
-/**
- * Everything else the phone can actually use, for the Settings menu to list.
- * Derived rather than hand-written so a new nav item can't quietly become
- * unreachable on a handset — which is what happened to Refunds, Settlements,
- * Featured slots and Customers before this existed.
- */
-export const ADMIN_PHONE_MENU = ADMIN_NAV.filter(
-  (i) => !i.primary && i.reach !== "console"
-);
 
 /** The entries still on: drops every screen whose `feature` is switched off. */
 export function enabledNav<T extends AdminNavItem>(

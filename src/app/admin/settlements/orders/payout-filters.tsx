@@ -5,8 +5,8 @@ import { useTransition } from "react";
 import { DatePicker } from "@/components/ui/date-picker";
 
 /**
- * Shop + date filters for the order payouts screen. GET-driven, so the server
- * recomputes the list and the totals together and the two cannot disagree.
+ * Pick a shop, and optionally narrow its order list by date. The dates never change
+ * the amount to send. GET-driven, so the server recomputes the list.
  */
 export function OrderPayoutFilters({
   vendors,
@@ -29,23 +29,27 @@ export function OrderPayoutFilters({
       if (v) usp.set(k, v);
       else usp.delete(k);
     }
-    // A different shop means different orders; keeping the old status filter
-    // would silently show an empty list for a shop that has plenty to pay.
-    if (patch.vendor !== undefined) usp.delete("state");
+    // A different shop means different orders; keeping the old filters would
+    // silently show an empty list for a shop that has plenty to pay.
+    if (patch.vendor !== undefined) {
+      usp.delete("state");
+      usp.delete("from");
+      usp.delete("to");
+    }
     start(() => router.push(`/admin/settlements/orders?${usp.toString()}`));
   };
 
   return (
-    <div className="grid gap-3 rounded-xl border border-line bg-surface p-4 @3xl:grid-cols-3">
-      <label className="block space-y-1.5 text-sm">
-        <span className="font-medium text-ink">Shop</span>
+    <div className="grid grid-cols-[2fr_1fr_1fr] items-end gap-3">
+      <label className="block space-y-1 text-[12.5px]">
+        <span className="font-medium text-muted">Shop</span>
         <select
-          className="h-11 w-full rounded-xl border border-line bg-bg px-3 text-ink"
+          className="h-9 w-full rounded-[var(--c-r)] border border-line bg-surface px-2.5 text-[13px] text-ink"
           value={restaurantId}
           disabled={pending}
           onChange={(e) => navigate({ vendor: e.target.value })}
         >
-          <option value="">Select a shop…</option>
+          <option value="">Choose a shop</option>
           {vendors.map((v) => (
             <option key={v.id} value={v.id}>
               {v.name}
@@ -53,16 +57,16 @@ export function OrderPayoutFilters({
           ))}
         </select>
       </label>
-      <label className="block space-y-1.5 text-sm">
-        <span className="font-medium text-ink">From</span>
+      <label className="block space-y-1 text-[12.5px]">
+        <span className="font-medium text-muted">Orders from</span>
         <DatePicker
           value={fromDate}
           disabled={pending}
           onChange={(v) => navigate({ from: v })}
         />
       </label>
-      <label className="block space-y-1.5 text-sm">
-        <span className="font-medium text-ink">To</span>
+      <label className="block space-y-1 text-[12.5px]">
+        <span className="font-medium text-muted">Orders to</span>
         <DatePicker
           value={toDate}
           disabled={pending}

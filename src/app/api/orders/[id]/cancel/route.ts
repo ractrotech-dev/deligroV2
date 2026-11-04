@@ -1,37 +1,37 @@
 import { NextResponse } from "next/server";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { createClient } from "@/lib/supabase/server";
-import { createAdminClient } from "@/lib/supabase/admin";
 import { rateLimit, tooManyRequests } from "@/lib/rate-limit";
-import { queueRefundForOrder } from "@/lib/data-access/refunds";
-import { cancelOrderRow } from "@/lib/data-access/order-cancellation";
 import { cancelDeliveryForOrder } from "@/lib/dispatch/rider-dispatch";
+import { captureError } from "@/lib/obs/emit";
 import {
   notifyOrderCancelled,
   notifyVendorOrderCancelled,
 } from "@/lib/notifications/order-events";
 import { deferNotify } from "@/lib/notifications/defer";
+import { customerFeatureOn, featureOffResponse } from "@/lib/features/guards.server";
 
 /**
- * POST /api/orders/:id/cancel — a customer cancels their own order while it is
- * placed or with the kitchen (status placed/kitchen — which includes an order
- * the kitchen has started preparing), never once it is ready. The customer can't
- * update orders under RLS, so we verify ownership + state here and write with
- * the service-role client.
+ * POST /api/orders/:id/cancel — a customer cancels their own order.
  *
- * Cancelling is three things, not one: the order stops, the money starts coming
- * back, and the two people affected are told. Until now it was only the first —
- * an order paid online could be cancelled and the payment simply stayed ours,
- * and a kitchen already cooking found out by watching a card vanish from a board
- * that polls every four seconds.
+ * The rule book: only within 20 seconds of placing it. After that the order will
+ * be delivered. The decision belongs to the database (customer_cancel_order, 0191):
+ * it runs on the customer's own session, checks the order is theirs and the shop
+ * has not taken it, and compares `created_at` with the database's clock against
+ * `platform_settings.customer_cancel_seconds`. Nothing here, and nothing on the
+ * phone, gets a say.
  *
- * `cancelled_at` is deliberately not written here: a trigger stamps it (0026),
- * so the timestamp is the same whichever path moved the order. `cancelled_by`
- * is written, because this is the one path the trigger cannot work it out for
- * itself — see the note at the update.
+ * Fails closed: without 0191 the function is missing and every request is refused
+ * with `server_error`. Staff can still cancel.
+ *
+ * No refund is raised. An order paid online stays `paid`: what happens to that money
+ * is an open question in the rule book.
+ *
+ *   200 { ok: true }
+ *   401 unauthorized · 403 feature_disabled (customer.cancel is off)
+ *   404 not_found (not yours, or no such order)
+ *   409 too_late     · 429 · 500 server_error · 503 backend_not_configured
  */
-const CANCELLABLE = new Set(["placed", "kitchen"]);
-
 export async function POST(
   _request: Request,
   { params }: { params: Promise<{ id: string }> }
@@ -50,80 +50,39 @@ export async function POST(
   if (!user)
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
-  // The lookup below runs on the service-role client, so it sees every order
-  // regardless of RLS. Ownership is checked immediately after — but cap the
-  // rate anyway so this can't be driven as an order-id probe.
   const limit = await rateLimit(`order-cancel:${user.id}`, 20, 60_000);
   if (!limit.ok) return tooManyRequests(limit);
+  if (!(await customerFeatureOn("customer.cancel"))) return featureOffResponse("customer.cancel");
 
-  const admin = createAdminClient();
-  const { data: order } = await admin
-    .from("orders")
-    .select("id, customer_id, status")
-    .eq("id", id)
-    .maybeSingle();
-
-  // Consistent 404 — never leak whether someone else's order exists.
-  if (!order || order.customer_id !== user.id) {
-    return NextResponse.json({ error: "not_found" }, { status: 404 });
-  }
-  if (!CANCELLABLE.has(order.status)) {
-    return NextResponse.json({ error: "too_late" }, { status: 409 });
-  }
-
-  // Conditional on the status just read: without this, a status change that
-  // lands in the gap between that read and this write (the vendor accepting or
-  // rejecting it) would be silently overwritten by a cancel decided against
-  // stale state.
-  // `cancelled_by: "customer"` is stated rather than derived: the customer
-  // cannot update orders under RLS at all, so this write goes out as
-  // service_role and the trigger would otherwise have no way to tell whose
-  // decision it was recording (0051).
-  const { data: cancelled, error } = await cancelOrderRow(
-    (patch) =>
-      admin
-        .from("orders")
-        .update(patch)
-        .eq("id", id)
-        .eq("status", order.status)
-        .select("id"),
-    { actor: "customer" }
-  );
-  if (error)
+  const { data, error } = await supabase.rpc("customer_cancel_order", {
+    p_order: id,
+  });
+  if (error) {
+    const message = (error.message ?? "").trim();
+    // 0201: the database read the switch after this route's cached read did.
+    if (message === "feature_off") return featureOffResponse("customer.cancel");
+    if (message === "too_late")
+      return NextResponse.json({ error: "too_late" }, { status: 409 });
+    // A malformed id is also "no such order": never leak the difference.
+    if (message === "not_found" || error.code === "22P02")
+      return NextResponse.json({ error: "not_found" }, { status: 404 });
+    captureError(error, { source: "order-cancel", orderId: id });
     return NextResponse.json({ error: "server_error" }, { status: 500 });
-  if (!cancelled || cancelled.length === 0) {
-    return NextResponse.json({ error: "too_late" }, { status: 409 });
   }
 
-  // A driver may already have accepted this order (offered while it was still
-  // `kitchen`, before the pool-visible `ready` stage). Stop them completing a
-  // delivery for an order that is now cancelled — see the function's own
-  // comment for why an accepted delivery is cancelled rather than deleted.
+  // A repeat of a cancel that already worked: the people involved were told then.
+  if ((data as { replayed?: boolean } | null)?.replayed === true) {
+    return NextResponse.json({ ok: true });
+  }
+
+  // A rider may hold an offer on it. Best effort: the order IS cancelled, and this
+  // function's own comment explains why a failure here must not undo that.
   await cancelDeliveryForOrder(id);
 
-  // Ownership was established above, which is what authorizes the service-role
-  // write inside queueRefundForOrder. It returns queued:false for a COD order
-  // nobody has paid for yet — most cancellations, and nothing to refund.
-  let refundQueued = false;
-  try {
-    ({ queued: refundQueued } = await queueRefundForOrder(id, {
-      origin: "customer",
-      reason: "Cancelled by the customer",
-      requestedBy: user.id,
-    }));
-  } catch (err) {
-    // The order IS cancelled. Failing the request now would be a lie about the
-    // thing the customer asked for, and re-trying would 409 as too_late — so
-    // report the cancellation and leave the refund unclaimed. The customer can
-    // still raise it themselves from the order (POST /api/refunds), which is
-    // why that path exists as well as this one.
-    console.error(`[order-cancel] refund could not be queued for ${id}`, err);
-  }
-
-  // Fire-and-forget, by contract: order-events swallows its own failures. A
-  // push outage must not fail a cancellation that has already happened.
-  deferNotify(() => notifyOrderCancelled(id, { refundQueued }));
+  // Fire-and-forget, by contract: order-events swallows its own failures. A push
+  // outage must not fail a cancellation that has already happened.
+  deferNotify(() => notifyOrderCancelled(id));
   deferNotify(() => notifyVendorOrderCancelled(id));
 
-  return NextResponse.json({ ok: true, refundQueued });
+  return NextResponse.json({ ok: true });
 }

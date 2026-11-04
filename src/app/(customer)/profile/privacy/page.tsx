@@ -51,8 +51,8 @@ const HELD: { icon: typeof MapPin; title: Bi; body: Bi }[] = [
     icon: ReceiptText,
     title: { en: "Your orders", hi: "आपके ऑर्डर" },
     body: {
-      en: "What you ordered, from where, what it cost and how it was paid. This is the record behind your receipts and any refund, so it is kept rather than cleared.",
-      hi: "आपने क्या मंगाया, कहाँ से, कितने का था और पेमेंट कैसे हुआ। आपकी रसीद और किसी भी रिफ़ंड का रिकॉर्ड यही है, इसलिए इसे मिटाया नहीं जाता।",
+      en: "What you ordered, from where, what it cost and how it was paid. This is the record behind your receipts, so it is kept rather than cleared.",
+      hi: "आपने क्या मंगाया, कहाँ से, कितने का था और पेमेंट कैसे हुआ। आपकी रसीद का रिकॉर्ड यही है, इसलिए इसे मिटाया नहीं जाता।",
     },
   },
   {
@@ -188,8 +188,8 @@ export default async function PrivacyPage() {
               </span>
               <span className="mt-0.5 block text-[13px] leading-snug text-muted">
                 {t(
-                  "Get in touch and we will remove your profile and addresses. Past orders are kept — they are the record behind receipts, refunds and what each shop was paid.",
-                  "हमसे संपर्क करें, हम आपकी प्रोफ़ाइल और पते हटा देंगे। पुराने ऑर्डर रखे जाते हैं — रसीद, रिफ़ंड और दुकानों के भुगतान का रिकॉर्ड इन्हीं से है।",
+                  "Get in touch and we will remove your profile and addresses. Past orders are kept — they are the record behind receipts and what each shop was paid.",
+                  "हमसे संपर्क करें, हम आपकी प्रोफ़ाइल और पते हटा देंगे। पुराने ऑर्डर रखे जाते हैं — रसीद और दुकानों के भुगतान का रिकॉर्ड इन्हीं से है।",
                 )}
               </span>
             </span>

@@ -179,8 +179,9 @@ class SettlementLine {
   final int refundRecovered;
   final int vendorNet;
 
-  /// What this line adds to the payout (negative for a cash order: the shop
-  /// already holds the money and the deductions are recovered).
+  /// What this line adds to the payout. Deligro receives every customer's money
+  /// and pays the shop, so a cash order counts the same as an online one. It is
+  /// negative only when a line's refunds come to more than the shop earned on it.
   final int contribution;
 }
 
@@ -347,6 +348,15 @@ class SettlementInitiation {
         'method': method.wire,
         'note': (note?.trim().isEmpty ?? true) ? null : note!.trim(),
       };
+}
+
+/// Asking for a paid settlement to be reversed: its transfer did not reach the
+/// shop. The id is minted once, so a retry after a fault is the same request.
+class SettlementReversal {
+  SettlementReversal({required this.reason, String? clientActionId}) : clientActionId = clientActionId ?? _uuid.v4();
+  final String reason;
+  final String clientActionId;
+  Map<String, dynamic> toJson() => {'reason': reason.trim(), 'clientActionId': clientActionId};
 }
 
 /// The 201 answer to an initiation.

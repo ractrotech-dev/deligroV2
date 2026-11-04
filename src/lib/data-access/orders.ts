@@ -14,6 +14,8 @@ import {
   outOfRangeMessage,
 } from "@/lib/geo/service-area";
 import { evaluateCoupon } from "@/lib/data-access/coupons";
+import { FeatureDisabledError } from "@/lib/features/flags.server";
+import { customerFeatures } from "@/lib/features/guards.server";
 import { onlinePaymentsEnabled } from "@/lib/payments/availability";
 import { getVendorPaymentRules } from "@/lib/payments/vendor-rules";
 import {
@@ -46,6 +48,8 @@ import { deferNotify } from "@/lib/notifications/defer";
 import { translator, type Lang } from "@/lib/i18n/lang";
 import { normalizeInstructions } from "@/lib/orders/instructions";
 import { saveOrderInstructions } from "@/lib/data-access/order-instructions";
+import { readWalletBalance, spendOnOrder, walletIsOnFor } from "@/lib/data-access/wallet";
+import { cashDue, parseWalletPoints, walletSpendMessage } from "@/lib/wallet/money";
 
 /**
  * Secure data access for orders. Every query here runs through the anon key,
@@ -75,6 +79,8 @@ export interface Order {
   /** Present once 0031 is applied. Rupees off the grand total; 0 when no coupon. */
   discount?: number;
   coupon_code?: string | null;
+  /** Present once 0198 is applied. Wallet points on this order; cash due = total − this. */
+  wallet_points_used?: number;
   /** Present once 0051 is applied. Null on a row cancelled before it. */
   cancelled_by?: string | null;
   cancellation_reason?: string | null;
@@ -99,6 +105,8 @@ const COUPON_COLUMNS = "orders.discount";
 /** `cancelled_by` / `cancellation_reason` arrive together in 0051. */
 const CANCELLATION_COLUMNS = "orders.cancelled_by";
 const OPTIONS_COLUMN = "order_items.options";
+/** `wallet_points_used` arrives in 0198. */
+const WALLET_COLUMN = "orders.wallet_points_used";
 /** `idempotency_key` arrives in 0049. */
 const IDEMPOTENCY_COLUMN = "orders.idempotency_key";
 /** Postgres's "duplicate key value violates unique constraint". */
@@ -115,6 +123,8 @@ interface SelectFlags {
   cancellation: boolean;
   /** `order_items.options` (chosen size and add-ons) only exists from 0062. */
   options: boolean;
+  /** `wallet_points_used` only exists from 0198. */
+  wallet: boolean;
 }
 
 function select(flags: SelectFlags): string {
@@ -123,11 +133,12 @@ function select(flags: SelectFlags): string {
     flags.tip ? ", tip" : "",
     flags.payment ? ", payment_method, payment_status" : "",
     flags.coupon ? ", discount, coupon_code" : "",
+    flags.wallet ? ", wallet_points_used" : "",
     flags.cancellation ? ", cancelled_by, cancellation_reason" : "",
     ", created_at, address",
     flags.options
-      ? ", order_items(name, qty, price, options, menu_items(external_id, veg))"
-      : ", order_items(name, qty, price, menu_items(external_id, veg))",
+      ? ", order_items(name, qty, price, options, menu_items(id, external_id, veg))"
+      : ", order_items(name, qty, price, menu_items(id, external_id, veg))",
     ", restaurants(slug, name, image_url, accent_tint, eta_min, eta_max)",
   ].join("");
 }
@@ -154,12 +165,14 @@ async function selectOrders<T>(
     coupon: !columnKnownMissing(COUPON_COLUMNS),
     cancellation: !columnKnownMissing(CANCELLATION_COLUMNS),
     options: !columnKnownMissing(OPTIONS_COLUMN),
+    wallet: !columnKnownMissing(WALLET_COLUMN),
   };
 
   // `isMissingColumn` doesn't say WHICH column is missing, so drop the newest
   // migration's group first and re-probe rather than guessing. At most one
   // attempt per still-optimistic group, plus the final bare one.
   const groups: Array<{ key: keyof SelectFlags; column: string }> = [
+    { key: "wallet", column: WALLET_COLUMN },
     { key: "options", column: OPTIONS_COLUMN },
     { key: "cancellation", column: CANCELLATION_COLUMNS },
     { key: "coupon", column: COUPON_COLUMNS },
@@ -297,6 +310,13 @@ export interface CreateOrderInput {
    */
   couponCode?: string;
   /**
+   * The total the customer was shown, in whole rupees. A question, not an
+   * amount: nothing is priced from it. When it differs from the server's bill the
+   * order is refused (`OrderTotalChanged`) with that bill. Left out by the
+   * website, whose checkout reads live settings.
+   */
+  expectedTotal?: number;
+  /**
    * One UUID per checkout attempt, sent unchanged on every retry of that same
    * attempt (a timed-out request the client retries, a double-tap that slips
    * past the disabled button). Lets `createOrder` recognize a replay and hand
@@ -313,6 +333,12 @@ export interface CreateOrderInput {
    * direct writes), and folded onto the address line where 0082 is not applied.
    */
   instructions?: string;
+  /**
+   * Wallet points to use on this order, whole rupees (0198). A request: the amount is
+   * checked against the customer's balance and the bill under a row lock by
+   * `wallet_spend_on_order`. `orders.total` stays the full bill; cash due is the rest.
+   */
+  walletPoints?: number;
 }
 
 /** Why a coupon didn't apply. Mirrors the RPC's vocabulary 1:1. */
@@ -370,7 +396,9 @@ function hindiRefusalMessage(
 ): string {
   switch (code) {
     case "cod_limit_exceeded":
-      return `${formatINR(Math.round(rules.codMaxOrder))} से ज़्यादा के ऑर्डर का भुगतान ऑनलाइन करना होगा।`;
+      return rules.acceptOnline
+        ? `${formatINR(Math.round(rules.codMaxOrder))} से ज़्यादा के ऑर्डर का भुगतान ऑनलाइन करना होगा।`
+        : `${formatINR(Math.round(rules.codMaxOrder))} से ज़्यादा के ऑर्डर अभी नहीं हो सकते। ऑर्डर करने के लिए कुछ आइटम हटाएं।`;
     case "cod_not_available":
       return "यह दुकान सिर्फ़ ऑनलाइन भुगतान लेती है।";
     case "online_not_available":
@@ -389,7 +417,9 @@ export type OrderRefusalCode =
   | "restaurant_closed"
   | "out_of_stock"
   | "item_unavailable"
-  | "invalid_options";
+  | "invalid_options"
+  // 0198: the customer's points can't be used as asked.
+  | "wallet_refused";
 
 /**
  * The platform, not the shop, is refusing this order.
@@ -399,6 +429,28 @@ export type OrderRefusalCode =
  * minimum, the shop's radius — are only known to the code that refused. The API
  * layer would have to guess them to write the message itself.
  */
+/**
+ * The bill the server just worked out is not the one the customer was shown (a
+ * fee, tax or price changed while the checkout was open). Nothing was written:
+ * the app shows this bill and asks again, rather than charging a total the
+ * customer never saw.
+ */
+export class OrderTotalChanged extends Error {
+  constructor(
+    public readonly bill: {
+      subtotal: number;
+      deliveryFee: number;
+      taxes: number;
+      tip: number;
+      discount: number;
+      total: number;
+    },
+  ) {
+    super("total_changed");
+    this.name = "OrderTotalChanged";
+  }
+}
+
 export class OrderRefused extends Error {
   readonly customerMessage: string;
   constructor(
@@ -416,7 +468,10 @@ export class OrderRefused extends Error {
  * the original failure is what the caller must see, so this never throws.
  * Conditional on `placed` so it cannot touch an order someone has since moved.
  */
-async function discardHalfMadeOrder(orderId: string): Promise<void> {
+async function discardHalfMadeOrder(
+  orderId: string,
+  opts: { freeIdempotencyKey?: boolean } = {},
+): Promise<void> {
   try {
     const admin = createAdminClient();
     const { error } = await cancelOrderRow(
@@ -430,6 +485,11 @@ async function discardHalfMadeOrder(orderId: string): Promise<void> {
       { actor: "system", reason: "Order could not be completed" },
     );
     if (error) throw error;
+    // The customer will fix the amount and try again with the same checkout key.
+    // That has to place a new order, not hand back this cancelled one.
+    if (opts.freeIdempotencyKey) {
+      await admin.from("orders").update({ idempotency_key: null }).eq("id", orderId).eq("status", "cancelled");
+    }
   } catch (err) {
     console.error("[orders] could not discard half-made order", orderId, err);
   }
@@ -452,6 +512,11 @@ export async function createOrder(
   const noted = normalizeInstructions(input.instructions);
   if (!noted.ok) throw new Error(noted.error);
   const instructions = noted.value;
+
+  const walletPoints = parseWalletPoints(input.walletPoints);
+  if (walletPoints === null) {
+    throw new OrderRefused("wallet_refused", walletSpendMessage("invalid_points"));
+  }
 
   const supabase = await createClient();
   const {
@@ -486,10 +551,26 @@ export async function createOrder(
     } else {
       rememberColumn(IDEMPOTENCY_COLUMN, true);
       if (existing) {
+        // A retry of an order that was placed but lost its answer, perhaps before its
+        // points were taken. The spend answers with the first one if it already ran,
+        // and a refusal here leaves the order as it is: it's real, and the customer
+        // sees what it really owes.
+        if (walletPoints > 0) await spendOnOrder(user.id, existing.id, walletPoints);
         const already = await getOrderById(existing.id);
         if (already) return already;
       }
     }
+  }
+
+  // Admin → App features. After the replay check, so a retry of an order that
+  // was placed before the switch changed still gets its order. An old app ignores
+  // the switches and may send these, so each is refused rather than quietly dropped:
+  // the customer must not think the rider got a tip or a note they didn't.
+  if (input.couponCode?.trim() || (input.tip ?? 0) > 0 || input.instructions?.trim()) {
+    const features = await customerFeatures();
+    if (input.couponCode?.trim() && !features["customer.promo_codes"]) throw new FeatureDisabledError("customer.promo_codes");
+    if ((input.tip ?? 0) > 0 && !features["customer.tips"]) throw new FeatureDisabledError("customer.tips");
+    if (input.instructions?.trim() && !features["customer.delivery_notes"]) throw new FeatureDisabledError("customer.delivery_notes");
   }
 
   // The platform-level gates, re-decided here.
@@ -672,8 +753,42 @@ export async function createOrder(
   // hold from the next order, not the next page load.
   const rules = await getVendorPaymentRules(restaurant.id);
   const payable = Math.max(0, charges.total - previewDiscount);
-  const refusal = refusePayment(rules, paymentMethod, payable);
+
+  // The wallet, checked while there is still nothing to undo. A preview, like the
+  // coupon's: the spend below is the write that decides, under a lock. Points go with
+  // cash only for now: the gateway charges an online order's whole total.
+  if (walletPoints > 0) {
+    if (paymentMethod !== "cod") {
+      throw new OrderRefused("wallet_refused", walletSpendMessage("cash_orders_only"));
+    }
+    if (!(await walletIsOnFor(user.id))) {
+      throw new OrderRefused("wallet_refused", walletSpendMessage("wallet_off"));
+    }
+    const balance = await readWalletBalance(user.id);
+    if (walletPoints > balance) {
+      throw new OrderRefused("wallet_refused", walletSpendMessage("insufficient", balance));
+    }
+    if (walletPoints > payable) {
+      throw new OrderRefused("wallet_refused", walletSpendMessage("over_bill"));
+    }
+  }
+
+  // The cash limit is judged on the cash the rider will actually collect (0194, 0198).
+  const refusal = refusePayment(rules, paymentMethod, cashDue(payable, walletPoints));
   if (refusal) throw new PaymentRefused(refusal, rules, lang);
+
+  // The last moment nothing has been written: the customer sees the real total
+  // before it becomes an order.
+  if (typeof input.expectedTotal === "number" && input.expectedTotal !== payable) {
+    throw new OrderTotalChanged({
+      subtotal: itemSubtotal,
+      deliveryFee: charges.deliveryFee,
+      taxes: charges.taxes,
+      tip: charges.tip,
+      discount: previewDiscount,
+      total: payable,
+    });
+  }
 
   const base: Record<string, unknown> = {
     customer_id: user.id,
@@ -843,6 +958,22 @@ export async function createOrder(
     oid: order.id,
   });
   if (totalError) throw totalError;
+
+  // The points, once the bill is final and before anyone is told about the order. One
+  // transaction: both row locks, the check, the debit, the ledger row and the order's
+  // own column. The order row itself was written above by the customer's session, so its
+  // triggers apply, and it can't share this transaction. So a refusal here (a second
+  // checkout spent the points a moment ago) cancels the order nobody has heard of yet,
+  // the way a failed items insert does. A crash in between leaves a real order with the
+  // whole bill still due, never points taken with nothing to show for it, and a retry
+  // of the same checkout finishes the job (above).
+  if (walletPoints > 0) {
+    const spent = await spendOnOrder(user.id, order.id, walletPoints);
+    if (!spent.ok) {
+      await discardHalfMadeOrder(order.id, { freeIdempotencyKey: true });
+      throw new OrderRefused("wallet_refused", walletSpendMessage(spent.error, spent.balance));
+    }
+  }
 
   // The rider's note. After the order is whole, and never allowed to fail it:
   // `saveOrderInstructions` reports its own failures.

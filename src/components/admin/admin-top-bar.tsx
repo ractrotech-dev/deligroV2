@@ -2,12 +2,10 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
-import { Menu, ReceiptText, RotateCcw, Search, Store, X } from "lucide-react";
-import { activeNavItem } from "@/components/admin/admin-nav";
+import { useRouter } from "next/navigation";
+import { ReceiptText, Search, Store, X } from "lucide-react";
 import { ConsoleThemeToggle } from "@/components/admin/console/chrome";
 import type { AdminNavCounts } from "@/lib/data-access/admin-stats";
-import type { FeatureKey } from "@/lib/features/catalog";
 import { cn } from "@/lib/utils/cn";
 
 /** Where the search box can send you — each is a page that really filters on `q`. */
@@ -34,11 +32,9 @@ type ScopeId = (typeof SCOPES)[number]["id"];
  *
  * ## What is here, and why each earns it
  *
- * - The section label, on narrow widths where the rail is a drawer and nothing
- *   else says what you are looking at.
  * - Search, scoped to a page that really filters on `q`. The `⌘K` hint is a
- *   promise, so it is bound here — this bar is mounted on every console screen
- *   and unmounted in phone mode, which is exactly the shortcut's scope.
+ *   promise, so it is bound here — this bar is mounted on every console screen,
+ *   which is exactly the shortcut's scope.
  * - The health chip, so a misconfigured deployment is visible from any screen
  *   rather than only from the foot of the rail.
  * - The three queue counts, each a live figure linking to the screen that
@@ -51,20 +47,14 @@ type ScopeId = (typeof SCOPES)[number]["id"];
  */
 export function AdminTopBar({
   counts,
-  featuresOff,
-  onMenu,
 }: Readonly<{
   counts: AdminNavCounts;
-  featuresOff: readonly FeatureKey[];
-  onMenu: () => void;
 }>) {
-  const pathname = usePathname();
   const router = useRouter();
   const [scope, setScope] = useState<ScopeId>("vendors");
   const [query, setQuery] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const active = activeNavItem(pathname);
   const target = SCOPES.find((s) => s.id === scope) ?? SCOPES[0];
 
   useEffect(() => {
@@ -88,23 +78,10 @@ export function AdminTopBar({
     <header className="admin-top-bar sticky top-0 z-30 border-b border-line bg-surface">
       {/* The height here is what `--c-top-h` on the shell is set to. A sticky
           toolbar on a page below offsets by that, so the two must agree. */}
-      <div className="flex h-[52px] items-center gap-3 px-4 lg:px-6">
-        <button
-          type="button"
-          onClick={onMenu}
-          aria-label="Open navigation"
-          className="press grid size-8 shrink-0 place-items-center rounded-[var(--c-r)] border border-line bg-surface text-muted lg:hidden"
-        >
-          <Menu className="size-4" />
-        </button>
-
-        <p className="shrink-0 text-[14px] font-bold tracking-[-0.01em] lg:hidden">
-          {active?.label ?? "Admin"}
-        </p>
-
+      <div className="flex h-[52px] items-center gap-3 px-6">
         <form
           onSubmit={submit}
-          className="ml-auto hidden min-w-0 shrink items-center sm:flex lg:ml-0 lg:basis-[360px]"
+          className="flex min-w-0 shrink basis-[360px] items-center"
           role="search"
         >
           <div className="flex min-w-0 flex-1 items-center gap-2 rounded-[var(--c-r)] border border-line bg-surface px-2.5 py-[6px] focus-within:border-[var(--c-border-hover)]">
@@ -123,12 +100,12 @@ export function AdminTopBar({
                 type="button"
                 onClick={() => setQuery("")}
                 aria-label="Clear search"
-                className="press grid size-4 shrink-0 place-items-center rounded-full bg-surface-2 text-muted"
+                className="grid size-4 shrink-0 place-items-center rounded-full bg-surface-2 text-muted"
               >
                 <X className="size-2.5" />
               </button>
             ) : (
-              <kbd className="text-data hidden shrink-0 rounded border border-line px-1 py-px text-[10px] text-muted md:block">
+              <kbd className="text-data shrink-0 rounded border border-line px-1 py-px text-[10px] text-muted">
                 ⌘K
               </kbd>
             )}
@@ -166,19 +143,10 @@ export function AdminTopBar({
             tone="accent"
             icon={<Store className="size-4" strokeWidth={1.8} />}
           />
-          {featuresOff.includes("admin.refunds") ? null : (
-            <QuickAction
-              href="/admin/refunds"
-              label="Refunds waiting"
-              count={counts.pendingRefunds}
-              tone="deal"
-              icon={<RotateCcw className="size-4" strokeWidth={1.8} />}
-            />
-          )}
 
           <span
             aria-hidden
-            className="mx-1 hidden h-5 w-px bg-line min-[480px]:block"
+            className="mx-1 h-5 w-px bg-line"
           />
 
           <ConsoleThemeToggle />
@@ -198,7 +166,7 @@ function LiveOrdersChip({ liveOrders }: Readonly<{ liveOrders: number }>) {
   return (
     <Link
       href="/admin/orders"
-      className="press hidden items-center gap-1.5 rounded-[var(--c-r)] border border-line bg-surface px-2.5 py-1.5 text-[11.5px] font-medium text-ink transition-colors hover:border-[var(--c-border-hover)] xl:inline-flex"
+      className="hidden items-center gap-1.5 rounded-[var(--c-r)] border border-line bg-surface px-2.5 py-1.5 text-[11.5px] font-medium text-ink transition-colors hover:border-[var(--c-border-hover)] xl:inline-flex"
     >
       <span className="c-dot bg-green" />
       {liveOrders} order{liveOrders === 1 ? "" : "s"} in flight
@@ -231,7 +199,7 @@ function QuickAction({
       aria-label={count > 0 ? `${label}: ${count}` : label}
       title={count > 0 ? `${label}: ${count}` : label}
       className={cn(
-        "press relative grid size-8 place-items-center rounded-[var(--c-r)] transition-colors",
+        "relative grid size-8 place-items-center rounded-[var(--c-r)] transition-colors",
         count > 0
           ? TONES[tone]
           : "text-muted hover:bg-[var(--c-hover)] hover:text-ink"

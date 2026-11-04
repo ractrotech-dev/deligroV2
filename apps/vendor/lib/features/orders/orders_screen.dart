@@ -67,6 +67,7 @@ class _LiveBoardState extends ConsumerState<_LiveBoard> {
     'accepted' => _Filter.accepted,
     'preparing' => _Filter.preparing,
     'ready' => _Filter.ready,
+    'out' => _Filter.outForDelivery,
     _ => _Filter.all,
   };
   final _search = TextEditingController();

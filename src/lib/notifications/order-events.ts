@@ -399,22 +399,30 @@ export function notifyDelivered(orderId: string): Promise<void> {
   );
 }
 
+/** A rider added the change from a cash order to the customer's wallet. */
+export function notifyWalletChangeAdded(orderId: string, change: number): Promise<void> {
+  const id = shortOrderId(orderId);
+  return notifyCustomer(
+    orderId,
+    { en: `₹${change} added to your wallet`, hi: `₹${change} आपके वॉलेट में जुड़े` },
+    {
+      en: `The change from order #${id} is now in your wallet as ${change} points. Use them on your next order.`,
+      hi: `ऑर्डर #${id} के बचे पैसे अब आपके वॉलेट में ${change} पॉइंट के रूप में हैं। अगले ऑर्डर में इस्तेमाल करें।`,
+    },
+    { collapseId: `wallet-${orderId}` }
+  );
+}
+
 /**
  * Cancelled. `byVendor` changes the wording because the two cases are not the
  * same message: a customer who cancelled knows why, and one whose order the
- * restaurant refused needs to be told plainly — and told about their money.
+ * restaurant refused needs to be told plainly, and that someone will call.
  */
 export function notifyOrderCancelled(
   orderId: string,
-  opts: { byVendor?: boolean; refundQueued?: boolean } = {}
+  opts: { byVendor?: boolean } = {}
 ): Promise<void> {
   const id = shortOrderId(orderId);
-  const moneyEn = opts.refundQueued
-    ? " Your refund has been requested and is being processed."
-    : "";
-  const moneyHi = opts.refundQueued
-    ? " आपका रिफ़ंड अनुरोध दर्ज हो गया है और प्रोसेस हो रहा है।"
-    : "";
   return notifyCustomer(
     orderId,
     opts.byVendor
@@ -422,12 +430,12 @@ export function notifyOrderCancelled(
       : { en: "Order cancelled", hi: "ऑर्डर रद्द हुआ" },
     opts.byVendor
       ? {
-          en: `The restaurant couldn't take order #${id}.${moneyEn}`,
-          hi: `रेस्टोरेंट ऑर्डर #${id} नहीं ले सका।${moneyHi}`,
+          en: `The restaurant couldn't take order #${id}. Deligro will contact you.`,
+          hi: `रेस्टोरेंट ऑर्डर #${id} नहीं ले सका। Deligro आपसे संपर्क करेगा।`,
         }
       : {
-          en: `Order #${id} was cancelled.${moneyEn}`,
-          hi: `ऑर्डर #${id} रद्द कर दिया गया।${moneyHi}`,
+          en: `Order #${id} was cancelled.`,
+          hi: `ऑर्डर #${id} रद्द कर दिया गया।`,
         },
     { card: { tone: "red" } }
   );
@@ -445,31 +453,6 @@ export function notifyPaymentFailed(orderId: string): Promise<void> {
     { card: { tone: "amber" } }
   );
 }
-
-export function notifyRefundDecided(
-  orderId: string,
-  approved: boolean
-): Promise<void> {
-  const id = shortOrderId(orderId);
-  return notifyCustomer(
-    orderId,
-    approved
-      ? { en: "Refund approved 💸", hi: "रिफ़ंड मंज़ूर 💸" }
-      : { en: "Refund declined", hi: "रिफ़ंड अस्वीकार" },
-    approved
-      ? {
-          en: `Your refund for order #${id} was approved.`,
-          hi: `ऑर्डर #${id} का आपका रिफ़ंड मंज़ूर हो गया है।`,
-        }
-      : {
-          en: `We couldn't approve the refund for order #${id}. Contact support if this looks wrong.`,
-          hi: `हम ऑर्डर #${id} का रिफ़ंड मंज़ूर नहीं कर सके। अगर यह गलत लगे तो सपोर्ट से संपर्क करें।`,
-        },
-    { card: { tone: approved ? "green" : "red" } }
-  );
-}
-
-/* ---------- rider-facing ---------- */
 
 /**
  * The kitchen just accepted — go and be there when it comes off the pass.
@@ -709,25 +692,6 @@ function rupeesText(amount: number): string {
   return Number.isInteger(amount)
     ? formatINR(amount)
     : `₹${amount.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-}
-
-/**
- * An incentive target was reached (`rider_incentive_awards`, 0083). Sent by
- * `notifyNewIncentiveAwards` once per award. Riders are salaried and paid
- * outside the app, so the copy describes what was RECORDED on their ledger —
- * never a transfer the app made.
- */
-export function notifyRiderIncentiveEarned(
-  driverId: string,
-  award: { name: string; amount: number }
-): Promise<void> {
-  return notifyRider(
-    driverId,
-    "incentives",
-    { en: "Incentive earned" },
-    { en: `${award.name}: a ${rupeesText(award.amount)} incentive was recorded for you.` },
-    { url: "/earnings/incentives" }
-  );
 }
 
 /**
@@ -1017,8 +981,8 @@ export function notifyVendorStillWaiting(orderId: string, minutes: number): Prom
     orderId,
     { en: "Order still waiting ⏱️", hi: "ऑर्डर अभी इंतज़ार में ⏱️" },
     {
-      en: `Order #${id} has waited ${minutes} min. Accept or reject it now.`,
-      hi: `ऑर्डर #${id} ${minutes} मिनट से इंतज़ार में है। अभी स्वीकार या मना करें।`,
+      en: `Order #${id} has waited ${minutes} min. Open it now.`,
+      hi: `ऑर्डर #${id} ${minutes} मिनट से इंतज़ार में है। अभी खोलें।`,
     },
     { ...vendorRing(orderId), card: { tone: "red", tile: { v: String(minutes), u: "min", tone: "red" } } },
     "pending_orders"

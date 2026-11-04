@@ -134,6 +134,42 @@ void main() {
     verify(() => repo.update(_ids[0], {'available': false})).called(1);
   });
 
+  group('what Deligro did to a dish', () {
+    MenuItem item(Map<String, dynamic> extra) => MenuItem.fromJson({...itemJson('x', 'Paneer'), ...extra});
+
+    test('an older server says nothing, and nothing is shown', () {
+      expect(moderationNotice(MenuItem.fromJson(itemJson('x', 'Paneer'))), isNull);
+      expect(MenuItem.fromJson(itemJson('x', 'Paneer')).liveForCustomers, isTrue);
+    });
+
+    test('hidden: says so, with the reason, and customers cannot see it', () {
+      final i = item({'hidden': true, 'hiddenReason': 'Blurry photo'});
+      expect(i.liveForCustomers, isFalse);
+      expect(moderationNotice(i)!.short, 'Hidden by Deligro');
+      expect(moderationNotice(i)!.long, contains('Blurry photo'));
+      expect(moderationNotice(i)!.serious, isTrue);
+    });
+
+    test('a parked price: says the new price, and customers still pay the old one', () {
+      final i = item({'pendingPrice': 220});
+      expect(moderationNotice(i)!.short, contains('₹220'));
+      expect(moderationNotice(i)!.long, contains('₹180'));
+      expect(moderationNotice(i)!.serious, isFalse);
+      expect(i.liveForCustomers, isTrue);
+    });
+
+    test('pending and not approved', () {
+      expect(moderationNotice(item({'approvalStatus': 'pending'}))!.short, contains('approval'));
+      final no = item({'approvalStatus': 'rejected', 'approvalNote': 'Not a food item'});
+      expect(moderationNotice(no)!.long, contains('Not a food item'));
+      expect(no.liveForCustomers, isFalse);
+    });
+
+    test('a status that could not be read says nothing', () {
+      expect(moderationNotice(item({'approvalStatus': 'unknown'})), isNull);
+    });
+  });
+
   testPartner('read-only menu: no add button, no switches', (t) async {
     await open(t, const ProductsScreen(), json: menuJson(canEdit: false));
     expect(find.text('Add item'), findsNothing);

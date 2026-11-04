@@ -43,7 +43,7 @@ export interface VendorUnpaidOrder {
   sale: number;
   charges: number;
   earnings: number;
-  /** What this order adds to (or, for cash the shop kept, takes from) the next payout. */
+  /** What this order adds to the next payout (negative only when refunds exceed it). */
   contribution: number;
 }
 
@@ -51,7 +51,7 @@ export interface VendorUnpaidOrder {
 export interface PaymentsBreakdown {
   /** What customers paid, in full. */
   orderValue: number;
-  /** Of which online (Deligro holds it) and cash (collected at the door). */
+  /** Of which paid online, and paid in cash to the rider. Deligro receives both. */
   collectedOnline: number;
   collectedCash: number;
   /** The shop's food sales (foodGross). */

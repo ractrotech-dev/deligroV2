@@ -17,6 +17,7 @@ import {
 } from "recharts";
 import { Download, IndianRupee } from "lucide-react";
 import { SectionTitle } from "@/components/roles/role-ui";
+import { useFeature } from "@/components/features/features-provider";
 import { Button } from "@/components/ui/button";
 import {
   VendorChip,
@@ -221,7 +222,7 @@ function exportEarningsCsv(
           `settlement,commission_gst_pct,${settlement.commissionGstPct},`,
           `settlement,commission_gst,${-settlement.commissionGst},`,
           `settlement,other_charges,${-settlement.otherCharges},`,
-          `settlement,refunds_recovered,${-settlement.refundsRecovered},`,
+          `settlement,adjustments,${-settlement.refundsRecovered},`,
           `settlement,net_payable,${settlement.netPayable},`,
           `settlement,already_settled_orders,${settlement.settledCount},`,
         ]
@@ -256,6 +257,8 @@ export function VendorEarningsCharts({
   /** Null when the payout engine could not be read — the panel says so. */
   initialSettlement?: VendorSettlementEstimate | null;
 }) {
+  // Charts and exports are "Reports"; the figures above them are "Earnings".
+  const canSeeReports = useFeature("vendor.reports");
   const [stats, setStats] = useState(initialStats);
   const [settlement, setSettlement] = useState(initialSettlement);
   const [range, setRange] = useState<EarningsRange>(initialStats.range);
@@ -373,6 +376,7 @@ export function VendorEarningsCharts({
             {r.label}
           </VendorChip>
         ))}
+        {canSeeReports ? (
         <Button
           type="button"
           variant="outline"
@@ -382,6 +386,7 @@ export function VendorEarningsCharts({
         >
           <Download className="size-4" /> Export CSV
         </Button>
+        ) : null}
       </div>
 
       {pending ? (
@@ -411,6 +416,8 @@ export function VendorEarningsCharts({
         />
       </div>
 
+      {canSeeReports ? (
+      <>
       <div className="grid gap-4 @3xl:grid-cols-2">
         <ChartCard
           title="Revenue trend"
@@ -628,6 +635,8 @@ export function VendorEarningsCharts({
           </div>
         )}
       </ChartCard>
+      </>
+      ) : null}
 
       <div className="grid gap-4 @3xl:grid-cols-2">
         <VendorPanel
@@ -709,7 +718,7 @@ export function VendorEarningsCharts({
         </VendorPanel>
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2 @3xl:grid-cols-4">
+      <div className="grid gap-4 @3xl:grid-cols-2">
         <VendorPanel title="Prior period">
           <p className="text-data text-xl font-bold">
             {formatINR(stats.prevPeriodRevenue)}
@@ -725,33 +734,6 @@ export function VendorEarningsCharts({
           <p className="mt-1 text-xs text-muted">
             {stats.deliveredOrders} completed
           </p>
-        </VendorPanel>
-        <VendorPanel title="Refunds">
-          <p className="text-data text-xl font-bold text-muted">
-            {formatINR(stats.refundsPending + stats.refundsApproved)}
-          </p>
-          <p className="mt-1 text-xs text-muted">
-            Managed by Deligro admin · not shown to partners yet
-          </p>
-        </VendorPanel>
-        <VendorPanel title="Your payout (est.)">
-          {settlement ? (
-            <>
-              <p className="text-data text-xl font-bold text-green">
-                {formatINR(settlement.netPayable)}
-              </p>
-              <p className="mt-1 text-xs text-muted">
-                {settlement.orderCount} unsettled
-                {settlement.settledCount > 0
-                  ? ` · ${settlement.settledCount} already paid`
-                  : ""}
-              </p>
-            </>
-          ) : (
-            <p className="text-sm leading-relaxed text-muted">
-              Payout terms unavailable right now — see the note below.
-            </p>
-          )}
         </VendorPanel>
       </div>
 
@@ -817,7 +799,7 @@ export function VendorEarningsCharts({
               ) : null}
               {settlement.refundsRecovered > 0 ? (
                 <SettlementRow
-                  label="Refunds recovered"
+                  label="Adjustments"
                   value={-settlement.refundsRecovered}
                   muted
                 />
@@ -831,11 +813,12 @@ export function VendorEarningsCharts({
               </div>
             </dl>
             <p className="text-xs leading-relaxed text-muted">
-              An estimate because orders can still be refunded and the period
-              isn&apos;t closed — but it is computed by the same code that builds
-              your statement, so it will not drift from what you are paid.
-              Negative figures are cash-on-delivery orders where the shop already
-              holds the money and Deligro recovers its deductions.
+              An estimate because the period isn&apos;t closed — but it is
+              computed by the same code that builds your statement, so it will not
+              drift from what you are paid. Cash orders are paid to you the same as
+              online ones, because the rider collects the cash for Deligro. A
+              negative figure means earlier adjustments came to more than your
+              orders.
             </p>
           </div>
         ) : (

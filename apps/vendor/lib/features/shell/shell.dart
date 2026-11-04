@@ -50,8 +50,14 @@ class PartnerShell extends ConsumerStatefulWidget {
   ConsumerState<PartnerShell> createState() => _PartnerShellState();
 }
 
-class _PartnerShellState extends ConsumerState<PartnerShell> {
+class _PartnerShellState extends ConsumerState<PartnerShell> with WidgetsBindingObserver {
   final _incoming = IncomingOrderPresenter(rootNavigatorKey);
+
+  /// Back from the background: Deligro may have changed a switch meanwhile.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) ref.read(vendorMeProvider.notifier).refresh(force: true);
+  }
 
   /// The Accept/Reject popup for the order that has waited longest; once it
   /// closes, the next one straight away rather than at the next poll.
@@ -65,6 +71,7 @@ class _PartnerShellState extends ConsumerState<PartnerShell> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       PushService(ref.read(supabaseProvider).auth, ref.read(accountRepoProvider), ref.read(routerProvider)).start();
       final v = await ref.read(accountRepoProvider).appVersion();
@@ -73,6 +80,12 @@ class _PartnerShellState extends ConsumerState<PartnerShell> {
         await showUpdatePrompt(ctx, v);
       }
     });
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
   }
 
   @override
@@ -92,7 +105,7 @@ class _PartnerShellState extends ConsumerState<PartnerShell> {
             title: (_) => 'New order 🔔',
             body: (o) =>
                 'Order ${o.code} · ${o.itemCount} items · ${rupees(o.total)}'
-                '${o.isCod ? ' · Cash on delivery' : ''}. Tap to accept or reject.',
+                '${o.isCod && !o.paidInFull ? ' · Cash on delivery' : ''}. Tap to open.',
           );
       // ...and the oldest of them is offered on screen, on whichever tab.
       _offerIncoming(orders);
@@ -109,7 +122,10 @@ class _PartnerShellState extends ConsumerState<PartnerShell> {
       body: shell,
       bottomNavigationBar: NavigationBar(
         selectedIndex: selected < 0 ? 0 : selected,
-        onDestinationSelected: (i) => shell.goBranch(shown[i], initialLocation: shown[i] == shell.currentIndex),
+        onDestinationSelected: (i) {
+          shell.goBranch(shown[i], initialLocation: shown[i] == shell.currentIndex);
+          ref.read(vendorMeProvider.notifier).refresh();
+        },
         destinations: [
           for (final i in shown)
             if (i == partnerTabs.length - 1)

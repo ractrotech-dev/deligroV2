@@ -1,9 +1,16 @@
 import { requireRole } from "@/lib/auth";
+import { cashDue } from "@/lib/wallet/money";
 import Link from "next/link";
 import { AutoRefresh } from "@/components/shared/auto-refresh";
 import { formatINR } from "@/lib/utils/format";
 import { ADMIN_ORDERS, type AdminOrderRow } from "@/lib/roles-data";
-import { listAllOrders } from "@/lib/data-access/admin-orders";
+import {
+  listOrdersPage,
+  type AdminOrderFilters,
+  type AdminOrdersPage,
+} from "@/lib/data-access/admin-orders";
+import { UNASSIGNED_AFTER_MIN } from "@/lib/dispatch/thresholds";
+import { pageCountOf, toPage } from "@/lib/utils/paging";
 import {
   listPendingRestaurants,
   type PendingRestaurant,
@@ -40,24 +47,13 @@ import { SelectFilter } from "@/components/admin/select-filter";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 
 /**
- * Admin → Orders. Every order across every restaurant, newest first, with the
- * in-flight ones pulled forward and the late ones pulled forward of those.
+ * Admin → Orders. WEB. Every order across every restaurant: what is still moving
+ * first, late ones first, then what has finished, newest first.
  *
- * ## The window, and why the page keeps saying so
- *
- * `listAllOrders` takes a row limit, not a date range, so this screen is always
- * "the last N orders" rather than "all orders since". Every filter below is
- * applied to that window. The footer states which, because "3 orders" meaning
- * "3 in the last 200" and meaning "3, ever" are very different answers to the
- * same question.
- *
- * That is also why there is no date filter and no rider filter. A date range
- * would need a query this data layer does not expose, and would silently mean
- * "orders from that range *that happen to be in the last 200*", which is worse
- * than not offering it. `AdminOrderRow` carries no rider at all — only the
- * dispatch board's row type does — so a rider dropdown would be a control with
- * nothing behind it. Both are gaps in the data layer, not in the design, and
- * the honest thing is to leave them out until they are real.
+ * Search and every filter run in the database (`listOrdersPage`), so they reach
+ * every order ever placed, and the stage counts are true. The figures in flight,
+ * past promise time and cancelled are counts across the whole filter; value and
+ * earnings are added up from the rows on screen, and say so.
  *
  * ## Why rows do not expand
  *
@@ -65,31 +61,28 @@ import { isSupabaseConfigured } from "@/lib/supabase/config";
  * ordered, how it was paid for, whether the payment landed, and what the
  * platform earns from it. A disclosure that shows nothing new is a click that
  * costs an operator a row of vertical space. The order code opens the full
- * record, which is where the timeline, the address and the rider live.
+ * record, which is where the timeline and the address live.
  *
  * Search and every filter live in the URL, so a filtered view is reloadable and
- * shareable.
+ * shareable. The 4-second refresh runs only on the first page of an unsearched
+ * list: that is the live view, and it keeps a search or old pages from re-reading
+ * the table for nothing.
  */
-
-/** The window we pull. Widened when searching so a query can reach further back. */
-const WINDOW = 50;
-const SEARCH_WINDOW = 250;
 
 /** Matches the AutoRefresh interval below; stated in the UI, not implied. */
 const REFRESH_MS = 4000;
 
-const IN_FLIGHT = new Set<AdminOrderRow["status"]>([
-  "PLACED",
-  "KITCHEN",
-  "READY",
-  "ON_THE_WAY",
-]);
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+const IN_FLIGHT: AdminOrderRow["status"][] = ["PLACED", "KITCHEN", "READY", "ON_THE_WAY"];
 
 type Search = {
   q?: string;
   status?: string;
   vendor?: string;
   payment?: string;
+  rider?: string;
+  page?: string;
 };
 
 /** How many dish lines to print before collapsing the rest into a count. */
@@ -144,6 +137,13 @@ function ItemsCell({
 }
 
 /** The line under the payment method: what is still owed, if anything. */
+/** How the order is being paid, in one word or two. */
+function paymentWord(o: { paymentMethod?: string; total: number; pointsUsed?: number }): string {
+  if (o.paymentMethod === "online") return "Online";
+  if (!o.pointsUsed) return "Cash";
+  return cashDue(o.total, o.pointsUsed) > 0 ? "Cash and points" : "Points";
+}
+
 function PaymentNote({ order: o }: Readonly<{ order: AdminOrderRow }>) {
   if (
     o.paymentMethod === "cod" &&
@@ -183,77 +183,61 @@ export default async function AdminOrdersPage({
   await requireRole("admin");
 
   const sp = await searchParams;
-  const q = (sp.q ?? "").trim();
-  const status = ORDER_STATUS_ORDER.includes(sp.status as AdminOrderRow["status"])
-    ? (sp.status as AdminOrderRow["status"])
-    : null;
-  const vendor = (sp.vendor ?? "").trim();
-  const payment = sp.payment === "cod" || sp.payment === "online" ? sp.payment : "";
+  const filters: AdminOrderFilters = {
+    q: (sp.q ?? "").trim(),
+    status: ORDER_STATUS_ORDER.includes(sp.status as AdminOrderRow["status"])
+      ? (sp.status as AdminOrderRow["status"])
+      : null,
+    vendorId: UUID.test(sp.vendor ?? "") ? (sp.vendor as string).toLowerCase() : "",
+    payment: sp.payment === "cod" || sp.payment === "online" || sp.payment === "failed" ? sp.payment : "",
+    noRider: sp.rider === "none",
+    page: toPage(sp.page),
+  };
 
   if (!isSupabaseConfigured) {
-    return renderOrders(ADMIN_ORDERS, [], { q, status, vendor, payment }, WINDOW);
+    return renderOrders(demoPage(filters), [], filters);
   }
 
-  const limit = q ? SEARCH_WINDOW : WINDOW;
-  const [live, pending] = await Promise.all([
-    listAllOrders(limit),
+  const [view, pending] = await Promise.all([
+    listOrdersPage(filters),
     listPendingRestaurants(),
   ]);
-  return renderOrders(live, pending, { q, status, vendor, payment }, limit);
+  return renderOrders(view, pending, filters);
 }
 
-interface Filters {
-  q: string;
-  status: AdminOrderRow["status"] | null;
-  vendor: string;
-  payment: string;
+/** The seed rows, with no database behind them to filter or page. */
+function demoPage(f: AdminOrderFilters): AdminOrdersPage {
+  const rows = ADMIN_ORDERS.filter((o) => !f.status || o.status === f.status);
+  const counts = Object.fromEntries(
+    ORDER_STATUS_ORDER.map((s) => [s, ADMIN_ORDERS.filter((o) => o.status === s).length])
+  ) as AdminOrdersPage["counts"];
+  return {
+    rows,
+    page: 1,
+    pageSize: rows.length || 1,
+    total: rows.length,
+    counts,
+    late: 0,
+    worstLate: 0,
+    vendors: [],
+    searchCapped: false,
+  };
 }
 
 function renderOrders(
-  all: AdminOrderRow[],
+  view: AdminOrdersPage,
   pending: PendingRestaurant[],
-  f: Filters,
-  windowSize: number
+  f: AdminOrderFilters
 ) {
-  const needle = f.q.toLowerCase();
-  const orders = all.filter((o) => {
-    if (f.status && o.status !== f.status) return false;
-    if (f.vendor && o.restaurant !== f.vendor) return false;
-    if (f.payment && o.paymentMethod !== f.payment) return false;
-    if (!needle) return true;
-    return (
-      o.code.toLowerCase().includes(needle) ||
-      o.customer.toLowerCase().includes(needle) ||
-      o.restaurant.toLowerCase().includes(needle) ||
-      // Dish names too — "biryani" is a thing an operator on a call actually
-      // types, and until this was added it matched nothing.
-      (o.items ?? []).some((i) => i.name.toLowerCase().includes(needle))
-    );
-  });
-
-  /* ---------- controls ----------
-     The status tabs count against everything *except* the status filter, so
-     switching between them does not make the other counts jump around. The
-     vendor and payment filters do narrow them, because those are still in
-     force whichever tab you are on. */
-  const scoped = all.filter((o) => {
-    if (f.vendor && o.restaurant !== f.vendor) return false;
-    if (f.payment && o.paymentMethod !== f.payment) return false;
-    if (!needle) return true;
-    return (
-      o.code.toLowerCase().includes(needle) ||
-      o.customer.toLowerCase().includes(needle) ||
-      o.restaurant.toLowerCase().includes(needle) ||
-      (o.items ?? []).some((i) => i.name.toLowerCase().includes(needle))
-    );
-  });
+  const orders = view.rows;
 
   const href = (next: Partial<Search>) => {
     const merged: Search = {
       q: f.q || undefined,
       status: f.status ?? undefined,
-      vendor: f.vendor || undefined,
+      vendor: f.vendorId || undefined,
       payment: f.payment || undefined,
+      rider: f.noRider ? "none" : undefined,
       ...next,
     };
     const usp = new URLSearchParams();
@@ -262,28 +246,25 @@ function renderOrders(
     return query ? `/admin/orders?${query}` : "/admin/orders";
   };
 
+  /* The stage tabs count against everything *except* the stage filter, so
+     switching between them does not make the other counts jump around. */
+  const allCount = ORDER_STATUS_ORDER.reduce((sum, s) => sum + view.counts[s], 0);
   const tabs = [
-    { href: href({ status: undefined }), label: "All", count: scoped.length },
+    { href: href({ status: undefined, page: undefined }), label: "All", count: allCount },
     ...ORDER_STATUS_ORDER.map((s) => ({
-      href: href({ status: s }),
+      href: href({ status: s, page: undefined }),
       label: ORDER_STATUS[s].short,
-      count: scoped.filter((o) => o.status === s).length,
+      count: view.counts[s],
     })).filter((t) => t.count > 0),
   ];
 
-  // Every shop with an order in the window, so the dropdown can only ever
-  // offer a filter that has something behind it.
-  const vendors = [...new Set(all.map((o) => o.restaurant))].sort((a, b) => a.localeCompare(b));
-
-  /* ---------- summary ----------
-     Describes the *filtered* rows, not the whole window. The old version
-     summarised everything loaded regardless of the filters above it, so
-     narrowing to one shop left five figures about a different set of orders
-     sitting under the table. */
-  const inFlight = orders.filter((o) => IN_FLIGHT.has(o.status)).length;
-  const late = orders.filter((o) => (o.lateByMinutes ?? 0) > 0).length;
-  const worst = orders.reduce((m, o) => Math.max(m, o.lateByMinutes ?? 0), 0);
-  const cancelled = orders.filter((o) => o.status === "CANCELLED").length;
+  const inFlight = IN_FLIGHT.reduce(
+    (sum, s) => sum + (!f.status || f.status === s ? view.counts[s] : 0),
+    0
+  );
+  const late = view.late;
+  const worst = view.worstLate;
+  const cancelled = !f.status || f.status === "CANCELLED" ? view.counts.CANCELLED : 0;
   const value = orders.reduce((sum, o) => sum + o.total, 0);
   const earned = orders.reduce((sum, o) => sum + (o.profit ?? 0), 0);
 
@@ -291,15 +272,11 @@ function renderOrders(
     {
       key: "code",
       header: "Order",
-      role: "title",
       width: "w-[140px]",
       cell: (o) => (
         <div className="min-w-0">
           <p className="text-data text-[11.5px] font-semibold text-ink">
             {o.code}
-          </p>
-          <p className="truncate text-[13px] text-ink @3xl:hidden">
-            {o.customer}
           </p>
         </div>
       ),
@@ -326,7 +303,6 @@ function renderOrders(
     {
       key: "customer",
       header: "Customer",
-      role: "wideOnly",
       cell: (o) => (
         <p className="truncate text-[12.5px] text-ink">{o.customer}</p>
       ),
@@ -342,7 +318,7 @@ function renderOrders(
         o.paymentMethod ? (
           <div className="min-w-0">
             <p className="truncate text-[12px] text-ink">
-              {o.paymentMethod === "online" ? "Online" : "Cash"}
+              {paymentWord(o)}
             </p>
             <PaymentNote order={o} />
           </div>
@@ -351,12 +327,24 @@ function renderOrders(
         ),
     },
     {
+      key: "rider",
+      header: "Rider",
+      width: "w-[120px]",
+      cell: (o) =>
+        o.rider ? (
+          <p className="truncate text-[12px] text-ink" title={o.rider}>{o.rider}</p>
+        ) : IN_FLIGHT.includes(o.status) ? (
+          <p className="text-[11.5px] font-semibold text-[color:var(--c-ink-amber)]">No rider</p>
+        ) : (
+          <span className="text-[11.5px] text-[color:var(--c-faint)]">—</span>
+        ),
+    },
+    {
       key: "status",
       header: "Stage",
-      role: "trailing",
       width: "w-[124px]",
       cell: (o) => (
-        <span className="inline-flex flex-col items-end gap-0.5 @3xl:items-start">
+        <span className="inline-flex flex-col gap-0.5 items-start">
           <span className="inline-flex items-center gap-1.5">
             <StatusDot tone={STATUS_TONE[o.status]} />
             <span className="text-[12px] text-ink">
@@ -398,7 +386,6 @@ function renderOrders(
       // cancelled order, and undefined on the demo seed rows.
       key: "profit",
       header: "You earn",
-      role: "wideOnly",
       align: "right",
       width: "w-[92px]",
       cell: (o) =>
@@ -415,19 +402,16 @@ function renderOrders(
     {
       key: "actions",
       header: "",
-      role: "actions",
       align: "right",
       width: "w-[72px]",
-      // Open only. An admin-initiated refund has no server action behind it —
-      // refunds are raised against an order and then decided on the Refunds
-      // screen — and a button that cannot do the thing it names is worse than
-      // no button.
+      // Open only: there is nothing to do from the list that the order's own
+      // page does not do better.
       cell: (o) =>
         o.id ? (
           <Link
             href={`/admin/orders/${o.id}`}
             prefetch={false}
-            className="c-btn-affirm press"
+            className="c-btn-affirm"
           >
             Open
           </Link>
@@ -435,16 +419,17 @@ function renderOrders(
     },
   ];
 
-  const filtered = Boolean(f.q || f.status || f.vendor || f.payment);
-  const orderNoun = all.length === 1 ? "order" : "orders";
+  const filtered = Boolean(f.q || f.status || f.vendorId || f.payment || f.noRider);
+  const totalPages = pageCountOf(view.total, view.pageSize);
+  const live = isSupabaseConfigured && view.page === 1 && !f.q;
 
   return (
     <>
-      {isSupabaseConfigured ? <AutoRefresh interval={REFRESH_MS} /> : null}
+      {live ? <AutoRefresh interval={REFRESH_MS} /> : null}
 
       <PageHeader
         title="Orders"
-        description={`Live order operations — the last ${windowSize} orders, plus everything still moving. Refreshing every ${Math.round(REFRESH_MS / 1000)}s.`}
+        description={live ? `What is still moving comes first. Refreshing every ${Math.round(REFRESH_MS / 1000)}s.` : "What is still moving comes first."}
         status={<LiveBadge label={inFlight > 0 ? `${inFlight} in flight` : "All settled"} />}
       />
 
@@ -460,10 +445,10 @@ function renderOrders(
           <SelectFilter
             name="vendor"
             label="Filter by vendor"
-            value={f.vendor}
+            value={f.vendorId}
             options={[
               { value: "", label: "All vendors" },
-              ...vendors.map((v) => ({ value: v, label: v })),
+              ...view.vendors.map((v) => ({ value: v.id, label: v.name })),
             ]}
           />
           <SelectFilter
@@ -474,6 +459,16 @@ function renderOrders(
               { value: "", label: "Any payment" },
               { value: "cod", label: "Cash on delivery" },
               { value: "online", label: "Paid online" },
+              { value: "failed", label: "Payment failed" },
+            ]}
+          />
+          <SelectFilter
+            name="rider"
+            label="Filter by rider"
+            value={f.noRider ? "none" : ""}
+            options={[
+              { value: "", label: "Any rider" },
+              { value: "none", label: `No rider after ${UNASSIGNED_AFTER_MIN} minutes` },
             ]}
           />
           <FilterSubmit />
@@ -484,9 +479,15 @@ function renderOrders(
       {tabs.length > 2 ? (
         <Tabs
           label="Order stage"
-          active={href({ status: f.status ?? undefined })}
+          active={href({ status: f.status ?? undefined, page: undefined })}
           items={tabs}
         />
+      ) : null}
+
+      {view.searchCapped ? (
+        <p className="text-[12.5px] font-medium text-[color:var(--c-ink-amber)]">
+          That search matches a lot, so only some of it is listed. Add more words to narrow it.
+        </p>
       ) : null}
 
       <FigureRow>
@@ -504,12 +505,12 @@ function renderOrders(
         <Figure
           label="Value"
           value={formatINR(value)}
-          note={`across ${orders.length} order${orders.length === 1 ? "" : "s"}`}
+          note={`on this page, ${orders.length} order${orders.length === 1 ? "" : "s"}`}
         />
         <Figure
           label="You earn"
           value={formatINR(earned)}
-          note="commission + GST + charges"
+          note="on this page"
         />
       </FigureRow>
 
@@ -524,24 +525,19 @@ function renderOrders(
         rowTone={(o) => ((o.lateByMinutes ?? 0) > 0 ? "alert" : null)}
         // Wide enough that the dish names are not the first thing squeezed,
         // which would defeat the point of showing them.
-        minWidth={1180}
+        minWidth={1300}
         footer={
           <TableFooter
-            page={1}
-            totalPages={1}
-            hrefFor={() => "/admin/orders"}
-            summary={
-              filtered
-                ? `${orders.length} of ${all.length} in this window`
-                : `${all.length} ${orderNoun} in this window`
-            }
+            page={view.page}
+            totalPages={totalPages}
+            hrefFor={(p) => href({ page: p > 1 ? String(p) : undefined })}
+            summary={`${view.total} order${view.total === 1 ? "" : "s"}`}
           />
         }
         empty={
           filtered ? (
             <Empty action={{ href: "/admin/orders", label: "Clear filters" }}>
-              Nothing in the last {windowSize} orders matches. Older orders are
-              not in this window.
+              No orders match.
             </Empty>
           ) : (
             <Empty>

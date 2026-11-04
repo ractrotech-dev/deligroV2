@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import 'core/app_links.dart';
 import 'core/feature_gates.dart';
 import 'features/auth/boot_screen.dart';
 import 'features/auth/login_screen.dart';
@@ -18,6 +19,7 @@ import 'features/support/support_screens.dart';
 import 'models/growth.dart';
 import 'models/vendor_me.dart';
 import 'features/more/more_screen.dart';
+import 'features/more/not_found_screen.dart';
 import 'features/more/settings_screen.dart';
 import 'features/orders/order_detail_screen.dart';
 import 'features/orders/orders_screen.dart';
@@ -52,6 +54,9 @@ String? gateRedirect({required bool signedIn, required AsyncValue<Object?> me, r
   }
   if (me.value == null) return path == '/boot' ? null : '/boot';
   if (_gatePaths.contains(path)) return '/';
+  // A link the server stored before these pages had their names.
+  final moved = currentAppPath(path);
+  if (moved != path) return moved;
   // A section switched off for this shop (Admin → Feature access) is not
   // reachable, whatever link led there.
   final v = me.value;
@@ -74,6 +79,8 @@ final routerProvider = Provider<GoRouter>((ref) {
     navigatorKey: rootNavigatorKey,
     initialLocation: '/boot',
     refreshListenable: refresh,
+    // An old notification, a link from a newer server: never a red error.
+    errorBuilder: (_, _) => const NotFoundScreen(),
     redirect: (context, state) =>
         gateRedirect(signedIn: ref.read(signedInProvider), me: ref.read(vendorMeProvider), path: state.matchedLocation),
     routes: [

@@ -5,15 +5,6 @@ import { cn } from "@/lib/utils/cn";
 /**
  * The header every console screen opens with, and the toolbar under it.
  *
- * ## One component, two shells
- *
- * Admin and vendor pages render in both the console and a ~370px phone frame,
- * so this cannot be a console-only component: a second `ConsoleHeader` would
- * mean every screen rendering two headers and hiding one. The switch is
- * `.admin-hero`'s container query in globals.css — inside the phone frame it is
- * the gradient card the portal has always used, and at console width it sheds
- * the card and becomes a plain title row.
- *
  * ## Why the title is small
  *
  * 20px, not 25px, and not a display size. An operations console is read all
@@ -80,10 +71,6 @@ export function PageHeader({
               {status}
             </div>
             {description ? (
-              // Capped to a reading measure. The console runs to 1600px; an
-              // uncapped one-line description becomes a single 1500px line of
-              // 12px grey, which is the "mobile card stretched across a
-              // desktop" look in miniature. A no-op in the phone frame.
               <p className="mt-1 max-w-[68ch] text-[13px] leading-snug text-muted @3xl:text-[12.5px]">
                 {description}
               </p>
@@ -103,11 +90,6 @@ export function PageHeader({
 
 /**
  * The controls row: search, filters, tabs, a range switch.
- *
- * Sticks under the top bar in the console so a two-hundred-row list keeps the
- * controls that filter it, and goes static inside the phone frame, where there
- * is no console header to stick under and a blurred bar in a 370px column
- * costs more than it gives. Both behaviours are `.c-toolbar` in globals.css.
  */
 export function Toolbar({
   children,

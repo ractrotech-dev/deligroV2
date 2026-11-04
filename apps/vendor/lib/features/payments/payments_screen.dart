@@ -67,13 +67,13 @@ class _PaymentsScreenState extends ConsumerState<PaymentsScreen> {
               Text(
                 owed
                     ? 'From ${p.unpaidOrders} delivered ${p.unpaidOrders == 1 ? 'order' : 'orders'} not yet paid out. Deligro settles $cycle.'
-                    : 'Cash orders: you collected the money, so Deligro\'s charges are deducted from your next payout.',
+                    : 'Earlier adjustments came to more than your unpaid orders. This comes off your next payout.',
                 style: TextStyle(color: c.muted, fontSize: 13),
               ),
               if (p.outstandingCorrections > 0) ...[
                 const SizedBox(height: 6),
                 Text(
-                  'Includes ${rupees(p.outstandingCorrections)} being recovered for refunded orders.',
+                  'Includes ${rupees(p.outstandingCorrections)} in earlier adjustments.',
                   style: TextStyle(color: c.deal, fontSize: 12.5, fontWeight: FontWeight.w600),
                 ),
               ],
@@ -233,15 +233,15 @@ class _Breakdown extends StatelessWidget {
       child: Column(
         children: [
           row('Total order value', b.orderValue, note: 'What customers paid, incl. delivery and taxes'),
-          row('Collected online', b.collectedOnline, note: 'Held by Deligro until payout'),
-          row('Collected in cash', b.collectedCash, note: 'Collected at the door'),
+          row('Paid online', b.collectedOnline, note: 'Held by Deligro until payout'),
+          row('Paid in cash or wallet points', b.collectedCash, note: 'Deligro receives it. Your payout is the same either way.'),
           const Divider(height: 18),
           row('Food sales', b.foodSales + b.vendorDiscounts),
           row('Your discounts', b.vendorDiscounts, minus: true),
           row('Deligro commission ($pct%)', b.commission, minus: true),
           row('GST on commission', b.commissionGst, minus: true),
           if (b.otherCharges > 0) row('Other charges', b.otherCharges, minus: true),
-          if (b.refunds > 0) row('Refunds recovered', b.refunds, minus: true),
+          if (b.refunds > 0) row('Adjustments', b.refunds, minus: true),
           const Divider(height: 18),
           row('Net earnings', b.netEarnings, bold: true),
           row('Pending settlement', b.pendingSettlement, note: 'Earned, not yet paid out'),

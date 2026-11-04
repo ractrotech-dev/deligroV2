@@ -51,9 +51,18 @@ void main() {
     await tester.tap(find.byKey(const Key('reason-submit')));
     await settle(tester);
     final e = repo.edits.single.$2.toJson();
-    expect(e['expectedUpdatedAt'], '2026-10-20T00:00:00.000Z');
+    // Exactly the text the offer came with, not a re-printed date.
+    expect(e['expectedUpdatedAt'], '2026-10-20T00:00:00Z');
     expect(e['changes'], {'maxRedemptions': 600});
     expect(e['reason'], 'More demand than planned');
+  });
+
+  test('the edit token goes back exactly as it came, microseconds and all', () {
+    const token = '2026-11-03T10:11:12.123456Z';
+    final o = OfferDetail.fromJson(const {'code': 'SPICE10', 'kind': 'flat', 'value': 10, 'state': 'active', 'fundedBy': 'vendor', 'updatedAt': token});
+    expect(o.editToken, token);
+    final e = OfferEdit(changes: const {'value': 11}, expectedUpdatedAt: o.editToken, reason: 'Budget');
+    expect(e.toJson()['expectedUpdatedAt'], token);
   });
 
   testWidgets('activating an expired offer says to set a new expiry first', (tester) async {

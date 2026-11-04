@@ -248,7 +248,7 @@ class _Results extends StatelessWidget {
       if (t.earnings != null) ('Earnings', rupees(t.earnings!)),
       if (t.charges != null) ('Deligro charges', rupees(t.charges!)),
       ('Discounts given', rupees(t.vendorDiscounts)),
-      ('Refunds', rupees(t.refunds)),
+      ('Adjustments', rupees(t.refunds)),
       ('Completed / cancelled', '${t.completed} / ${t.cancelled}'),
       if (t.settled != null) ('Settled', rupees(t.settled!)),
       if (t.unsettled != null) ('Not yet settled', rupees(t.unsettled!)),

@@ -60,7 +60,7 @@ export function TicketReplyForm({
           <Field label="Resolution (when resolving)">
             <input name="resolution" maxLength={1000} className={`${fieldCls} w-auto min-w-40`} placeholder="Needed for a note" />
           </Field>
-          <button type="submit" disabled={sending} className="c-btn c-btn-dark press">
+          <button type="submit" disabled={sending} className="c-btn c-btn-dark">
             {sending ? "Sending…" : internal ? "Save note" : "Send reply"}
           </button>
         </div>
@@ -68,7 +68,7 @@ export function TicketReplyForm({
 
       <div className="mt-4 flex flex-wrap gap-2 border-t border-line pt-3">
         {!assignedToYou ? (
-          <button type="button" disabled={moving} onClick={() => run(() => assignTicketAction(id))} className="c-btn c-btn-outline press">
+          <button type="button" disabled={moving} onClick={() => run(() => assignTicketAction(id))} className="c-btn c-btn-outline">
             Assign to me
           </button>
         ) : null}
@@ -86,7 +86,7 @@ export function TicketReplyForm({
               type="button"
               disabled={moving || resolution.trim().length < 3}
               onClick={() => run(() => setTicketStatusAction(id, "resolved", resolution))}
-              className="c-btn-affirm press"
+              className="c-btn-affirm"
             >
               Mark resolved
             </button>
@@ -94,10 +94,10 @@ export function TicketReplyForm({
         ) : null}
         {resolved ? (
           <>
-            <button type="button" disabled={moving} onClick={() => run(() => setTicketStatusAction(id, "open"))} className="c-btn c-btn-outline press">
+            <button type="button" disabled={moving} onClick={() => run(() => setTicketStatusAction(id, "open"))} className="c-btn c-btn-outline">
               Reopen
             </button>
-            <button type="button" disabled={moving} onClick={() => run(() => setTicketStatusAction(id, "closed"))} className="c-btn-quiet press">
+            <button type="button" disabled={moving} onClick={() => run(() => setTicketStatusAction(id, "closed"))} className="c-btn-quiet">
               Close
             </button>
           </>

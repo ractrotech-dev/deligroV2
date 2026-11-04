@@ -32,8 +32,8 @@ final cashRoute = GoRoute(
 /// and what is still in their hand; the deposit sheet; day-by-day
 /// reconciliation with a dispute button; the deposits and their status.
 ///
-/// Cash collected for Deligro is not the rider's earnings, and this screen
-/// says so; none of it is ever added to the Earnings tab.
+/// Cash collected for Deligro is not the rider's salary, and this screen
+/// says so; none of it is ever added to the Salary tab.
 class CashScreen extends ConsumerStatefulWidget {
   const CashScreen({super.key});
 
@@ -90,7 +90,7 @@ class _CashBody extends ConsumerWidget {
     if (sent == true) {
       refreshCash(ref);
       if (context.mounted) {
-        showSnack(context, 'Sent. A manager will confirm your deposit.');
+        showSnack(context, 'Sent. A manager or the owner will confirm your deposit.');
       }
     }
   }
@@ -122,7 +122,7 @@ class _CashBody extends ConsumerWidget {
         Padding(
           padding: const EdgeInsets.fromLTRB(2, 0, 2, 12),
           child: Text(
-            'Cash you collect belongs to Deligro. It is not part of your earnings.',
+            'Cash you collect belongs to Deligro. It is not part of your salary.',
             key: const Key('cash-not-earnings'),
             style: TextStyle(color: c.muted, fontSize: 14, height: 1.35),
           ),
@@ -168,7 +168,7 @@ class _CashBody extends ConsumerWidget {
             Expanded(
               child: _Tile(
                 key: const Key('tile-awaiting'),
-                label: 'Waiting for a manager',
+                label: 'Waiting to be confirmed',
                 value: money(s.submittedAwaiting),
                 caption: 'Sent, not yet confirmed',
               ),
@@ -184,7 +184,7 @@ class _CashBody extends ConsumerWidget {
                 icon: Icons.payments_outlined,
                 title: 'No cash collected yet',
                 body:
-                    'When a customer pays you in cash, it shows up here and you can deposit it with a manager.',
+                    'When a customer pays you in cash, it shows up here and you can deposit it with a manager or the owner.',
               ),
             ),
           )
@@ -311,7 +311,7 @@ class _PendingCard extends StatelessWidget {
           ),
           const SizedBox(height: 2),
           Text(
-            'Not yet confirmed by a manager',
+            'Not yet confirmed by a manager or the owner',
             style: TextStyle(color: c.muted, fontSize: 13, height: 1.3),
           ),
           for (final r in reasons)
@@ -341,7 +341,7 @@ class _PendingCard extends StatelessWidget {
             Padding(
               padding: const EdgeInsets.only(top: 8),
               child: Text(
-                '${money(s.submittedAwaiting)} of this is waiting for a manager.',
+                '${money(s.submittedAwaiting)} of this is waiting to be confirmed.',
                 key: const Key('cash-awaiting-note'),
                 style: TextStyle(color: c.muted, fontSize: 14, height: 1.3),
               ),
@@ -602,6 +602,12 @@ class _DepositCardState extends ConsumerState<_DepositCard> {
             ].join(' · '),
             style: muted,
           ),
+          if (d.decidedByName != null)
+            Text(
+              '${d.status == DepositStatus.disputed ? 'Disputed' : 'Confirmed'} by ${d.decidedByName}',
+              key: Key('deposit-decided-by-${d.id}'),
+              style: muted,
+            ),
           if (d.reference != null) Text('Reference ${d.reference}', style: muted),
           if (d.hasReceipt) Text('Receipt photo attached', style: muted),
           if (d.note != null) Text('Your note: ${d.note}', style: muted),
@@ -616,7 +622,7 @@ class _DepositCardState extends ConsumerState<_DepositCard> {
                 borderRadius: BorderRadius.circular(10),
               ),
               child: Text(
-                "Manager's note: ${d.decisionNote}",
+                'Note: ${d.decisionNote}',
                 style: TextStyle(
                   color: c.deal,
                   fontSize: 14,

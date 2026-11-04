@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Check, Loader2 } from "lucide-react";
+import { Loader2 } from "lucide-react";
 import { formatINR } from "@/lib/utils/format";
 import { setOrderPaidAction } from "@/app/admin/settlements/actions";
 
@@ -36,12 +36,12 @@ export function MarkOrderPaid({
   const [error, setError] = useState<string | null>(null);
 
   const mark = () => {
-    // Never paid by one person (0156): this files the order as its own payout
-    // and sends it for approval; whoever approves it records the reference.
+    // This files the order as its own payment and opens it; whoever approves it
+    // records the reference.
     if (
       !window.confirm(
         `Pay ${formatINR(Math.abs(amount))} for order ${code} on its own?\n\n` +
-          `It comes out of this settlement and is sent for approval as its own payment.`
+          `It becomes its own payment, and you finish it on the next page.`
       )
     ) {
       return;
@@ -54,7 +54,8 @@ export function MarkOrderPaid({
         setError(result.error);
         return;
       }
-      router.refresh();
+      if (result.id) router.push(`/admin/settlements/${result.id}`);
+      else router.refresh();
     });
   };
 
@@ -64,17 +65,13 @@ export function MarkOrderPaid({
         type="button"
         onClick={mark}
         disabled={pending}
-        className="press inline-flex items-center gap-1 rounded-full border border-line bg-surface px-2.5 py-1 text-[11.5px] font-semibold text-muted hover:border-green/40 hover:text-green disabled:opacity-50"
+        className="c-btn-affirm whitespace-nowrap disabled:opacity-50"
       >
-        {pending ? (
-          <Loader2 className="size-3 animate-spin" />
-        ) : (
-          <Check className="size-3" />
-        )}
-        Mark paid
+        {pending ? <Loader2 className="inline size-3 animate-spin" /> : null}{" "}
+        Pay this order
       </button>
       {error ? (
-        <span className="max-w-[180px] text-right text-[10.5px] leading-snug text-deal">
+        <span className="max-w-[220px] text-right text-[11.5px] font-medium leading-snug text-deal">
           {error}
         </span>
       ) : null}

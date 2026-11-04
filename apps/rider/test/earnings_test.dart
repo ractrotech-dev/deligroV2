@@ -29,14 +29,7 @@ const _today = '2026-10-22';
 
 EarningsSummary _summary({double pending = 650, LastPayout? last}) =>
     EarningsSummary(
-      today: 185,
-      week: 940.5,
-      month: 3860,
-      total: 12450,
-      perDeliveryAvg: 41.5,
-      deliveriesCounted: 300,
-      incentives: 450,
-      bonuses: 100,
+      olderPay: 12550,
       adjustments: -30,
       deductions: 50,
       salary: 800,
@@ -117,7 +110,6 @@ class _Fake implements EarningsRepository {
   String? nextCursor;
   List<EarningRecord> secondPage = [];
   List<Payout> payoutItems = [];
-  List<IncentiveProgress> incentiveItems = [];
   Statement? statementValue;
   final recordCalls = <({String from, String to, String? cursor})>[];
   final statementCalls = <({String from, String to})>[];
@@ -143,9 +135,6 @@ class _Fake implements EarningsRepository {
 
   @override
   Future<List<Payout>> payouts() async => payoutItems;
-
-  @override
-  Future<List<IncentiveProgress>> incentives() async => incentiveItems;
 
   @override
   Future<Statement> statement(String from, String to) async {
@@ -289,14 +278,7 @@ void main() {
   group('models', () {
     test('the summary reads numbers and numeric strings, and a missing last payout', () {
       final s = EarningsSummary.fromJson({
-        'today': 185,
-        'week': '940.50',
-        'month': 3860,
-        'total': 12450,
-        'perDeliveryAvg': null,
-        'deliveriesCounted': 0,
-        'incentives': 0,
-        'bonuses': 0,
+        'olderPay': '940.50',
         'adjustments': 0,
         'deductions': 0,
         'salary': 0,
@@ -304,8 +286,7 @@ void main() {
         'pending': -120,
         'lastPayout': null,
       });
-      expect(s.week, 940.5);
-      expect(s.perDeliveryAvg, isNull);
+      expect(s.olderPay, 940.5);
       expect(s.pending, -120);
       expect(s.lastPayout, isNull);
     });
@@ -351,16 +332,8 @@ void main() {
   group('Earnings tab', () {
     testWidgets('every figure renders with its rupees', (tester) async {
       await _pump(tester, repo: _Fake(), height: 2400);
-      expect(_in('earnings-hero', find.text('₹185')), findsOneWidget);
-      // Salaried: no per-delivery figure, whatever the server sends.
-      expect(
-        _in('tile-average', find.text('Salaried — not paid per delivery')),
-        findsOneWidget,
-      );
-      expect(_in('tile-average', find.textContaining('₹')), findsNothing);
-      expect(find.textContaining('41.5'), findsNothing);
-      expect(_in('tile-incentives', find.text('₹450')), findsOneWidget);
-      expect(_in('tile-bonuses', find.text('₹100')), findsOneWidget);
+      expect(find.text('Salary & payments'), findsOneWidget);
+      expect(_in('tile-older-pay', find.text('₹12,550')), findsOneWidget);
       expect(_in('tile-adjustments', find.text('−₹30')), findsOneWidget);
       expect(_in('tile-deductions', find.text('−₹50')), findsOneWidget);
       expect(_in('tile-salary', find.text('₹800')), findsOneWidget);
@@ -378,24 +351,6 @@ void main() {
     });
 
     testWidgets(
-      'the period switch moves between today, week, month and total',
-      (tester) async {
-        await _pump(tester, repo: _Fake());
-        expect(_in('earnings-hero', find.text('Today')), findsOneWidget);
-        await _tap(tester, find.byKey(const Key('period-week')));
-        expect(_in('earnings-hero', find.text('₹940.50')), findsOneWidget);
-        expect(_in('earnings-hero', find.text('This week')), findsOneWidget);
-        await _tap(tester, find.byKey(const Key('period-month')));
-        expect(_in('earnings-hero', find.text('₹3,860')), findsOneWidget);
-        await _tap(tester, find.byKey(const Key('period-total')));
-        expect(_in('earnings-hero', find.text('₹12,450')), findsOneWidget);
-        expect(_in('earnings-hero', find.text('All time')), findsOneWidget);
-        await _tap(tester, find.byKey(const Key('period-today')));
-        expect(_in('earnings-hero', find.text('₹185')), findsOneWidget);
-      },
-    );
-
-    testWidgets(
       'a negative pending shows −₹120 in the deal colour and says what it means',
       (tester) async {
         await _pump(tester, repo: _Fake(summary: _summary(pending: -120)));
@@ -405,7 +360,7 @@ void main() {
         expect(
           _in(
             'tile-pending',
-            find.text('You owe Deligro this — it comes off your next payout'),
+            find.text('You owe Deligro this — it comes off your next payment'),
           ),
           findsOneWidget,
         );
@@ -423,18 +378,20 @@ void main() {
       expect(find.textContaining('You owe Deligro'), findsNothing);
     });
 
-    testWidgets('a rider with no payout yet sees "No payout yet"', (
+    testWidgets('riders see salary and payments only, never incentives or targets', (
+      tester,
+    ) async {
+      await _pump(tester, repo: _Fake(), height: 2400);
+      for (final word in ['ncentive', 'onus', 'arget', 'per delivery', 'Earned', 'Earnings']) {
+        expect(find.textContaining(word), findsNothing, reason: word);
+      }
+    });
+
+    testWidgets('a rider with no payment yet sees "No payment yet", and no older pay', (
       tester,
     ) async {
       const s = EarningsSummary(
-        today: 0,
-        week: 0,
-        month: 0,
-        total: 0,
-        perDeliveryAvg: null,
-        deliveriesCounted: 0,
-        incentives: 0,
-        bonuses: 0,
+        olderPay: 0,
         adjustments: 0,
         deductions: 0,
         salary: 0,
@@ -444,25 +401,20 @@ void main() {
       );
       await _pump(tester, repo: _Fake(summary: s));
       expect(
-        _in('tile-last-payout', find.text('No payout yet')),
+        _in('tile-last-payout', find.text('No payment yet')),
         findsOneWidget,
       );
-      expect(
-        _in('tile-average', find.text('Salaried — not paid per delivery')),
-        findsOneWidget,
-      );
-      expect(_in('earnings-hero', find.text('₹0')), findsOneWidget);
+      expect(find.byKey(const Key('tile-older-pay')), findsNothing);
     });
 
     testWidgets(
-      'the entry rows open Records, Payouts, Incentives and Statement',
+      'the entry rows open Records, Payments and Statement',
       (tester) async {
         final repo = _Fake();
         await _pump(tester, repo: repo, height: 2400);
         for (final key in [
           'row-records',
           'row-payouts',
-          'row-incentives',
           'row-statement',
         ]) {
           expect(find.byKey(Key(key)), findsOneWidget, reason: key);
@@ -473,21 +425,6 @@ void main() {
       },
     );
 
-    testWidgets('driver.incentives off drops the Incentives & targets row', (
-      tester,
-    ) async {
-      await _pump(
-        tester,
-        repo: _Fake(),
-        me: _me(features: {'driver.incentives': false}),
-        height: 2400,
-      );
-      expect(find.byKey(const Key('row-incentives')), findsNothing);
-      for (final key in ['row-records', 'row-payouts', 'row-statement']) {
-        expect(find.byKey(Key(key)), findsOneWidget, reason: key);
-      }
-    });
-
     testWidgets('a dead connection says so with a way to retry', (
       tester,
     ) async {
@@ -496,7 +433,7 @@ void main() {
       expect(find.text('Try again'), findsOneWidget);
       repo.summaryError = null;
       await _tap(tester, find.text('Try again'));
-      expect(_in('earnings-hero', find.text('₹185')), findsOneWidget);
+      expect(_in('tile-pending', find.text('₹650')), findsOneWidget);
     });
 
     testWidgets('earnings are never mixed with cash collected', (tester) async {
@@ -509,20 +446,7 @@ void main() {
         tester,
       ) async {
         final repo = _Fake()
-          ..recordItems = [_delivery(), _reversal()]
-          ..incentiveItems = [
-            const IncentiveProgress(
-              ruleId: 'r',
-              name: 'Evening rush',
-              period: 'daily',
-              target: 10,
-              done: 7,
-              bonus: 100,
-              window: '18:00–22:00',
-              endsOn: '2026-10-31',
-              earned: false,
-            ),
-          ];
+          ..recordItems = [_delivery(), _reversal()];
         await _pump(
           tester,
           repo: repo,
@@ -534,7 +458,6 @@ void main() {
         for (final key in [
           'row-records',
           'row-payouts',
-          'row-incentives',
           'row-statement',
         ]) {
           await _tap(tester, find.byKey(Key(key)));
@@ -733,7 +656,7 @@ void main() {
       expect(v('Distance fee', '₹12'), findsOneWidget);
       expect(v('Minimum top-up', '₹5'), findsOneWidget);
       expect(v('Tip', '₹10'), findsOneWidget);
-      expect(v('Incentive', '₹100'), findsOneWidget);
+      expect(find.textContaining('ncentive'), findsNothing);
       expect(v('Deduction', '−₹20'), findsOneWidget);
       expect(v('Final amount', '₹47'), findsOneWidget);
       expect(v('Payment', 'Paid'), findsOneWidget);
@@ -884,111 +807,7 @@ void main() {
 
     testWidgets('no payouts yet', (tester) async {
       await _pump(tester, repo: _Fake(), start: '/earnings/payouts');
-      expect(find.text('No payouts yet'), findsOneWidget);
-    });
-  });
-
-  group('Incentives', () {
-    IncentiveProgress rule({
-      int done = 7,
-      bool earned = false,
-      String? window = '18:00–22:00',
-      String? endsOn = '2026-10-31',
-      String period = 'daily',
-    }) => IncentiveProgress(
-      ruleId: 'r1',
-      name: 'Evening rush',
-      period: period,
-      target: 10,
-      done: done,
-      bonus: 100,
-      window: window,
-      endsOn: endsOn,
-      earned: earned,
-    );
-
-    testWidgets(
-      'shows the rule in plain words, the bar at 7 of 10, the window and the end date',
-      (tester) async {
-        final repo = _Fake()..incentiveItems = [rule()];
-        await _pump(tester, repo: repo, start: '/earnings/incentives');
-        expect(_in('incentive-r1', find.text('Evening rush')), findsOneWidget);
-        expect(
-          _in(
-            'incentive-r1',
-            find.text('Complete 10 deliveries today → ₹100 bonus'),
-          ),
-          findsOneWidget,
-        );
-        expect(_in('incentive-r1', find.text('7 of 10')), findsOneWidget);
-        expect(
-          _in('incentive-r1', find.textContaining('18:00–22:00')),
-          findsOneWidget,
-        );
-        expect(
-          _in('incentive-r1', find.textContaining('Ends 31 Oct 2026')),
-          findsOneWidget,
-        );
-        final bar = tester.widget<LinearProgressIndicator>(
-          _in('incentive-r1', find.byType(LinearProgressIndicator)),
-        );
-        expect(bar.value, closeTo(0.7, 1e-9));
-        expect(_in('incentive-r1', find.text('Earned')), findsNothing);
-      },
-    );
-
-    testWidgets(
-      'a weekly rule says this week; no window says all day; no end date says so',
-      (tester) async {
-        final repo = _Fake()
-          ..incentiveItems = [
-            rule(period: 'weekly', window: null, endsOn: null),
-          ];
-        await _pump(tester, repo: repo, start: '/earnings/incentives');
-        expect(
-          _in(
-            'incentive-r1',
-            find.text('Complete 10 deliveries this week → ₹100 bonus'),
-          ),
-          findsOneWidget,
-        );
-        expect(
-          _in('incentive-r1', find.textContaining('All day')),
-          findsOneWidget,
-        );
-        expect(
-          _in('incentive-r1', find.textContaining('No end date')),
-          findsOneWidget,
-        );
-      },
-    );
-
-    testWidgets('an earned rule carries the Earned badge and a full bar', (
-      tester,
-    ) async {
-      final repo = _Fake()..incentiveItems = [rule(done: 10, earned: true)];
-      await _pump(tester, repo: repo, start: '/earnings/incentives');
-      expect(_in('incentive-r1', find.text('Earned')), findsOneWidget);
-      final bar = tester.widget<LinearProgressIndicator>(
-        _in('incentive-r1', find.byType(LinearProgressIndicator)),
-      );
-      expect(bar.value, 1);
-    });
-
-    testWidgets('progress never overshoots when more than the target is done', (
-      tester,
-    ) async {
-      final repo = _Fake()..incentiveItems = [rule(done: 12)];
-      await _pump(tester, repo: repo, start: '/earnings/incentives');
-      final bar = tester.widget<LinearProgressIndicator>(
-        _in('incentive-r1', find.byType(LinearProgressIndicator)),
-      );
-      expect(bar.value, 1);
-    });
-
-    testWidgets('no rules in force', (tester) async {
-      await _pump(tester, repo: _Fake(), start: '/earnings/incentives');
-      expect(find.text('No targets right now'), findsOneWidget);
+      expect(find.text('No payments yet'), findsOneWidget);
     });
   });
 
@@ -1154,11 +973,11 @@ void main() {
         .map((d) => d.label)
         .toList();
 
-    testWidgets('Earnings is the third tab: Home, Jobs, Earnings, History, More', (
+    testWidgets('Salary is the third tab: Home, Jobs, Salary, History, More', (
       tester,
     ) async {
       await pumpShell(tester, _me());
-      expect(labels(tester), ['Home', 'Jobs', 'Earnings', 'History', 'More']);
+      expect(labels(tester), ['Home', 'Jobs', 'Salary', 'History', 'More']);
     });
 
     testWidgets('driver.earnings off hides the tab', (tester) async {
@@ -1169,10 +988,10 @@ void main() {
       expect(bar.selectedIndex, 3);
     });
 
-    testWidgets('tapping Earnings opens it', (tester) async {
+    testWidgets('tapping Salary opens it', (tester) async {
       await pumpShell(tester, _me());
-      await _tap(tester, find.text('Earnings').last);
-      expect(find.byKey(const Key('earnings-hero')), findsOneWidget);
+      await _tap(tester, find.text('Salary').last);
+      expect(find.byKey(const Key('tile-pending')), findsOneWidget);
     });
 
     test('a deep link to Earnings goes Home while the switch is off', () {

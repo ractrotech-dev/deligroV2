@@ -98,7 +98,7 @@ class VendorDueRow extends StatelessWidget {
           if (d.lastPaidAt != null)
             Text('Last paid ${placedAt(d.lastPaidAt)}', style: TextStyle(fontSize: 12.5, color: c.muted)),
           if (d.recoverable > 0)
-            Text('Shop owes Deligro ${rupees(d.recoverable)} — collect it separately',
+            Text('Old adjustments are more than this shop\'s orders: it owes Deligro ${rupees(d.recoverable)}. Collect it separately.',
                 style: TextStyle(fontSize: 12.5, color: c.deal, fontWeight: FontWeight.w600)),
           if (d.outstandingCorrections > 0)
             Text('Correction outstanding ${rupees(d.outstandingCorrections)}',

@@ -7,6 +7,7 @@
 import { computeChargesWith } from "../../src/lib/pricing";
 import {
   breakdownOrder,
+  oldCashRuleShortfall,
   platformHeldPayment,
   platformDeductions,
   sumSettlementTotals,
@@ -37,7 +38,9 @@ check("platformHeldPayment: online paid", platformHeldPayment("online", "paid"))
 check("platformHeldPayment: online refunded", platformHeldPayment("online", "refunded"));
 check("platformHeldPayment: online pending is not held", !platformHeldPayment("online", "pending"));
 check("platformHeldPayment: online failed is not held", !platformHeldPayment("online", "failed"));
-check("platformHeldPayment: cod never held", !platformHeldPayment("cod", "paid") && !platformHeldPayment("cod", "refunded"));
+check("platformHeldPayment: cash reaches Deligro through the rider",
+  platformHeldPayment("cod", "pending") && platformHeldPayment("cod", "paid") && platformHeldPayment("cod", null));
+check("platformHeldPayment: an unknown method is not assumed held", !platformHeldPayment(null, "paid"));
 check("full refund: paid and refunded give the same line",
   c({ paymentStatus: "paid", approvedRefunds: 500 }).contribution ===
   c({ paymentStatus: "refunded", approvedRefunds: 500 }).contribution);
@@ -60,13 +63,33 @@ check("GST on commission 18% + refunded: 400 − 40 − 7 = 353",
   c({ paymentStatus: "refunded", commissionGstPct: 18 }).vendorNet === 353 &&
   c({ paymentStatus: "refunded", commissionGstPct: 18 }).contribution === 353);
 
-console.log("\n── COD and failed payments unchanged ──");
-check("COD delivered: platform recovers its 40", c({ paymentMethod: "cod", paymentStatus: "pending" }).contribution === -40);
-check("COD with null status: same", c({ paymentMethod: "cod", paymentStatus: null }).contribution === -40);
-check("COD platform-funded coupon 50: owed back 50 − 40 = +10",
-  c({ total: 450, discount: 50, discountFundedBy: "platform", paymentMethod: "cod", paymentStatus: "pending" }).contribution === 10);
+console.log("\n── cash orders pay the shop exactly like online ones; failed payments do not ──");
+check("cash delivered: the shop gets 400 − 40 = 360", c({ paymentMethod: "cod", paymentStatus: "pending" }).contribution === 360);
+check("cash pays the same as online for the same order",
+  c({ paymentMethod: "cod", paymentStatus: "pending" }).contribution === c({}).contribution);
+check("cash remits the shop", c({ paymentMethod: "cod", paymentStatus: "pending" }).remitsVendor);
+check("cash with null status: same", c({ paymentMethod: "cod", paymentStatus: null }).contribution === 360);
+check("cash with a refund: taken off the 360",
+  c({ paymentMethod: "cod", paymentStatus: "pending", approvedRefunds: 100 }).contribution === 260);
+check("cash, Deligro-funded coupon 50: the shop still gets 360",
+  c({ total: 450, discount: 50, discountFundedBy: "platform", paymentMethod: "cod", paymentStatus: "pending" }).contribution === 360);
 check("online but failed is not remitted",
   !c({ paymentStatus: "failed" }).remitsVendor && c({ paymentStatus: "failed" }).contribution === -40);
+
+console.log("\n── cash lines stored under the old rule are spotted ──");
+{
+  const line = { paymentMethod: "cod" as const, vendorNet: 360, refundRecovered: 0 };
+  check("old cash line (−40): the shop was 400 short",
+    oldCashRuleShortfall([{ ...line, contribution: -40 }]) === 400);
+  check("current cash line: nothing short",
+    oldCashRuleShortfall([{ ...line, contribution: 360 }]) === 0);
+  check("current cash line with a refund: nothing short",
+    oldCashRuleShortfall([{ ...line, refundRecovered: 100, contribution: 260 }]) === 0);
+  check("online lines are never counted",
+    oldCashRuleShortfall([{ ...line, paymentMethod: "online", contribution: -40 }]) === 0);
+  check("a batch adds its short lines up",
+    oldCashRuleShortfall([{ ...line, contribution: -40 }, { ...line, contribution: 360 }, { ...line, contribution: -10 }]) === 770);
+}
 
 console.log("\n── clamps and edge sizes ──");
 const tiny = c({ total: 40 + 29 + 2, deliveryFee: 29, taxAmount: 2, tip: 0, otherCharges: 50, commissionPct: 20 });
@@ -87,7 +110,7 @@ const batch = [
 ];
 const t = sumSettlementTotals(batch);
 check("header = sum of lines", checkTotals(t, batch) === 0);
-check("net = −140 + 360 − 40 + 360 = 540", t.netPayable === 540, t.netPayable);
+check("net = −140 + 360 + 360 + 360 = 940", t.netPayable === 940, t.netPayable);
 
 console.log("\n── order pricing scenarios ──");
 const cfg = { deliveryFee: 29, taxRate: 0.05, freeDeliveryThreshold: 499 };

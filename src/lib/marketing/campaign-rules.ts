@@ -1,3 +1,5 @@
+import { campaignPlacements } from "@/lib/banner-placements";
+
 /**
  * Campaign rules — pure, no I/O. The same checks 0160's SQL makes, so the
  * route can answer 400 with a field before a round trip, and the state a list
@@ -88,8 +90,10 @@ function parseBanner(v: unknown): BannerFields | undefined {
   if (targetType === "external" && !(targetValue && /^https:\/\//.test(targetValue))) return undefined;
   const imageUrl = b.imageUrl == null || b.imageUrl === "" ? null : typeof b.imageUrl === "string" && /^https:\/\//.test(b.imageUrl) ? b.imageUrl : undefined;
   if (imageUrl === undefined) return undefined;
+  // Anything no screen reads (the Manager app's 'home_top') becomes the home
+  // carousel, or the banner would be created and never shown.
   const placements = Array.isArray(b.placements) && b.placements.every((p) => typeof p === "string") && b.placements.length <= 6
-    ? (b.placements as string[]) : b.placements === undefined ? ["home_top"] : undefined;
+    ? campaignPlacements(b.placements as string[]) : b.placements === undefined ? campaignPlacements(undefined) : undefined;
   if (!placements) return undefined;
   return { headline, description, ctaLabel, targetType, targetValue, imageUrl, placements };
 }

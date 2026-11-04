@@ -6,7 +6,6 @@ import { getRiderAvailability, getRiderCode, isRiderSchemaPending } from "@/lib/
 import {
   EarningsInputError,
   getMoneySnapshot,
-  getPayout,
   getPendingByRider,
   listEarningRecords,
   listPayouts,
@@ -19,29 +18,23 @@ import {
   previewPayout,
   type AdjustmentInput,
   type DbError,
-  type PayoutInput,
   type PayoutPreview,
-  type RuleInput,
 } from "@/lib/rider/admin-money";
 import { shortOrderId } from "@/lib/utils/order-map";
-import { notifyRiderPayoutRecorded } from "@/lib/notifications/order-events";
-import { captureError } from "@/lib/obs/emit";
 
 /**
  * The admin console's view of the riders: the Riders list, one rider's
- * Overview and Money tabs, and the writes behind the Money tab and the
- * incentive rules.
+ * Overview and Money tabs, and the writes behind the Money tab.
  *
  * ## Authorization
  *
  * Reads run on the service-role client, so each is the caller's to guard: every
  * page and action that reaches this module sits behind `requireRole("admin")`
  * (AGENTS.md rule 5). The WRITES take their client as an argument and are given
- * the admin's own cookie client, never the service role: `record_rider_payout`
- * checks `is_admin()` itself and the adjustment and rule policies check
- * `created_by = auth.uid()`, both of which only mean something when the
- * database can see who is asking. Nothing here would write under the service
- * role (the 0083 grants don't allow `record_rider_payout` to it at all).
+ * the admin's own cookie client, never the service role: the adjustment and rule
+ * policies check `created_by = auth.uid()`, which only means something when the
+ * database can see who is asking. Paying a rider is not here: it goes through
+ * the payment requests (`admin-rider-payments.ts`, 0152).
  *
  * ## Before 0081 / 0083 are applied
  *
@@ -422,111 +415,3 @@ export async function insertAdjustment(
   return { ok: true, id: String((data as { id: string }).id) };
 }
 
-/**
- * `record_rider_payout`: settles everything dated up to `periodEnd` that no
- * payout has settled. It checks `is_admin()` itself, so `db` must be the
- * admin's cookie client. The caller reads the payout row back for the amount
- * that was ACTUALLY recorded (`getPayout`): the preview can be stale.
- */
-export async function recordPayout(db: Db, driverId: string, input: PayoutInput): Promise<WriteResult> {
-  const { data, error } = await db.rpc("record_rider_payout", {
-    p_driver: driverId,
-    p_period_end: input.periodEnd,
-    p_method: input.method,
-    p_reference: input.reference,
-    p_paid_on: input.paidOn,
-    p_note: input.note,
-  });
-  if (error) return { ok: false, error };
-  return { ok: true, id: String(data) };
-}
-
-/**
- * Tell the rider a payout was recorded (§11.6): an inbox row and, unless their
- * `payouts` switch is off, a push — both through `notifyRider`. Called after
- * `recordPayout` succeeded, so the row is committed; it reads that row back
- * with the service role for the amount the database ACTUALLY settled (the
- * operator's preview can be stale) and the last day it covers.
- *
- * Never throws and never undoes anything: the payout stands whether or not
- * the rider hears about it. Answers whether a notice was handed to the
- * notifier (false: the row could not be read).
- */
-export async function announcePayoutRecorded(
-  driverId: string,
-  payoutId: string,
-  deps: {
-    read?: typeof getPayout;
-    notify?: typeof notifyRiderPayoutRecorded;
-  } = {}
-): Promise<boolean> {
-  const read = deps.read ?? getPayout;
-  const notify = deps.notify ?? notifyRiderPayoutRecorded;
-  try {
-    const payout = await read(driverId, payoutId);
-    if (!payout) return false;
-    await notify(driverId, { amount: payout.amount, reference: payout.reference, periodEnd: payout.periodEnd });
-    return true;
-  } catch (e) {
-    captureError(e, { source: "admin-riders/payout", attrs: { event: "payout_notice_failed", driverId, payoutId } });
-    return false;
-  }
-}
-
-/**
- * A new rule. `created_by` is the admin's own id (the insert policy requires
- * it). `period` and `starts_on` are written here and can never be changed.
- */
-export async function createIncentiveRule(db: Db, adminId: string, v: RuleInput): Promise<WriteResult> {
-  const { data, error } = await db
-    .from("rider_incentive_rules")
-    .insert({
-      name: v.name,
-      period: v.period,
-      target_deliveries: v.targetDeliveries,
-      bonus_amount: v.bonusAmount,
-      window_start: v.windowStart,
-      window_end: v.windowEnd,
-      starts_on: v.startsOn,
-      ends_on: v.endsOn,
-      active: v.active,
-      created_by: adminId,
-    })
-    .select("id")
-    .single();
-  if (error) return { ok: false, error };
-  return { ok: true, id: String((data as { id: string }).id) };
-}
-
-/**
- * Edit a rule. Only the columns 0083 lets a client update are sent: never
- * `period` or `starts_on` (the grant leaves them out and the trigger refuses
- * them for every role), whatever the form held.
- */
-export async function updateIncentiveRule(db: Db, id: string, v: RuleInput): Promise<WriteResult> {
-  const { data, error } = await db
-    .from("rider_incentive_rules")
-    .update({
-      name: v.name,
-      target_deliveries: v.targetDeliveries,
-      bonus_amount: v.bonusAmount,
-      window_start: v.windowStart,
-      window_end: v.windowEnd,
-      ends_on: v.endsOn,
-      active: v.active,
-    })
-    .eq("id", id)
-    .select("id");
-  if (error) return { ok: false, error };
-  // RLS turns a refused update into zero rows, not an error.
-  if (!data || data.length === 0) return { ok: false, error: { message: "no row updated" }, notFound: true };
-  return { ok: true, id };
-}
-
-/** Switch a rule on or off. Rules are deactivated, never deleted. */
-export async function setIncentiveRuleActive(db: Db, id: string, active: boolean): Promise<WriteResult> {
-  const { data, error } = await db.from("rider_incentive_rules").update({ active }).eq("id", id).select("id");
-  if (error) return { ok: false, error };
-  if (!data || data.length === 0) return { ok: false, error: { message: "no row updated" }, notFound: true };
-  return { ok: true, id };
-}

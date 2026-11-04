@@ -9,6 +9,7 @@ import {
   useTransition,
 } from "react";
 import { useRouter } from "next/navigation";
+import { useFeature } from "@/components/features/features-provider";
 import {
   Bell,
   BellOff,
@@ -296,6 +297,8 @@ function ExceptionCard({
   const [error, setError] = useState<string | null>(null);
   const [note, setNote] = useState("");
   const request = x.family === "request";
+  // Off: the server refuses, so there is nothing to offer.
+  const canDecide = useFeature("manager.exceptions.decide");
   const late = x.minutesWaiting >= 5;
 
   const decide = (decision: ExceptionDecision) => {
@@ -391,7 +394,7 @@ function ExceptionCard({
       ) : null}
 
       <div className="mt-2.5 flex flex-wrap items-center gap-2">
-        {request ? (
+        {!canDecide ? null : request ? (
           <>
             <Button size="sm" onClick={() => decide("approve")} disabled={pending} className="h-9">
               {pending ? <LoaderCircle className="size-4 animate-spin" /> : <Check className="size-4" />}

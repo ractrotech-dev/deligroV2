@@ -236,7 +236,6 @@ const _screens = [
   '/jobs',
   '/earnings',
   '/earnings/payouts',
-  '/earnings/incentives',
   '/history',
   '/more',
   '/more/cash',

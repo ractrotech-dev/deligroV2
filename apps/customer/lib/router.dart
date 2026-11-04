@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import 'core/customer_features.dart';
 import 'features/auth/login_screen.dart';
 import 'features/checkout/checkout_screen.dart';
 import 'features/home/home_screen.dart';
@@ -16,9 +17,11 @@ import 'features/profile/addresses_screen.dart';
 import 'features/profile/favorites_screen.dart';
 import 'features/profile/help_screen.dart';
 import 'features/profile/profile_screen.dart';
+import 'features/profile/wallet_screen.dart';
 import 'features/restaurant/restaurant_screen.dart';
 import 'features/search/search_screen.dart';
 import 'features/shell/home_shell.dart';
+import 'features/shell/not_found_screen.dart';
 import 'features/stores/stores_screen.dart';
 import 'state/prefs.dart';
 import 'state/providers.dart';
@@ -35,6 +38,7 @@ class _RouterRefresh extends ChangeNotifier {
   _RouterRefresh(Ref ref) {
     _auth = ref.read(supabaseProvider).auth.onAuthStateChange.listen((_) => notifyListeners());
     ref.listen(guestProvider, (_, _) => notifyListeners());
+    ref.listen(customerFeaturesProvider, (_, _) => notifyListeners());
   }
   late final StreamSubscription<dynamic> _auth;
 
@@ -63,12 +67,14 @@ final routerProvider = Provider<GoRouter>((ref) {
         final next = state.uri.queryParameters['next'];
         return next != null && next.startsWith('/') && !next.startsWith('/login') ? next : '/';
       }
-      if (signedIn) return null;
+      if (signedIn) return featureRedirect(path, ref.read(customerFeaturesProvider));
       if (_needsSession(path)) {
         return '/login?next=${Uri.encodeComponent(state.uri.toString())}';
       }
       return guest ? null : '/login';
     },
+    // An old link, or one from a newer server: a sentence and a way home.
+    errorBuilder: (_, _) => const NotFoundScreen(),
     routes: [
       GoRoute(
         path: '/login',
@@ -130,6 +136,11 @@ final routerProvider = Provider<GoRouter>((ref) {
               path: '/profile',
               builder: (_, _) => const ProfileScreen(),
               routes: [
+                GoRoute(
+                  path: 'wallet',
+                  parentNavigatorKey: rootNavigatorKey,
+                  builder: (_, _) => const WalletScreen(),
+                ),
                 GoRoute(
                   path: 'addresses',
                   parentNavigatorKey: rootNavigatorKey,

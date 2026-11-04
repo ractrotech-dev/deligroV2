@@ -2,18 +2,14 @@ import "server-only";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { isMissingTable } from "@/lib/data-access/schema-probe";
 import { RiderSchemaPendingError, getRiderCode } from "@/lib/data-access/rider-status";
-import { notifyRiderIncentiveEarned } from "@/lib/notifications/order-events";
 import { captureError } from "@/lib/obs/emit";
-import { monthlyMoney } from "@/lib/rider/figures";
 import {
   addDays,
   buildRecords,
   compareRecords,
-  incentiveProgress,
   isZeroDelivery,
   istDay,
   istDayStartIso,
-  istWeekStart,
   isDayKey,
   parseRange,
   reconcile,
@@ -21,8 +17,6 @@ import {
   type AdjustmentKind,
   type EarningRecord,
   type EarningsSummary,
-  type IncentiveProgress,
-  type IncentiveRule,
   type Ledger,
   type LedgerAdjustment,
   type LedgerAward,
@@ -30,12 +24,11 @@ import {
   type LedgerPayout,
 } from "@/lib/rider/earnings-math";
 
-export type { EarningRecord, EarningsSummary, IncentiveProgress };
+export type { EarningRecord, EarningsSummary };
 
 /**
  * A rider's money, read from the 0083 ledger: the Earnings tab's summary, the
- * records list, payouts, incentive progress and the date-wise statement; and
- * the push for a newly earned incentive.
+ * records list, payouts and the date-wise statement.
  *
  * Every function takes the rider's id and trusts it, because every one runs on
  * the service-role client. The authorization is the caller's:
@@ -52,8 +45,7 @@ export type { EarningRecord, EarningsSummary, IncentiveProgress };
  * Every read throws `RiderSchemaPendingError`,
  * which `riderRouteError` answers with 503 `migration_pending`. A ₹0 summary
  * would be a false statement about a rider's pay, so there is no degraded
- * answer here. `notifyNewIncentiveAwards` is the exception: it runs after a
- * delivery completes and must never affect it, so it does nothing.
+ * answer here.
  *
  * ## Volume
  *
@@ -126,9 +118,6 @@ const AWARD_COLUMNS = "id, rule_id, amount, trigger_earning_id, awarded_at, payo
 const ADJUSTMENT_COLUMNS =
   "id, kind, amount, reason, order_id, effective_on, payout_id, reverses_earning_id, created_at";
 const PAYOUT_COLUMNS = "id, amount, method, reference, paid_on, period_end, note, created_at";
-const RULE_COLUMNS =
-  "id, name, period, target_deliveries, bonus_amount, window_start, window_end, starts_on, ends_on, active";
-
 interface EarningRow {
   id: string;
   delivery_id: string;
@@ -174,19 +163,6 @@ interface PayoutRow {
   note: string | null;
   created_at: string;
 }
-interface RuleRow {
-  id: string;
-  name: string;
-  period: "daily" | "weekly";
-  target_deliveries: number;
-  bonus_amount: number | string;
-  window_start: string | null;
-  window_end: string | null;
-  starts_on: string;
-  ends_on: string | null;
-  active: boolean;
-}
-
 function toEarning(r: EarningRow): LedgerEarning {
   return {
     id: r.id,
@@ -230,21 +206,6 @@ function toPayout(r: PayoutRow): LedgerPayout {
     periodEnd: dayOf(r.period_end),
     note: r.note,
     createdAt: r.created_at,
-  };
-}
-
-function toRule(r: RuleRow): IncentiveRule {
-  return {
-    id: r.id,
-    name: r.name,
-    period: r.period,
-    targetDeliveries: num(r.target_deliveries),
-    bonusAmount: num(r.bonus_amount),
-    windowStart: r.window_start,
-    windowEnd: r.window_end,
-    startsOn: dayOf(r.starts_on),
-    endsOn: r.ends_on ? dayOf(r.ends_on) : null,
-    active: r.active === true,
   };
 }
 
@@ -492,100 +453,6 @@ export async function listPayouts(driverId: string): Promise<
   }));
 }
 
-/**
- * Progress on every active rule in force today: this period's count of the
- * rider's live deliveries (the trigger's own count), the target, the bonus,
- * the window and whether this period's award is already earned. Rules are read
- * verbatim, in the order the admin created them.
- */
-export async function getIncentiveProgress(driverId: string, now: Date = new Date()): Promise<IncentiveProgress[]> {
-  const supabase = createAdminClient();
-  const today = istDay(now);
-  const weekStart = istWeekStart(today);
-  const [rules, earnings, reversals, awards] = await Promise.all([
-    readAll<RuleRow>((from, to) =>
-      supabase
-        .from("rider_incentive_rules")
-        .select(RULE_COLUMNS)
-        .eq("active", true)
-        .order("created_at")
-        .order("id")
-        .range(from, to)
-        .overrideTypes<RuleRow[]>()
-    ),
-    // A daily period is today and a weekly one this week: nothing older counts.
-    readAll<{ id: string; earned_at: string }>((from, to) =>
-      supabase
-        .from("rider_earnings")
-        .select("id, earned_at")
-        .eq("driver_id", driverId)
-        .gte("earned_at", istDayStartIso(weekStart))
-        .order("earned_at")
-        .order("id")
-        .range(from, to)
-        .overrideTypes<{ id: string; earned_at: string }[]>()
-    ),
-    readAll<{ id: string; reverses_earning_id: string }>((from, to) =>
-      supabase
-        .from("rider_adjustments")
-        .select("id, reverses_earning_id")
-        .eq("driver_id", driverId)
-        .not("reverses_earning_id", "is", null)
-        .order("id")
-        .range(from, to)
-        .overrideTypes<{ id: string; reverses_earning_id: string }[]>()
-    ),
-    readAll<{ id: string; rule_id: string; period_start: string }>((from, to) =>
-      supabase
-        .from("rider_incentive_awards")
-        .select("id, rule_id, period_start")
-        .eq("driver_id", driverId)
-        .gte("period_start", weekStart)
-        .order("id")
-        .range(from, to)
-        .overrideTypes<{ id: string; rule_id: string; period_start: string }[]>()
-    ),
-  ]);
-  return incentiveProgress(
-    rules.map(toRule),
-    earnings.map((e) => ({ id: e.id, earnedAt: e.earned_at })),
-    new Set(reversals.map((r) => r.reverses_earning_id)),
-    awards.map((a) => ({ ruleId: a.rule_id, periodStart: dayOf(a.period_start) })),
-    today
-  );
-}
-
-/**
- * What the rider's incentive awards are worth for periods that began on or
- * after `sinceDay` (an IST day; pass the Monday of this week for "this week"):
- * the Home dashboard's "incentives earned". Exact to the paisa.
- */
-export async function getIncentivesSince(driverId: string, sinceDay: string): Promise<number> {
-  const supabase = createAdminClient();
-  const rows = await readAll<{ id: string; amount: number | string }>((from, to) =>
-    supabase
-      .from("rider_incentive_awards")
-      .select("id, amount")
-      .eq("driver_id", driverId)
-      .gte("period_start", sinceDay)
-      .order("id")
-      .range(from, to)
-      .overrideTypes<{ id: string; amount: number | string }[]>()
-  );
-  return rows.reduce((p, r) => p + Math.round(num(r.amount) * 100), 0) / 100;
-}
-
-/**
- * The money recorded in each IST month (`YYYY-MM`) between the days `from` and
- * `to`: the signed total of the ledger's records dated in the month
- * (deliveries, incentives, bonuses, salary, adjustments, deductions). A month
- * that nets to ₹0 has no entry - per-delivery ₹0 rows are not money.
- */
-export async function getMonthlyMoney(driverId: string, from: string, to: string): Promise<Map<string, number>> {
-  const ledger = await loadLedger(createAdminClient(), driverId, { earnedFrom: from, earnedTo: to });
-  return monthlyMoney(buildRecords(ledger).filter((r) => r.date >= from && r.date <= to));
-}
-
 /** Oldest day first (the order a statement is read in); within a day, the records' usual order. */
 function chronological(a: EarningRecord, b: EarningRecord): number {
   if (a.date !== b.date) return a.date < b.date ? -1 : 1;
@@ -715,45 +582,6 @@ export async function getPendingByRider(): Promise<Map<string, number>> {
   return new Map([...paise].map(([driver, p]) => [driver, p / 100]));
 }
 
-/** Every incentive rule, active or not, with how many awards it has made (a rule with any is never deleted). */
-export async function listIncentiveRules(): Promise<(IncentiveRule & { awards: number })[]> {
-  const supabase = createAdminClient();
-  const [rules, awards] = await Promise.all([
-    readAll<RuleRow>((from, to) =>
-      supabase
-        .from("rider_incentive_rules")
-        .select(RULE_COLUMNS)
-        .order("created_at", { ascending: false })
-        .order("id")
-        .range(from, to)
-        .overrideTypes<RuleRow[]>()
-    ),
-    readAll<{ id: string; rule_id: string }>((from, to) =>
-      supabase
-        .from("rider_incentive_awards")
-        .select("id, rule_id")
-        .order("id")
-        .range(from, to)
-        .overrideTypes<{ id: string; rule_id: string }[]>()
-    ),
-  ]);
-  const counts = new Map<string, number>();
-  for (const a of awards) counts.set(a.rule_id, (counts.get(a.rule_id) ?? 0) + 1);
-  return rules.map((r) => ({ ...toRule(r), awards: counts.get(r.id) ?? 0 }));
-}
-
-/** One rule, or null. */
-export async function getIncentiveRule(id: string): Promise<IncentiveRule | null> {
-  const { data, error } = await createAdminClient()
-    .from("rider_incentive_rules")
-    .select(RULE_COLUMNS)
-    .eq("id", id)
-    .maybeSingle()
-    .overrideTypes<RuleRow>();
-  if (error) fail(error);
-  return data ? toRule(data) : null;
-}
-
 /**
  * A payout as the database recorded it, with the number of ledger rows it
  * settled (₹0 rows not counted, see `attachedCounts`). Read back after `record_rider_payout` so the operator sees the
@@ -796,88 +624,4 @@ export async function getPayout(
   };
 }
 
-// ---------------------------------------------------------------------------
-// the incentive push
-// ---------------------------------------------------------------------------
 
-/** Awards pushed per call; anything beyond waits for the next delivery. */
-const NOTIFY_BATCH = 10;
-
-/**
- * Tell the rider about incentives they have just earned: every award with
- * `notified_at` null. Called after each completed delivery
- * (`completeDelivery`, ruling P3-R1), so ops-approved completions push too.
- *
- * Claim, then push: the stamp is a conditional update (`notified_at is null`),
- * and only the rows this call stamped are pushed. Two completions racing each
- * other therefore cannot push the same award twice; the cost is that a push
- * which fails after the claim is not retried — the award itself is in the
- * ledger either way, and pushes are best-effort everywhere.
- *
- * Never throws (it runs after the response, on `deferNotify`); before 0083 it
- * does nothing.
- */
-export async function notifyNewIncentiveAwards(
-  driverId: string,
-  opts: { push?: (driverId: string, award: { name: string; amount: number }) => Promise<unknown> } = {}
-): Promise<void> {
-  const push = opts.push ?? notifyRiderIncentiveEarned;
-  try {
-    const supabase = createAdminClient();
-    const { data: fresh, error } = await supabase
-      .from("rider_incentive_awards")
-      .select("id")
-      .eq("driver_id", driverId)
-      .is("notified_at", null)
-      .order("awarded_at")
-      .limit(NOTIFY_BATCH)
-      .overrideTypes<{ id: string }[]>();
-    if (error) {
-      if (!isMissingTable(error)) {
-        captureError(error, { source: "rider-earnings/notify-awards", driverId, attrs: { event: "award_read_failed" } });
-      }
-      return;
-    }
-    if (!fresh || fresh.length === 0) return;
-
-    const { data: claimed, error: claimError } = await supabase
-      .from("rider_incentive_awards")
-      .update({ notified_at: new Date().toISOString() })
-      .in(
-        "id",
-        fresh.map((a) => a.id)
-      )
-      .eq("driver_id", driverId)
-      .is("notified_at", null)
-      .select("id, rule_id, amount")
-      .overrideTypes<{ id: string; rule_id: string; amount: number | string }[]>();
-    if (claimError) {
-      captureError(claimError, { source: "rider-earnings/notify-awards", driverId, attrs: { event: "award_claim_failed" } });
-      return;
-    }
-    if (!claimed || claimed.length === 0) return;
-
-    let names = new Map<string, string>();
-    try {
-      names = await ruleNames(supabase, claimed.map((a) => a.rule_id));
-    } catch {
-      // A push without the rule's name still says what was earned.
-    }
-    // One push at a time, each on its own: the stamps are already claimed, so a
-    // push that throws must not drop the awards after it (they would never be
-    // retried).
-    for (const a of claimed) {
-      try {
-        await push(driverId, { name: names.get(a.rule_id) ?? "Incentive", amount: num(a.amount) });
-      } catch (e) {
-        captureError(e, {
-          source: "rider-earnings/notify-awards",
-          driverId,
-          attrs: { event: "award_push_failed", awardId: a.id },
-        });
-      }
-    }
-  } catch (e) {
-    captureError(e, { source: "rider-earnings/notify-awards", driverId, attrs: { event: "award_push_failed" } });
-  }
-}

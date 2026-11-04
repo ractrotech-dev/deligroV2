@@ -19,7 +19,7 @@ void main() {
     await t.pumpAndSettle();
     expect(find.text('Spice Hub'), findsOneWidget);
     expect(find.text('Delayed'), findsOneWidget);
-    expect(find.textContaining('Shop owes Deligro ₹340'), findsOneWidget);
+    expect(find.textContaining('it owes Deligro ₹340'), findsOneWidget);
     expect(fakes.finance.vendorDuesCalls.last.delayed, isFalse);
     await t.tap(find.text('Delayed only'));
     await t.pumpAndSettle();
@@ -71,7 +71,7 @@ void main() {
   testWidgets('settlement detail: an outstanding correction is spelled out', (t) async {
     await pumpFinance(t, const SettlementDetailScreen(settlementId: 's-2'));
     await t.pumpAndSettle();
-    expect(find.text('Refund approved after this payout — correction outstanding ₹120'), findsOneWidget);
+    expect(find.text('Correction outstanding ₹120'), findsOneWidget);
     expect(find.text('AB12CD34'), findsOneWidget);
     expect(find.text('Awaiting approval'), findsWidgets);
     expect(find.text('−₹177'), findsOneWidget);

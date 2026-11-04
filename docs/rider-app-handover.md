@@ -64,7 +64,9 @@ run and the release build. The final signing with the real key is yours (step 5 
    code, with an optional door photo. Problem reports and requests that ops approve.
    Navigation in Google Maps or another app. An in-app map with ETA. Calling the
    customer and the shop. A loud order ring. Steps taken with no signal are sent later.
-3. **Money.** The salary ledger: salary, bonus, incentive and deduction lines. Incentive
+3. **Money.** (Since 0196 riders get a fixed salary only; see docs/RULE-BOOK.md. The bonus,
+   incentive, target and per-delivery parts of this section are gone from every screen.)
+   The salary ledger: salary, bonus, incentive and deduction lines. Incentive
    rules and targets, and payouts recorded by admin. The Earnings tab and statements as
    PDF or CSV. The per-delivery rate card stays at ₹0 and hidden, because riders are on
    a fixed salary.
@@ -132,7 +134,7 @@ restarts.
 - **Unreachable wait**, in minutes (3–30). This is how long a rider must wait after
   calling an unreachable customer before they can report it.
 - **Offer window**, in seconds (60–600).
-- **Daily target** and **Weekly target**: the default delivery targets.
+- Daily and Weekly target: removed by the fixed-salary rule (0196).
 - **Cash limit** (₹) and **Cash held for** (hours): when a rider is told to deposit cash.
 - **High demand at**, **Pickup reminder** and **Delay alert**: the three alert thresholds.
 - **Block expired documents** (`block_dispatch_on_expired_docs`): when on, a rider with
@@ -145,7 +147,7 @@ restarts.
 - **Privacy policy URL** and **Terms of service URL**. The app shows these links only
   once they are set. Claude did not write any legal text.
 
-**Admin → Riders → Incentives:** add the incentive rules, for example "N deliveries in a
+(Removed by the fixed-salary rule, 0196; kept here as history.) **Admin → Riders → Incentives:** add the incentive rules, for example "N deliveries in a
 day earns ₹X".
 
 **The rate card stays at ₹0.** Riders are on a fixed salary, so the per-delivery pay
@@ -188,9 +190,8 @@ Do these on a staging Supabase project with every migration applied, before prod
    select o.id from orders o join deliveries d on d.order_id = o.id
     where o.status = 'delivered' and d.status <> 'delivered';
    ```
-4. **One payout and one rule edit.** In Admin → Riders, record one payout for a test
-   rider, and check that the rider gets the "Payout recorded" notice. Then edit one
-   incentive rule and check the rider's Earnings tab shows the change.
+4. **One payout.** In Admin → Riders, record one payout for a test
+   rider, and check that the rider gets the "Payout recorded" notice.
 5. **The smoke test** from DEPLOYMENT_AUDIT's change log. A rider signs in and
    `/api/rider/me` shows a `DR-` ID. Going online loads the Jobs board. Staff "mark
    delivered" still works.

@@ -13,7 +13,7 @@ import '../../widgets/common.dart';
 import '../../widgets/rows.dart';
 import 'earnings_widgets.dart';
 
-/// A date-wise statement: opening pending + earned − paid = closing pending,
+/// A date-wise statement: opening pending + added − paid = closing pending,
 /// and every record in the range, with the rider's name and ID on top. It can
 /// be saved as a PDF or shared as a CSV, both carrying the same header.
 class StatementScreen extends ConsumerStatefulWidget {
@@ -246,7 +246,7 @@ class _StatementBody extends StatelessWidget {
             Expanded(
               child: MoneyTile(
                 key: const Key('stmt-earned'),
-                label: 'Earned',
+                label: 'Added',
                 value: money(s.earned),
                 valueColor: s.earned < 0 ? c.deal : null,
               ),
@@ -279,7 +279,7 @@ class _StatementBody extends StatelessWidget {
           Padding(
             padding: const EdgeInsets.only(top: 8, left: 2, right: 2),
             child: Text(
-              'You owe Deligro this — it comes off your next payout',
+              'You owe Deligro this — it comes off your next payment',
               style: TextStyle(color: c.deal, fontSize: 13, height: 1.3),
             ),
           ),

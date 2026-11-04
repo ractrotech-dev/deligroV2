@@ -7,6 +7,7 @@ import { listActiveBanners } from "@/lib/banners";
 import { getActiveOrderForHome } from "@/lib/orders-ui";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { listAddresses } from "@/lib/data-access/addresses";
+import { customerFeatureOn } from "@/lib/features/guards.server";
 import { ADDRESSES } from "@/lib/data";
 
 // Title and description come from the root layout; only the canonical is
@@ -27,7 +28,9 @@ export default async function HomePage() {
     listActiveBanners("home_hero"),
     // Cuisine strip. Curated pictures, with any an operator has replaced.
     getHomeCategories(),
-    isSupabaseConfigured ? listAddresses().catch(() => []) : Promise.resolve(ADDRESSES),
+    isSupabaseConfigured
+      ? customerFeatureOn("customer.saved_addresses").then((on) => (on ? listAddresses() : [])).catch(() => [])
+      : Promise.resolve(ADDRESSES),
   ]);
 
   const def = addrs.find((a) => a.isDefault) ?? addrs[0];

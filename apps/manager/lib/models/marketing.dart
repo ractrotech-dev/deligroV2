@@ -34,13 +34,14 @@ enum MarketingType {
   static const pickable = [featuredStore, banner, seasonal, sponsoredProduct, discountOffer, other];
 }
 
-/// The spec's five statuses (§8).
+/// The spec's five statuses (§8), and a request called off after it was made.
 enum RequestStatus {
   pending('pending', 'Pending'),
   approved('approved', 'Approved'),
   rejected('rejected', 'Rejected'),
   inProgress('in_progress', 'In progress'),
   completed('completed', 'Completed'),
+  cancelled('cancelled', 'Cancelled'),
   unknown('unknown', 'Unknown');
 
   const RequestStatus(this.wire, this.label);
@@ -48,23 +49,25 @@ enum RequestStatus {
   final String label;
   static RequestStatus parse(Object? v) => jEnum(values, v, unknown, (s) => s.wire);
 
-  static const tabs = [pending, approved, rejected, inProgress, completed];
+  static const tabs = [pending, approved, rejected, inProgress, completed, cancelled];
 }
 
 class RequestCounts {
-  const RequestCounts({this.pending = 0, this.approved = 0, this.rejected = 0, this.inProgress = 0, this.completed = 0});
+  const RequestCounts({this.pending = 0, this.approved = 0, this.rejected = 0, this.inProgress = 0, this.completed = 0, this.cancelled = 0});
   factory RequestCounts.fromJson(Map<String, dynamic>? j) => RequestCounts(
         pending: jInt(j?['pending']),
         approved: jInt(j?['approved']),
         rejected: jInt(j?['rejected']),
         inProgress: jInt(j?['in_progress']),
         completed: jInt(j?['completed']),
+        cancelled: jInt(j?['cancelled']),
       );
   final int pending;
   final int approved;
   final int rejected;
   final int inProgress;
   final int completed;
+  final int cancelled;
 
   int of(RequestStatus s) => switch (s) {
         RequestStatus.pending => pending,
@@ -72,6 +75,7 @@ class RequestCounts {
         RequestStatus.rejected => rejected,
         RequestStatus.inProgress => inProgress,
         RequestStatus.completed => completed,
+        RequestStatus.cancelled => cancelled,
         RequestStatus.unknown => 0,
       };
 }
@@ -467,6 +471,7 @@ class CampaignDetail extends CampaignSummary {
     this.createdBy,
     this.createdAt,
     this.updatedAt,
+    this.editToken,
     this.cancelledReason,
     this.allowed = const CampaignAllowed(),
   });
@@ -497,6 +502,7 @@ class CampaignDetail extends CampaignSummary {
       createdBy: PersonRef.fromJson(j['createdBy']),
       createdAt: jDate(j['createdAt']),
       updatedAt: jDate(j['updatedAt']),
+      editToken: jStr(j['updatedAt']),
       cancelledReason: jStr(j['cancelledReason']),
       allowed: CampaignAllowed.fromJson(jMap(j['allowed'])),
     );
@@ -508,6 +514,11 @@ class CampaignDetail extends CampaignSummary {
   final PersonRef? createdBy;
   final DateTime? createdAt;
   final DateTime? updatedAt;
+
+  /// `updatedAt` exactly as the server sent it. An edit sends this back and the
+  /// database compares it to the microsecond, so it stays text: it is never
+  /// parsed or rebuilt.
+  final String? editToken;
   final String? cancelledReason;
   final CampaignAllowed allowed;
 
@@ -899,11 +910,13 @@ class CampaignEdit {
   CampaignEdit({required this.changes, required this.expectedUpdatedAt, this.reason, String? clientActionId})
       : clientActionId = clientActionId ?? _uuid.v4();
   final Map<String, dynamic> changes;
-  final DateTime? expectedUpdatedAt;
+
+  /// The campaign's [CampaignDetail.editToken], untouched.
+  final String? expectedUpdatedAt;
   final String? reason;
   final String clientActionId;
   Map<String, dynamic> toJson() => {
-        'expectedUpdatedAt': expectedUpdatedAt?.toUtc().toIso8601String(),
+        'expectedUpdatedAt': expectedUpdatedAt,
         'changes': changes,
         'reason': reason,
         'clientActionId': clientActionId,
@@ -929,8 +942,11 @@ Map<String, dynamic> campaignChanges(CampaignInput before, CampaignInput next, {
     return x == y;
   }
 
+  // Both sides' keys: toJson leaves out what no longer applies (the share when
+  // funding stops being shared, a cleared offer code), and a key left out of an
+  // edit keeps its old value in the database. So what has gone is sent as null.
   return {
-    for (final k in b.keys)
+    for (final k in {...a.keys, ...b.keys})
       // The kind, the request and the zone never change after creation.
       if (k != 'kind' && k != 'requestId' && k != 'zoneId' && !same(a[k], b[k]) && (!windowOnly || lockedAfterStart.contains(k))) k: b[k],
   };

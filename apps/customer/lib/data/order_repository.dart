@@ -90,8 +90,17 @@ class OrderRepository {
     /// The courier note, already trimmed and capped — sent beside the address,
     /// not inside it (`orders.delivery_instructions` on the server).
     String? instructions,
+
+    /// The total on screen. If the server's differs, nothing is placed: 409
+    /// `total_changed` with the real `bill` (a question, not an amount).
+    int? expectedTotal,
+
+    /// Wallet points to use. A request: the server checks them against the balance and
+    /// the bill, and takes them under a lock.
+    int walletPoints = 0,
   }) async {
     final res = await _api.post('/api/orders', {
+      if (walletPoints > 0) 'walletPoints': walletPoints,
       'restaurantSlug': restaurantSlug,
       'lines': [
         for (final l in lines)
@@ -109,15 +118,13 @@ class OrderRepository {
       if (couponCode != null && couponCode.isNotEmpty) 'couponCode': couponCode,
       'idempotencyKey': idempotencyKey,
       if (instructions != null && instructions.isNotEmpty) 'instructions': instructions,
+      'expectedTotal': ?expectedTotal,
     });
     return Order.fromRow(Map<String, dynamic>.from(res['order'] as Map));
   }
 
-  /// Only while placed/kitchen; 409 `too_late` otherwise.
-  Future<bool> cancel(String orderId) async {
-    final res = await _api.post('/api/orders/$orderId/cancel');
-    return res['refundQueued'] == true;
-  }
+  /// Only inside the cancel window, on the database's clock; 409 `too_late` otherwise.
+  Future<void> cancel(String orderId) => _api.post('/api/orders/$orderId/cancel');
 
   Future<TrackingSnapshot> tracking(String orderId) async {
     final res = await _api.get('/api/orders/$orderId/tracking');
@@ -170,9 +177,6 @@ class OrderRepository {
         '/api/orders/$orderId/rider-rating',
         {'rating': rating, if (comment != null && comment.isNotEmpty) 'comment': comment},
       );
-
-  Future<void> requestRefund(String orderId, String reason) =>
-      _api.post('/api/refunds', {'orderId': orderId, 'reason': reason});
 
   /// Live prices for a reorder check: itemId → (effective price, available).
   Future<({bool open, Map<String, ({int price, bool available})> items})> menuPrices(

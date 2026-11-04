@@ -32,7 +32,7 @@ Reference data layer: [`src/lib/data-access/orders.ts`](src/lib/data-access/orde
 | Others' orders | ❌ | ❌ | assigned & active only | ✅ | `is_active_driver_for()` |
 | Own menu/listing | – | ✅ | – | ✅ | `owns_restaurant()` |
 | Others' menus (write) | – | ❌ | – | ✅ | `menu — owner manage` |
-| Issue refunds | request only | ❌ | ❌ | ✅ | `refunds — *` |
+| Issue refunds | ❌ | ❌ | ❌ | ❌ | closed: 0191 refuses new rows; old rows stay readable |
 | User management / role change | ❌ | ❌ | ❌ | ✅ | `lock_role()` trigger |
 
 Driver access auto-revokes when the delivery status leaves `assigned`/`picked_up`
@@ -51,7 +51,7 @@ service role, re-checked role, stamped attribution.
 
 `manager` (migrations **0022**/**0023**) reads every order, advances its status,
 and manages `deliveries` to dispatch riders. It has no write on
-`platform_settings`, no refund decision, and no vendor management. It is not
+`platform_settings`, and no vendor management. It is not
 `is_admin()`, so `guard_order_update()` holds it to `status` — and, since
 migration **0051**, to `cancellation_reason` on the one update that actually
 cancels an order (see below) — exactly as it holds a vendor or a driver.

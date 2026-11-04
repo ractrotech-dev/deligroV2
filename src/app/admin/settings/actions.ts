@@ -15,6 +15,7 @@ import {
   setVendorCommissionDefault,
 } from "@/lib/data-access/admin-commission";
 import { safeApkUrl, type ReleaseApp } from "@/lib/releases/app-version";
+import { isRazorpayConfigured } from "@/lib/payments/razorpay";
 import { parseCashLimits } from "@/lib/rider/cash-math";
 import { ALERT_PRESETS, type AlertPreset } from "@/lib/alerts/tones";
 import type { PlatformSettings, PodPhotoRule } from "@/types";
@@ -124,6 +125,7 @@ function parse(
     businessAddress: str(form.get("businessAddress")),
 
     acceptingOrders: bool(form, "acceptingOrders"),
+    customerCancelSeconds: customerCancelSeconds(form, current),
     maintenanceMessage: str(form.get("maintenanceMessage")),
     featureGrocery: bool(form, "featureGrocery"),
     // Carried through from what is stored, not read from the form: the pharmacy
@@ -134,6 +136,21 @@ function parse(
     featurePharmacy: current.featurePharmacy,
     featurePickDrop: bool(form, "featurePickDrop"),
     featureOnlinePayment: bool(form, "featureOnlinePayment"),
+    // 0194. Read only when the form rendered them; on a database without the
+    // columns the group is not written at all.
+    featureCashPayment: form.has("featureCashPaymentShown")
+      ? bool(form, "featureCashPayment")
+      : current.featureCashPayment,
+    cashLimitPerOrder: form.has("cashLimitPerOrder")
+      ? int(form.get("cashLimitPerOrder"), current.cashLimitPerOrder)
+      : current.cashLimitPerOrder,
+    // 0198. Read only when the form rendered them, like the cash pair above.
+    featureWallet: form.has("featureWalletShown")
+      ? bool(form, "featureWallet")
+      : current.featureWallet,
+    walletChangeMaxPerOrder: form.has("walletChangeMaxPerOrder")
+      ? int(form.get("walletChangeMaxPerOrder"), current.walletChangeMaxPerOrder)
+      : current.walletChangeMaxPerOrder,
     // 0086. The switch sits in the Riders card and is always posted with it;
     // on a database without 0086 the group is not written at all.
     blockDispatchOnExpiredDocs: form.has("blockDispatchOnExpiredDocsShown")
@@ -243,15 +260,6 @@ function parse(
       ? routingBaseUrl(form.get("routingBaseUrl"), current.routingBaseUrl)
       : current.routingBaseUrl,
 
-    // Default delivery targets (0084): read only when posted, clamped to the
-    // CHECK bounds. 0 means "no default" (Performance falls back to the largest
-    // active incentive rule). On a database without 0084 the group is not written.
-    riderDailyTarget: form.has("riderDailyTarget")
-      ? clamp(int(form.get("riderDailyTarget"), current.riderDailyTarget), 0, 1000)
-      : current.riderDailyTarget,
-    riderWeeklyTarget: form.has("riderWeeklyTarget")
-      ? clamp(int(form.get("riderWeeklyTarget"), current.riderWeeklyTarget), 0, 5000)
-      : current.riderWeeklyTarget,
     // Rider alert thresholds (0087): read only when posted, clamped to the
     // 0087 CHECK bounds; not written at all on a database without them
     // (OPTIONAL_GROUPS).
@@ -296,6 +304,14 @@ function routingBaseUrl(raw: FormDataEntryValue | null, fallback: string): strin
 function legalLink(raw: FormDataEntryValue | null): string {
   const url = safeApkUrl(str(raw));
   return /^https:\/\//i.test(url) ? url : "";
+}
+
+/** 0 to 600 (0191's CHECK), clamped. Absent or junk keeps what is stored. */
+function customerCancelSeconds(form: FormData, current: PlatformSettings): number {
+  const raw = form.get("customerCancelSeconds");
+  const n = typeof raw === "string" && raw.trim() !== "" ? Number(raw) : Number.NaN;
+  if (!Number.isFinite(n)) return current.customerCancelSeconds;
+  return Math.min(600, Math.max(0, Math.round(n)));
 }
 
 export async function saveSettingsAction(
@@ -348,8 +364,28 @@ export async function saveSettingsAction(
   );
   if (!cashLimits.ok) return { ok: false, error: cashLimits.error };
 
+  const parsed = parse(form, snapshot.settings, cashLimits);
+  // Online counts only when it can really take money: the switch alone is not
+  // enough without the Razorpay keys (`onlinePaymentsEnabled`).
+  if (!parsed.featureCashPayment && !(parsed.featureOnlinePayment && isRazorpayConfigured)) {
+    return {
+      ok: false,
+      error: parsed.featureOnlinePayment
+        ? "Online payment can't take money yet: its keys are not set. Keep cash on."
+        : "Keep at least one payment method on. With cash and online both off, no one can order.",
+    };
+  }
+  // A typo is refused, not clamped into a limit nobody chose. The 0198 CHECK agrees.
+  if (
+    !Number.isInteger(parsed.walletChangeMaxPerOrder) ||
+    parsed.walletChangeMaxPerOrder < 1 ||
+    parsed.walletChangeMaxPerOrder > 10_000
+  ) {
+    return { ok: false, error: "The most a rider can add must be a whole number from 1 to 10,000." };
+  }
+
   try {
-    await updateSettings(parse(form, snapshot.settings, cashLimits));
+    await updateSettings(parsed);
   } catch (err) {
     // 0177: the platform developer has paused ordering; only they can resume it.
     if (String((err as { message?: string })?.message ?? "").includes("platform_locked")) {

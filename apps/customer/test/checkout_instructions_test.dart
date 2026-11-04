@@ -169,6 +169,49 @@ void main() {
       });
     });
 
+    // Rule book, "Payment methods". The basket is ₹380 of food, so above ₹300 in cash.
+    Future<void> checkoutWith(WidgetTester tester, PaymentRules rules) async {
+      // Tall enough that the whole list is built, or "not shown" proves nothing.
+      tester.view.physicalSize = const Size(1080, 9000);
+      tester.view.devicePixelRatio = 3;
+      addTearDown(tester.view.reset);
+      final prefs = await SharedPreferences.getInstance();
+      final api = ApiClient(_client.auth);
+      await tester.pumpWidget(ProviderScope(
+        overrides: [
+          prefsProvider.overrideWithValue(prefs),
+          supabaseProvider.overrideWithValue(_client),
+          userIdProvider.overrideWithValue('u1'),
+          settingsProvider.overrideWith((_) async => _settings),
+          restaurantProvider.overrideWith((_, _) async => _shop),
+          addressesProvider.overrideWith(_FakeAddresses.new),
+          checkoutRepoProvider.overrideWithValue(_FakeCheckout(api, rules)),
+          orderRepoProvider.overrideWithValue(_RecordingOrders(_client, api, placed)),
+        ],
+        child: MaterialApp(theme: buildTheme(Brightness.light), home: const CheckoutScreen()),
+      ));
+      for (var i = 0; i < 6; i++) {
+        await tester.pump(const Duration(milliseconds: 100));
+      }
+    }
+
+    testWidgets('above the cash limit with online off: says so plainly, hides cash, places nothing', (tester) async {
+      await checkoutWith(tester, const PaymentRules(true, false, 300));
+      expect(find.textContaining("Orders above ₹300 can't be placed right now"), findsWidgets);
+      expect(find.text('Cash on delivery'), findsNothing);
+      expect(find.textContaining('cannot take payment'), findsNothing);
+      await tester.tap(find.textContaining('Place order').last, warnIfMissed: false);
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(placed, isEmpty);
+    });
+
+    testWidgets('under the cash limit, cash is offered with the limit shown', (tester) async {
+      await checkoutWith(tester, const PaymentRules(true, false, 5000));
+      expect(find.text('Cash on delivery'), findsOneWidget);
+      expect(find.text('Cash on delivery is available up to ₹5,000.'), findsOneWidget);
+      expect(find.textContaining("can't be placed"), findsNothing);
+    });
+
     testWidgets('places the note as instructions and leaves the line as the address', (tester) async {
       tester.view.physicalSize = const Size(1080, 2340);
       tester.view.devicePixelRatio = 3;
@@ -216,12 +259,76 @@ void main() {
       await tester.pumpWidget(const SizedBox());
       await tester.pump(const Duration(seconds: 6));
     });
+
+    Future<_RecordingOrders> checkoutWithChangedTotal(WidgetTester tester) async {
+      tester.view.physicalSize = const Size(1080, 2340);
+      tester.view.devicePixelRatio = 3;
+      addTearDown(tester.view.reset);
+      final prefs = await SharedPreferences.getInstance();
+      final api = ApiClient(_client.auth);
+      final orders = _RecordingOrders(_client, api, placed)
+        ..answers.add(ApiException(409, 'total_changed', body: const {
+          'bill': {'subtotal': 300, 'deliveryFee': 39, 'taxes': 15, 'tip': 0, 'discount': 0, 'total': 354},
+        }));
+      await tester.pumpWidget(ProviderScope(
+        overrides: [
+          prefsProvider.overrideWithValue(prefs),
+          supabaseProvider.overrideWithValue(_client),
+          userIdProvider.overrideWithValue('u1'),
+          settingsProvider.overrideWith((_) async => _settings),
+          restaurantProvider.overrideWith((_, _) async => _shop),
+          addressesProvider.overrideWith(_FakeAddresses.new),
+          checkoutRepoProvider.overrideWithValue(_FakeCheckout(api)),
+          orderRepoProvider.overrideWithValue(orders),
+        ],
+        child: MaterialApp(theme: buildTheme(Brightness.light), home: const CheckoutScreen()),
+      ));
+      for (var i = 0; i < 6; i++) {
+        await tester.pump(const Duration(milliseconds: 100));
+      }
+      await tester.tap(find.textContaining('Place order'));
+      await tester.pump(const Duration(milliseconds: 300));
+      return orders;
+    }
+
+    Future<void> leave(WidgetTester tester) async {
+      await tester.pumpWidget(const SizedBox());
+      await tester.pump(const Duration(seconds: 6));
+    }
+
+    testWidgets('a changed total is shown before anything is placed; agreeing sends the new one', (tester) async {
+      await checkoutWithChangedTotal(tester);
+      expect(find.byKey(const Key('total-changed')), findsOneWidget);
+      expect(find.textContaining('₹354'), findsWidgets);
+      expect(placed, hasLength(1));
+      final shown = placed.single['expectedTotal'];
+      expect(shown, isA<int>());
+      expect(shown, isNot(354));
+
+      await tester.tap(find.byKey(const Key('total-changed-place')));
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(placed, hasLength(2));
+      expect(placed.last['expectedTotal'], 354);
+      await leave(tester);
+    });
+
+    testWidgets('Not now places nothing more', (tester) async {
+      await checkoutWithChangedTotal(tester);
+      await tester.tap(find.text('Not now'));
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(find.byKey(const Key('total-changed')), findsNothing);
+      expect(placed, hasLength(1));
+      await leave(tester);
+    });
   });
 }
 
 class _RecordingOrders extends OrderRepository {
   _RecordingOrders(super.db, super.api, this.placed);
   final List<Map<String, Object?>> placed;
+
+  /// What the next tries are answered, before the usual refusal.
+  final answers = <ApiException>[];
 
   @override
   Future<Order> place({
@@ -236,8 +343,11 @@ class _RecordingOrders extends OrderRepository {
     String? couponCode,
     required String idempotencyKey,
     String? instructions,
+    int? expectedTotal,
+    int walletPoints = 0,
   }) async {
-    placed.add({'addressLine': addressLine, 'instructions': instructions});
+    placed.add({'addressLine': addressLine, 'instructions': instructions, 'expectedTotal': expectedTotal});
+    if (answers.isNotEmpty) throw answers.removeAt(0);
     // Stop the flow here: what was sent is the whole point of this test.
     throw ApiException(400, 'invalid_items');
   }
@@ -258,12 +368,13 @@ class _FakeAddresses extends AddressesNotifier {
 }
 
 class _FakeCheckout extends CheckoutRepository {
-  _FakeCheckout(super.api);
+  _FakeCheckout(super.api, [this.rules = const PaymentRules(true, false, 0)]);
+  final PaymentRules rules;
   @override
   Future<Serviceability> serviceability(String slug, double lat, double lng) async =>
       const Serviceability('in_range', 1.2, 25, null);
   @override
-  Future<PaymentRules> paymentRules(String slug) async => const PaymentRules(true, false, 0);
+  Future<PaymentRules> paymentRules(String slug) async => rules;
 }
 
 final _shop = Restaurant.fromRow({

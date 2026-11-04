@@ -470,7 +470,7 @@ export async function getRiderForManager(
       loadZones([id]),
       loadFacts([id], now),
       loadByRider<DocRow>("rider_documents", "id, doc_type, number, expires_on, status, remarks, reviewed_by, reviewed_at, created_at", [id]),
-      getRiderPerformance(id, now, { earnings: false }),
+      getRiderPerformance(id, now),
       ratingsSummary(id),
       openComplaints(id),
       supabase.from("cash_deposits").select(CASH_DEPOSIT_COLUMNS).eq("driver_id", id).eq("status", "submitted").order("created_at"),
@@ -637,8 +637,7 @@ export async function getRiderHistoryForManager(
     getRiderHistory(id, { from: q.from ?? undefined, to: q.to ?? undefined, outcome: q.outcome ?? undefined, cursor: q.cursor }),
     historyTotals(id, { from: q.from, to: q.to }),
   ]);
-  // The manager contract has no `earning` (riders are salaried, and pay lives in the ledger).
-  return { items: page.items.map(withoutKey("earning")), nextCursor: page.nextCursor, totals };
+  return { items: page.items, nextCursor: page.nextCursor, totals };
 }
 
 /** Counts by outcome over the same range (0153's `ops_rider_history_totals`). */
@@ -719,7 +718,7 @@ export async function getRiderLedger(scope: ManagerScope, id: string, q: LedgerQ
       createdBy: null, sortAt: e.earned_at,
     })),
     ...((awards.data ?? []) as { id: string; awarded_at: string; amount: number | string; payout_id: string | null }[]).map((a) => ({
-      id: a.id, type: "incentive" as const, amount: Number(a.amount), date: istDay(a.awarded_at), reason: "Incentive target reached",
+      id: a.id, type: "incentive" as const, amount: Number(a.amount), date: istDay(a.awarded_at), reason: "Older pay",
       orderCode: null, payoutId: a.payout_id, status: a.payout_id ? ("paid" as const) : ("pending" as const), createdBy: null, sortAt: a.awarded_at,
     })),
     ...adjRows.map((a) => ({

@@ -13,6 +13,10 @@ import { LangProvider } from "@/components/providers/lang-provider";
 import { getLang } from "@/lib/i18n/server";
 import { getProfile } from "@/lib/auth";
 import { getSettings } from "@/lib/settings";
+import { pickRole } from "@/lib/features/catalog";
+import { getFeatures } from "@/lib/features/flags.server";
+import { customerFeatures } from "@/lib/features/guards.server";
+import { CustomerFeatureSync, CustomerFeaturesProvider } from "@/components/features/customer-features-provider";
 
 // The customer app is per-request: it reads the auth cookie (getProfile, below)
 // and live catalog/order data. Render dynamically so cookie/Supabase access
@@ -37,6 +41,15 @@ async function PushRegistration() {
   return <OneSignalInit userId={profile?.id ?? null} />;
 }
 
+/**
+ * This person's feature switches. The same reasoning as `PushRegistration`: the
+ * profile read stays off the path to the first byte, and until it lands the page
+ * shows the "for everyone" values. The API routes refuse either way.
+ */
+async function CustomerFeatures() {
+  return <CustomerFeatureSync features={await customerFeatures()} />;
+}
+
 export default async function CustomerLayout({
   children,
 }: Readonly<{
@@ -57,9 +70,12 @@ export default async function CustomerLayout({
   // `getSettings()` is request-cached, and this is the one node that is an
   // ancestor of both the page tree and the cart sheet.
   const [settings, lang] = await Promise.all([getSettings(), getLang()]);
+  // Admin → App features, for everyone. No profile read: a guest is the same answer.
+  const everyone = pickRole("customer", await getFeatures("customer", null));
 
   return (
     <LangProvider initial={lang}>
+      <CustomerFeaturesProvider everyone={everyone}>
       <ChargesConfigProvider
         config={{
           deliveryFee: settings.deliveryFee,
@@ -86,9 +102,13 @@ export default async function CustomerLayout({
             <Suspense fallback={null}>
               <PushRegistration />
             </Suspense>
+            <Suspense fallback={null}>
+              <CustomerFeatures />
+            </Suspense>
           </div>
         </div>
       </ChargesConfigProvider>
+      </CustomerFeaturesProvider>
     </LangProvider>
   );
 }

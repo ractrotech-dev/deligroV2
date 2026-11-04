@@ -10,15 +10,17 @@ import type { OpsResult } from "@/lib/ops/order-actions";
 import type { InitiateSettlementInput, SettlementMethod } from "@/lib/ops/finance-contract";
 
 /**
- * Vendor settlements through maker–checker (§7, migration 0156). There is no
- * one-person vendor payment path anywhere — not for managers, not for admins:
+ * Vendor settlements through payment requests (§7, migration 0156). Every shop
+ * payment takes the same two steps, each with its audit row:
  *
  *   initiate → a DRAFT is built with the one settlement arithmetic
  *              (admin-settlements.ts) and put up for approval
  *              (ops_request_vendor_settlement);
- *   approve  → someone other than the requester approves with the
- *              transaction reference (ops_decide_payment_request), which marks
- *              the settlement paid in the same transaction as the audit row.
+ *   approve  → approved with the transaction reference
+ *              (ops_decide_payment_request), which marks the settlement paid in
+ *              the same transaction as the audit row. A manager needs someone
+ *              else to approve; an admin may approve their own, with a reason,
+ *              under the one-admin rule (0152, on by default since 0186).
  *              If a refund made the draft stale since it was built, the draft
  *              is rebuilt under the same request (detach → rebuild → repoint)
  *              and the approver is asked to confirm the new amount.
@@ -287,12 +289,12 @@ async function resumeRebuild(actorId: string, requestId: string, cid: string): P
 async function repointWithNewDraft(actorId: string, requestId: string, period: Period, cid: string): Promise<Result<{ amount: number; settlementId: string }>> {
   const draft = period.kind === "instant" && period.orderId
     ? await createInstantDraft({ orderId: period.orderId, adminId: actorId })
-    : await createSettlementDraft({ restaurantId: period.restaurantId, fromDate: period.from, toDate: period.to, adminId: actorId, notes: "Rebuilt after a refund" });
+    : await createSettlementDraft({ restaurantId: period.restaurantId, fromDate: period.from, toDate: period.to, adminId: actorId, notes: "Rebuilt after an adjustment" });
   if ("error" in draft) {
     // Nothing left to settle in that period: no request stands.
     await createAdminClient().rpc("ops_decide_payment_request", {
       p_actor: actorId, p_request: requestId, p_decision: "reject", p_reference: null, p_paid_on: null, p_confirm_amount: null,
-      p_note: "Nothing left to pay after a refund", p_client_action_id: `${cid}:reject`,
+      p_note: "Nothing left to pay after an adjustment", p_client_action_id: `${cid}:reject`,
     });
     return { ok: false, status: 409, error: "nothing_to_pay" };
   }
@@ -366,40 +368,64 @@ export async function approveSettlementReversal(
 }
 
 /**
- * Admin "Mark paid" on a draft: if nobody has asked for it yet, the admin puts
- * it up for approval (another admin, or a manager with approve_payment, then
- * pays it); if someone else asked, the admin approves it with the reference;
- * if the admin asked, they are told it needs someone else.
+ * Admin "I have paid" on an unfinished payment.
+ *
+ * Under the one-admin rule (0152, on by default since 0186) this is one step: if
+ * nobody has asked for the payment yet the admin's request is opened here and
+ * approved straight away, with the reference and a reason, so paying never waits
+ * for a second person. The database still records who, why and that it was their
+ * own request. If a request stands from someone else, it is approved here.
+ *
+ * With the rule turned off the old flow stands: a payment nobody has asked for is
+ * put up for approval, and the admin who asked is told it needs someone else.
+ *
+ * `movedTo`: a refund changed the amount, so the payment was rebuilt under a new
+ * id. The screen takes the person there; approving it pays the new amount.
  */
 export async function adminPayOrRequestSettlement(input: {
   settlementId: string;
   adminId: string;
   paymentRef: string;
-  /** Required only when an admin approves their own request (one-admin switch). */
+  /** Required when an admin approves their own request (one-admin rule). */
   note?: string | null;
-}): Promise<{ ok: true; requested: boolean } | { error: string }> {
+}): Promise<{ ok: true; requested: boolean } | { error: string; movedTo?: string }> {
   const { data: pending, error } = await createAdminClient().from("payment_requests")
     .select("id, requested_by").eq("settlement_id", input.settlementId).eq("status", "pending_approval").maybeSingle();
   if (error) throw error;
-  if (!pending) {
-    const opened = await openSettlementRequest(input.adminId, input.settlementId, "bank", input.paymentRef.trim() ? `Reference to use: ${input.paymentRef.trim()}` : null, crypto.randomUUID());
+
+  const ref = input.paymentRef.trim();
+  const note = input.note?.trim() ?? "";
+  const own = !pending || pending.requested_by === input.adminId;
+  const mayOwn = own && (await mayApproveOwn(input.adminId));
+
+  if (!pending && !mayOwn) {
+    const opened = await openSettlementRequest(input.adminId, input.settlementId, "bank", ref ? `Reference to use: ${ref}` : null, crypto.randomUUID());
     if (!opened.ok) return { error: adminMessage(opened.error) };
     return { ok: true, requested: true };
   }
-  if (pending.requested_by === input.adminId && !(await mayApproveOwn(input.adminId))) {
-    return { error: "You put this payment up for approval, so someone else must approve it — another admin, or a manager who can approve payments." };
+  if (own && !mayOwn) return { error: adminMessage("same_person") };
+  if (!ref) return { error: "Enter the payment reference from your bank or UPI app." };
+  if (own && note.length < 3) return { error: "Write a short reason for this payment." };
+
+  // Checked above, before a request exists: a refused payment leaves nothing behind.
+  let requestId = pending?.id as string | undefined;
+  if (!requestId) {
+    const opened = await openSettlementRequest(input.adminId, input.settlementId, "bank", null, crypto.randomUUID());
+    if (!opened.ok) return { error: adminMessage(opened.error) };
+    requestId = opened.value.request_id;
   }
-  if (pending.requested_by === input.adminId && (input.note ?? "").trim().length < 3) {
-    return { error: "You're approving your own request under the one-admin setting: write a short reason." };
-  }
-  const ref = input.paymentRef.trim();
-  if (!ref) return { error: "Enter the UTR / payment reference." };
-  const res = await approveVendorSettlement(input.adminId, pending.id as string, {
-    reference: ref, paidOn: null, confirmAmount: null, note: input.note?.trim() || null, clientActionId: crypto.randomUUID(),
+
+  const res = await approveVendorSettlement(input.adminId, requestId, {
+    reference: ref, paidOn: null, confirmAmount: null, note: note || null, clientActionId: crypto.randomUUID(),
   });
   if (!res.ok) {
     if (res.error === "amount_changed") {
-      return { error: `A refund changed this settlement since it was built. It has been rebuilt at ₹${Number(res.extra?.amount ?? 0).toLocaleString("en-IN")}; open the new draft and approve that amount.` };
+      const amount = `₹${Number(res.extra?.amount ?? 0).toLocaleString("en-IN")}`;
+      const movedTo = res.extra?.settlementId as string | undefined;
+      return {
+        error: `The amount changed. It is now ${amount}. Check it, then pay again.`,
+        ...(movedTo && movedTo !== input.settlementId ? { movedTo } : {}),
+      };
     }
     return { error: adminMessage(res.error) };
   }
@@ -420,13 +446,13 @@ export async function adminRequestOrderPayout(input: { orderId: string; adminId:
 function adminMessage(code: string): string {
   switch (code) {
     case "duplicate_pending": return "This shop already has a payment waiting for approval. Decide that one first.";
-    case "nothing_to_pay": return "There is nothing to pay in that settlement.";
-    case "negative_net": return "Net is negative (vendor owes the platform). Collect that separately — do not mark as paid out.";
-    case "already_settled": return "This order has already been paid or is in a settlement.";
+    case "nothing_to_pay": return "There is nothing to pay in this payment.";
+    case "negative_net": return "This shop owes you, so there is nothing to send. Cancel this payment; it comes off their next one.";
+    case "already_settled": return "This order has already been paid or is in a payment.";
     case "same_person": return "You put this payment up for approval, so someone else must approve it.";
-    case "not_draft": return "Only a draft settlement can be paid.";
+    case "not_draft": return "This payment is no longer open.";
     case "already_decided": return "This payment was already decided.";
-    case "not_found": return "Settlement not found.";
+    case "not_found": return "Payment not found.";
     default: return "That didn't go through. Try again.";
   }
 }

@@ -1,7 +1,5 @@
 import { requireRole } from "@/lib/auth";
-import Link from "next/link";
 import { AdminHero } from "@/components/admin/admin-ui";
-import { ConsoleOnly } from "@/components/admin/console-only";
 import {
   CYCLE_LABEL,
   DEFAULT_SETTLEMENT_CYCLE,
@@ -37,8 +35,8 @@ export default async function NewSettlementPage({
       <AdminHero
         backHref="/admin/settlements"
         backLabel="Settlements"
-        title="New settlement"
-        subtitle="Connect Supabase to build a draft."
+        title="Pay by dates"
+        subtitle="Connect Supabase to pay shops."
       />
     );
   }
@@ -65,66 +63,45 @@ export default async function NewSettlementPage({
       restaurantId,
       fromDate,
       toDate,
-    }).catch(() => ({ error: "Could not preview. Is migration 0028 applied?" }));
+    }).catch(() => ({ error: "Could not work out this payment. Refresh to try again." }));
     if ("error" in result) previewError = result.error;
     else preview = result;
   }
 
   return (
-    <div className="space-y-4">
+    <>
       {/* Back link via AdminHero, not a separate BackLink above it — every
           other sub-page in the console puts it inside the header. */}
       <AdminHero
         backHref="/admin/settlements"
         backLabel="Settlements"
-        title="New settlement"
-        subtitle="Pick a vendor and IST date range — only unsettled delivered orders are included"
+        title="Pay by dates"
+        subtitle="Pay a shop only for orders on the dates you choose."
       />
 
-      {/* Console-only: a vendor picker, an IST range and a four-column preview
-          of every order in the run. Composing a money-movement batch is not
-          triage — reading settlements on a phone is (see /admin/settlements). */}
-      <ConsoleOnly
-        variant="page"
-        tool="Building a settlement"
-        why="Picking a vendor, a date range and every order in the run is desk work. Reading and tracking payouts already raised works on a phone."
-      >
-        <NewSettlementForm
-          vendors={vendors}
-          restaurantId={restaurantId}
+      <NewSettlementForm
+        vendors={vendors}
+        restaurantId={restaurantId}
+        fromDate={fromDate}
+        toDate={toDate}
+        cycleNote={
+          vendor
+            ? `${vendor.name} is paid ${CYCLE_LABEL[cycle].toLowerCase()}. The dates show the ${suggested.label.toLowerCase()}.`
+            : null
+        }
+      />
+
+      {previewError ? (
+        <p className="text-[13px] font-medium text-deal">{previewError}</p>
+      ) : null}
+
+      {preview ? (
+        <SettlementPreviewPanel
+          preview={preview}
           fromDate={fromDate}
           toDate={toDate}
-          cycleNote={
-            vendor
-              ? `${vendor.name} is paid: ${CYCLE_LABEL[cycle].toLowerCase()}. Dates below are the ${suggested.label.toLowerCase()}.`
-              : null
-          }
         />
-
-        {previewError ? (
-          <p className="rounded-xl border border-deal/30 bg-deal-soft px-3.5 py-3 text-sm text-deal">
-            {previewError}
-          </p>
-        ) : null}
-
-        {preview ? (
-          <SettlementPreviewPanel
-            preview={preview}
-            fromDate={fromDate}
-            toDate={toDate}
-          />
-        ) : null}
-
-        {!restaurantId ? (
-          <p className="text-sm text-muted">
-            Or open a vendor from{" "}
-            <Link href="/admin/vendors" className="font-medium text-accent-ink">
-              Vendors
-            </Link>{" "}
-            after you know who needs a payout.
-          </p>
-        ) : null}
-      </ConsoleOnly>
-    </div>
+      ) : null}
+    </>
   );
 }

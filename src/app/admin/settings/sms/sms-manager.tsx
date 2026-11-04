@@ -50,12 +50,12 @@ export function SmsManager({
   return (
     <div className="admin-measure space-y-2">
       {error ? (
-        <p role="alert" className="rounded-xl border border-deal/30 bg-deal-soft px-3.5 py-3 text-sm font-semibold text-deal">
+        <p role="alert" className="rounded-[var(--c-r)] border border-deal/30 bg-deal-soft px-3.5 py-3 text-sm font-semibold text-deal">
           {error}
         </p>
       ) : null}
       {saved ? (
-        <p role="status" className="rounded-xl border border-green/30 bg-green-soft px-3.5 py-3 text-sm font-semibold text-green">
+        <p role="status" className="rounded-[var(--c-r)] border border-green/30 bg-green-soft px-3.5 py-3 text-sm font-semibold text-green">
           {saved}
         </p>
       ) : null}
@@ -126,7 +126,7 @@ function ShopRow({
   const [phone, setPhone] = useState(shop.phone ?? "");
   const number = shop.phone ?? shop.ownerMobile;
   return (
-    <li className="flex flex-col gap-2 py-2.5 @3xl:flex-row @3xl:items-center">
+    <li className="flex gap-2 py-2.5 flex-row items-center">
       <span className="min-w-0 flex-1">
         <span className="block truncate text-sm font-semibold text-ink">{shop.name}</span>
         <StatusText tone={!shop.enabled ? "neutral" : number ? "green" : "amber"}>
@@ -140,7 +140,7 @@ function ShopRow({
         aria-label={`SMS number for ${shop.name}`}
         inputMode="tel"
         maxLength={20}
-        className={`${fieldCls} @3xl:w-56`}
+        className={`${fieldCls} w-56`}
         disabled={busy}
       />
       <span className="flex items-center gap-3">

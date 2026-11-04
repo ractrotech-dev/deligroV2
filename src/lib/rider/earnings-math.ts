@@ -88,12 +88,6 @@ export function istDay(at: string | Date): string {
   return new Date(ms + IST_OFFSET_MS).toISOString().slice(0, 10);
 }
 
-/** The IST wall-clock time of an instant, `HH:MM:SS`. */
-function istTime(at: string | Date): string {
-  const ms = typeof at === "string" ? Date.parse(at) : at.getTime();
-  return new Date(ms + IST_OFFSET_MS).toISOString().slice(11, 19);
-}
-
 /** A day key plus `n` calendar days. */
 export function addDays(day: string, n: number): string {
   return new Date(Date.parse(`${day}T00:00:00Z`) + n * DAY_MS).toISOString().slice(0, 10);
@@ -574,83 +568,31 @@ export function reconcile(
   };
 }
 
-// ---------------------------------------------------------------------------
-// incentive progress
-// ---------------------------------------------------------------------------
-
-/** A `rider_incentive_rules` row. Times are IST `HH:MM[:SS]`. */
-export interface IncentiveRule {
-  id: string;
-  name: string;
-  period: "daily" | "weekly";
-  targetDeliveries: number;
-  bonusAmount: number;
-  windowStart: string | null;
-  windowEnd: string | null;
-  startsOn: string;
-  endsOn: string | null;
-  active: boolean;
+/** What the rider's Salary tab shows. */
+export interface RiderPaySummary {
+  salary: number;
+  adjustments: number;
+  deductions: number;
+  /** Old delivery pay, incentives and bonuses, under one neutral name. 0 for a rider with none. */
+  olderPay: number;
+  paid: number;
+  pending: number;
+  lastPayout: EarningsSummary["lastPayout"];
 }
-
-export interface IncentiveProgress {
-  ruleId: string;
-  name: string;
-  period: "daily" | "weekly";
-  target: number;
-  done: number;
-  bonus: number;
-  /** "12:00–15:00" (IST), or null for all day. */
-  window: string | null;
-  endsOn: string | null;
-  earned: boolean;
-}
-
-const hhmm = (t: string) => t.slice(0, 5);
-/** `HH:MM` -> `HH:MM:00`, so it compares with `istTime` as a string. */
-const hhmmss = (t: string) => (t.length === 5 ? `${t}:00` : t.slice(0, 8));
 
 /**
- * Each active rule in force today, with how many of this rider's live
- * deliveries count towards it in the current period — the same count
- * `award_rider_incentives` (0083) makes: the IST day, or the IST week from
- * Monday, clipped to the rule's own dates, inside its window
- * `[window_start, window_end)`, reversed earnings left out. `earned` is
- * whether this period's award exists.
+ * The summary as a rider sees it. Riders get a fixed salary only (rule book), so a
+ * per-delivery figure, an incentive or a bonus is never shown as one; what old rows
+ * add up to is still there, so what is owed and paid keeps adding up.
  */
-export function incentiveProgress(
-  rules: IncentiveRule[],
-  earnings: Pick<LedgerEarning, "id" | "earnedAt">[],
-  reversed: ReadonlySet<string>,
-  awards: { ruleId: string; periodStart: string }[],
-  today: string
-): IncentiveProgress[] {
-  const out: IncentiveProgress[] = [];
-  const live = earnings
-    .filter((e) => !reversed.has(e.id))
-    .map((e) => ({ day: istDay(e.earnedAt), time: istTime(e.earnedAt) }));
-  for (const r of rules) {
-    if (!r.active || r.startsOn > today || (r.endsOn !== null && r.endsOn < today)) continue;
-    const periodStart = r.period === "daily" ? today : istWeekStart(today);
-    const periodEnd = r.period === "daily" ? today : addDays(periodStart, 6);
-    const lo = r.startsOn > periodStart ? r.startsOn : periodStart;
-    const hi = r.endsOn !== null && r.endsOn < periodEnd ? r.endsOn : periodEnd;
-    const windowed = r.windowStart !== null && r.windowEnd !== null;
-    const ws = windowed ? hhmmss(r.windowStart!) : "";
-    const we = windowed ? hhmmss(r.windowEnd!) : "";
-    const done = live.filter(
-      (e) => e.day >= lo && e.day <= hi && (!windowed || (e.time >= ws && e.time < we))
-    ).length;
-    out.push({
-      ruleId: r.id,
-      name: r.name,
-      period: r.period,
-      target: r.targetDeliveries,
-      done,
-      bonus: r.bonusAmount,
-      window: windowed ? `${hhmm(r.windowStart!)}–${hhmm(r.windowEnd!)}` : null,
-      endsOn: r.endsOn,
-      earned: awards.some((a) => a.ruleId === r.id && a.periodStart === periodStart),
-    });
-  }
-  return out;
+export function riderPaySummary(s: EarningsSummary): RiderPaySummary {
+  return {
+    salary: s.salary,
+    adjustments: s.adjustments,
+    deductions: s.deductions,
+    olderPay: Math.round((s.total + s.bonuses) * 100) / 100,
+    paid: s.paid,
+    pending: s.pending,
+    lastPayout: s.lastPayout,
+  };
 }

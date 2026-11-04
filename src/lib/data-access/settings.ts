@@ -73,6 +73,10 @@ interface SettingsRow {
   default_prep_minutes: number;
   delivery_radius_km: number | string;
   feature_online_payment?: boolean;
+  feature_cash_payment?: boolean;
+  cash_limit_per_order?: number | string;
+  feature_wallet?: boolean;
+  wallet_change_max_per_order?: number | string;
   review_window_days?: number;
   review_edit_window_hours?: number;
   rider_apk_version_code?: number;
@@ -112,9 +116,8 @@ interface SettingsRow {
   rider_min_per_delivery?: number | string;
   rider_cash_limit?: number;
   rider_cash_max_hours?: number;
-  rider_daily_target?: number;
-  rider_weekly_target?: number;
   block_dispatch_on_expired_docs?: boolean;
+  customer_cancel_seconds?: number;
 }
 
 /**
@@ -132,6 +135,24 @@ const OPTIONAL_GROUPS = [
     select: "feature_online_payment",
     write: (input: PlatformSettings): Record<string, unknown> => ({
       feature_online_payment: input.featureOnlinePayment,
+    }),
+  },
+  {
+    /** Migration 0194. The platform cash switch and cash limit arrive together. */
+    key: "platform_settings.cash_limit_per_order",
+    select: "feature_cash_payment, cash_limit_per_order",
+    write: (input: PlatformSettings): Record<string, unknown> => ({
+      feature_cash_payment: input.featureCashPayment,
+      cash_limit_per_order: input.cashLimitPerOrder,
+    }),
+  },
+  {
+    /** Migration 0198. The wallet switch and the per-order limit arrive together. */
+    key: "platform_settings.feature_wallet",
+    select: "feature_wallet, wallet_change_max_per_order",
+    write: (input: PlatformSettings): Record<string, unknown> => ({
+      feature_wallet: input.featureWallet,
+      wallet_change_max_per_order: input.walletChangeMaxPerOrder,
     }),
   },
   {
@@ -256,20 +277,19 @@ const OPTIONAL_GROUPS = [
     }),
   },
   {
-    /** Migration 0084. The two default delivery targets arrive together. */
-    key: "platform_settings.rider_daily_target",
-    select: "rider_daily_target, rider_weekly_target",
-    write: (input: PlatformSettings): Record<string, unknown> => ({
-      rider_daily_target: input.riderDailyTarget,
-      rider_weekly_target: input.riderWeeklyTarget,
-    }),
-  },
-  {
     /** Migration 0086. Read by dispatch with the service role as well. */
     key: "platform_settings.block_dispatch_on_expired_docs",
     select: "block_dispatch_on_expired_docs",
     write: (input: PlatformSettings): Record<string, unknown> => ({
       block_dispatch_on_expired_docs: input.blockDispatchOnExpiredDocs,
+    }),
+  },
+  {
+    /** Migration 0191. The customer's cancel window. */
+    key: "platform_settings.customer_cancel_seconds",
+    select: "customer_cancel_seconds",
+    write: (input: PlatformSettings): Record<string, unknown> => ({
+      customer_cancel_seconds: input.customerCancelSeconds,
     }),
   },
 ] as const;
@@ -347,6 +367,19 @@ function mapSettings(row: SettingsRow): PlatformSettings {
     deliveryRadiusKm: Number(row.delivery_radius_km),
     // Absent column (pre-0025) reads as off, which is the safe direction.
     featureOnlinePayment: row.feature_online_payment ?? false,
+    // Absent columns (pre-0194) read as the 0194 defaults: cash on, no limit.
+    featureCashPayment: row.feature_cash_payment ?? DEFAULT_SETTINGS.featureCashPayment,
+    cashLimitPerOrder: Math.max(
+      0,
+      Math.round(Number(row.cash_limit_per_order ?? DEFAULT_SETTINGS.cashLimitPerOrder)) || 0,
+    ),
+    // Absent columns (pre-0198) read as wallet off: no points can move.
+    featureWallet: row.feature_wallet ?? DEFAULT_SETTINGS.featureWallet,
+    walletChangeMaxPerOrder: Math.max(
+      1,
+      Math.round(Number(row.wallet_change_max_per_order ?? DEFAULT_SETTINGS.walletChangeMaxPerOrder)) ||
+        DEFAULT_SETTINGS.walletChangeMaxPerOrder,
+    ),
     // Absent columns (pre-0033) fall back to the shared defaults, so the review
     // windows behave identically before the migration lands.
     reviewWindowDays: Number(
@@ -436,18 +469,11 @@ function mapSettings(row: SettingsRow): PlatformSettings {
     // Absent columns (pre-0085) read as the 0085 defaults.
     riderCashLimit: Number(row.rider_cash_limit ?? DEFAULT_SETTINGS.riderCashLimit),
     riderCashMaxHours: Number(row.rider_cash_max_hours ?? DEFAULT_SETTINGS.riderCashMaxHours),
-    // Absent columns (pre-0084) read as "no default target".
-    riderDailyTarget: targetOf(row.rider_daily_target, DEFAULT_SETTINGS.riderDailyTarget),
-    riderWeeklyTarget: targetOf(row.rider_weekly_target, DEFAULT_SETTINGS.riderWeeklyTarget),
     // Absent column (pre-0086) reads as off, the 0086 default.
     blockDispatchOnExpiredDocs: row.block_dispatch_on_expired_docs === true,
+    // Absent column (pre-0191) reads as the rule book's 20.
+    customerCancelSeconds: rateOf(row.customer_cancel_seconds, DEFAULT_SETTINGS.customerCancelSeconds),
   };
-}
-
-/** A delivery-count target: a whole number, never negative; absent or junk -> the default. */
-function targetOf(raw: number | string | undefined, fallback: number): number {
-  const n = Number(raw ?? fallback);
-  return Number.isInteger(n) && n >= 0 ? n : fallback;
 }
 
 /** A rate-card column (numeric, may arrive as a string); absent or junk -> the default. */
@@ -552,14 +578,18 @@ export async function riderCashLimitsAvailable(): Promise<boolean> {
   return !columnKnownMissing("platform_settings.rider_cash_limit");
 }
 
-/**
- * Are the 0084 default-target columns in this database? Same reading as
- * `riderCashLimitsAvailable`: false only on positive evidence.
- */
-export async function riderTargetsAvailable(): Promise<boolean> {
+/** Are the 0194 cash columns in this database? False only when the probe found them missing. */
+export async function cashLimitAvailable(): Promise<boolean> {
   const supabase = await createClient();
   await availableGroups(supabase);
-  return !columnKnownMissing("platform_settings.rider_daily_target");
+  return !columnKnownMissing("platform_settings.cash_limit_per_order");
+}
+
+/** Are the 0198 wallet columns in this database? False only when the probe found them missing. */
+export async function walletSettingsAvailable(): Promise<boolean> {
+  const supabase = await createClient();
+  await availableGroups(supabase);
+  return !columnKnownMissing("platform_settings.feature_wallet");
 }
 
 /** Is the 0086 column in this database? False only when the probe found it missing. */

@@ -25,6 +25,7 @@ import { columnKnownMissing, isMissingColumn, rememberColumn } from "./schema-pr
 const ACTIVE = ["placed", "kitchen", "ready", "on_the_way"] as const;
 
 const PAYMENT_COLUMNS = "orders.payment_method";
+const WALLET_COLUMN = "orders.wallet_points_used";
 /** Provenance, added by 0029. Shared probe key with manager-phone-orders.ts. */
 const CHANNEL_COLUMN = "orders.channel";
 
@@ -42,6 +43,8 @@ export interface ManagerOrderRow {
   itemCount: number;
   /** Undefined when the column is absent — not "cash". See slice A/D. */
   paymentMethod?: PaymentMethod;
+  /** Wallet points on the order (0198). `total` stays the bill. */
+  pointsUsed?: number;
   paymentStatus?: PaymentStatus;
   /**
    * True when a manager typed this order on a call (0029). Worth a badge on the
@@ -61,6 +64,7 @@ interface OrderRow {
   total: number | null;
   created_at: string;
   payment_method?: PaymentMethod | null;
+  wallet_points_used?: number | null;
   payment_status?: PaymentStatus | null;
   channel?: string | null;
   order_items: { id: string }[] | null;
@@ -87,6 +91,8 @@ interface SelectFlags {
   payment: boolean;
   /** `channel` — migration 0029. */
   channel: boolean;
+  /** `wallet_points_used` — migration 0198. */
+  wallet: boolean;
 }
 
 function columns(flags: SelectFlags): string {
@@ -94,6 +100,7 @@ function columns(flags: SelectFlags): string {
     "id, status, total, created_at, customer_id",
     flags.payment ? ", payment_method, payment_status" : "",
     flags.channel ? ", channel" : "",
+    flags.wallet ? ", wallet_points_used" : "",
     ", order_items(id)",
     ", restaurants(name)",
   ].join("");
@@ -106,6 +113,7 @@ function columns(flags: SelectFlags): string {
  * solves the same problem for the customer-facing query.
  */
 const OPTIONAL_GROUPS: Array<{ key: keyof SelectFlags; column: string }> = [
+  { key: "wallet", column: WALLET_COLUMN },
   { key: "channel", column: CHANNEL_COLUMN },
   { key: "payment", column: PAYMENT_COLUMNS },
 ];
@@ -179,6 +187,7 @@ export async function listActiveOrders(): Promise<ManagerOrderRow[]> {
   // "cash"); without 0029 it cannot mark phone orders. Both still list.
   const flags: SelectFlags = {
     payment: !columnKnownMissing(PAYMENT_COLUMNS),
+    wallet: !columnKnownMissing(WALLET_COLUMN),
     channel: !columnKnownMissing(CHANNEL_COLUMN),
   };
 
@@ -226,6 +235,7 @@ export async function listActiveOrders(): Promise<ManagerOrderRow[]> {
       createdAtIso: r.created_at,
       itemCount: r.order_items?.length ?? 0,
       paymentMethod: r.payment_method ?? undefined,
+      pointsUsed: r.wallet_points_used ?? 0,
       paymentStatus: r.payment_status ?? undefined,
       // Undefined, not false, when 0029 is absent: "we don't know" and "placed
       // in the app" are different claims, and the badge should stay off rather

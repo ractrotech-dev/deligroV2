@@ -18,7 +18,6 @@ import {
   LiveDot,
   PreviewNotice,
 } from "@/components/admin/admin-ui";
-import { ConsoleOnly } from "@/components/admin/console-only";
 import { AutoRefresh } from "@/components/shared/auto-refresh";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { cn } from "@/lib/utils/cn";
@@ -114,70 +113,58 @@ export default async function VendorSlotsPage() {
         </PreviewNotice>
       ) : null}
 
-      {/* The editor is console-only: ten reorder rows beside a 236px feed
-          sketch, with a searchable picker modal per slot. SlotSummary above
-          answers the question a phone actually asks — who is pinned, and where
-          — and keeps refreshing, so the screen is still worth opening. */}
-      <ConsoleOnly
-        tool="Editing featured slots"
-        why="The running order, above, stays live on a phone — so you can always see who is pinned where, just not move them."
-      >
-        {/* Board left, feed preview right — the preview is a narrow fixed column
-            because it is a phone-width sketch, and it stacks under the board below
-            @4xl where a 260px sidecar would squeeze the rows it explains. */}
-        <div className="grid gap-4 @4xl:grid-cols-[minmax(0,1fr)_260px] @4xl:items-start">
-          <div className="min-w-0 space-y-4">
-            {ready && vendors.length === 0 ? (
-              <EmptyState
-                icon={Store}
-                title="No shops to feature"
-                description="Add and approve a vendor first — then pin it to a slot here."
-                action={
-                  <Link href="/admin/vendors" className="c-btn c-btn-dark press">
-                    Go to vendors
-                  </Link>
-                }
+      <div className="grid gap-4 @4xl:grid-cols-[minmax(0,1fr)_260px] @4xl:items-start">
+        <div className="min-w-0 space-y-4">
+          {ready && vendors.length === 0 ? (
+            <EmptyState
+              icon={Store}
+              title="No shops to feature"
+              description="Add and approve a vendor first — then pin it to a slot here."
+              action={
+                <Link href="/admin/vendors" className="c-btn c-btn-dark">
+                  Go to vendors
+                </Link>
+              }
+            />
+          ) : (
+            <>
+              <SlotBoard
+                slots={slots}
+                vendors={vendors}
+                metrics={ranking.byId}
+                disabled={!ready}
               />
-            ) : (
-              <>
-                <SlotBoard
-                  slots={slots}
-                  vendors={vendors}
-                  metrics={ranking.byId}
-                  disabled={!ready}
-                />
 
-                {/* Under the board, not above it: the board is what the operator
-                    came to edit, and the ranking is the argument for editing it
-                    one way rather than another. */}
-                <SlotRanking
-                  rows={ranking.vendors}
-                  slotCount={SLOT_COUNT}
-                  truncated={ranking.truncated}
-                  disabled={!ready}
-                />
-              </>
-            )}
-          </div>
-
-          <FeedPreview
-            slots={slots}
-            metrics={ranking.byId}
-            tail={tail}
-            slotCount={SLOT_COUNT}
-          />
+              {/* Under the board, not above it: the board is what the operator
+                  came to edit, and the ranking is the argument for editing it
+                  one way rather than another. */}
+              <SlotRanking
+                rows={ranking.vendors}
+                slotCount={SLOT_COUNT}
+                truncated={ranking.truncated}
+                disabled={!ready}
+              />
+            </>
+          )}
         </div>
 
-        <p className="text-xs text-muted">
-          Slot 1 shows first. Drag a row by its handle to move a shop to another
-          slot — the rows in between shift by one; the arrows step one slot at a
-          time and are the keyboard and touch path, since dragging is neither.
-          Unpinned shops keep the feed&rsquo;s default order below the ten. A shop
-          can hold one slot at a time — pinning it somewhere else moves it rather
-          than duplicating it, and dropping it on an occupied slot frees that slot
-          first.
-        </p>
-      </ConsoleOnly>
+        <FeedPreview
+          slots={slots}
+          metrics={ranking.byId}
+          tail={tail}
+          slotCount={SLOT_COUNT}
+        />
+      </div>
+
+      <p className="text-xs text-muted">
+        Slot 1 shows first. Drag a row by its handle to move a shop to another
+        slot — the rows in between shift by one; the arrows step one slot at a
+        time and are the keyboard and touch path, since dragging is neither.
+        Unpinned shops keep the feed&rsquo;s default order below the ten. A shop
+        can hold one slot at a time — pinning it somewhere else moves it rather
+        than duplicating it, and dropping it on an occupied slot frees that slot
+        first.
+      </p>
     </div>
   );
 }
@@ -192,7 +179,7 @@ export default async function VendorSlotsPage() {
  */
 function SlotSummary({ slots, live }: Readonly<{ slots: FeaturedSlot[]; live: boolean }>) {
   return (
-    <div className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-xl border border-line bg-surface px-3.5 py-2.5">
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-[var(--c-r)] border border-line bg-surface px-3.5 py-2.5">
       <span className="inline-flex shrink-0 items-center gap-1.5 text-[11px] font-bold uppercase tracking-[0.07em] text-muted">
         {live ? <LiveDot /> : null}
         In the slots now

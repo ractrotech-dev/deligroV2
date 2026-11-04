@@ -1,7 +1,6 @@
 import Link from "next/link";
 import { ChartCard, Panel } from "@/components/admin/admin-ui";
 import { ShareBar, type ShareSegment } from "@/components/admin/console-ui";
-import { ConsoleOnly } from "@/components/admin/console-only";
 import { TrendChart } from "@/components/admin/charts/lazy";
 import type { AdminSeries } from "@/lib/data-access/admin-series";
 import type { VendorEarningsSummary } from "@/lib/data-access/vendor-earnings";
@@ -9,11 +8,6 @@ import { formatINR } from "@/lib/utils/format";
 
 const nf = new Intl.NumberFormat("en-IN");
 
-/**
- * Console-width report for one shop: sales chart, mix, dishes, recent
- * orders, busy hours. Hidden in the phone frame via `@3xl` — the KPIs and
- * fact cards on the overview already cover a handset.
- */
 export function VendorPerformance({
   days,
   series,
@@ -35,7 +29,7 @@ export function VendorPerformance({
 
   return (
     <>
-      <div className="hidden flex-wrap items-stretch gap-4 @3xl:flex">
+      <div className="flex-wrap items-stretch gap-4 flex">
         <div className="min-w-0 grow-[1.55] basis-[420px]">
           <ChartCard
             title="Sales and orders"
@@ -65,18 +59,12 @@ export function VendorPerformance({
               </div>
             }
           >
-            <ConsoleOnly
-              tool="The sales chart"
-              why="The figures above already cover this window."
-              notice={false}
-            >
-              {/* Revenue, with order volume behind it. This panel does not
-                  offer the dashboard's metric switch: the two totals beside
-                  the heading are this screen's whole question, and a third
-                  control on a shop's report page would be one more thing to
-                  read before getting to the shop. */}
-              <TrendChart days={series.days} metric="revenue" />
-            </ConsoleOnly>
+            {/* Revenue, with order volume behind it. This panel does not
+                offer the dashboard's metric switch: the two totals beside
+                the heading are this screen's whole question, and a third
+                control on a shop's report page would be one more thing to
+                read before getting to the shop. */}
+            <TrendChart days={series.days} metric="revenue" />
           </ChartCard>
         </div>
         <div className="flex min-w-0 grow basis-[300px] flex-col gap-4">
@@ -117,7 +105,7 @@ export function VendorPerformance({
         </div>
       </div>
 
-      <div className="hidden gap-4 @3xl:grid @3xl:grid-cols-2">
+      <div className="gap-4 grid grid-cols-2">
         <Panel title="Recent orders" subtitle="Last 30 days">
           {recent.length === 0 ? (
             <p className="py-6 text-center text-[13px] text-muted">
@@ -129,7 +117,7 @@ export function VendorPerformance({
                 <li key={o.id}>
                   <Link
                     href={`/admin/orders/${o.id}`}
-                    className="press flex items-center justify-between gap-3 border-b border-line py-2 last:border-b-0"
+                    className="flex items-center justify-between gap-3 border-b border-line py-2 last:border-b-0"
                   >
                     <span className="min-w-0">
                       <span className="text-data block text-xs font-semibold">

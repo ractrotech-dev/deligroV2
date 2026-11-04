@@ -1,4 +1,5 @@
 import { AdminShell } from "@/components/admin/admin-shell";
+import { DesktopOnlyGate } from "@/components/admin/desktop-only-notice";
 import { OneSignalInit } from "@/components/notifications/onesignal-init";
 import { getProfile, requireRole } from "@/lib/auth";
 import {
@@ -12,7 +13,6 @@ import { adminFeaturesOff } from "@/lib/features/guards.server";
 
 const NO_COUNTS: AdminNavCounts = {
   pendingApprovals: 0,
-  pendingRefunds: 0,
   liveOrders: 0,
 };
 
@@ -55,12 +55,13 @@ export default async function AdminLayout({
     // corrected after hydration.
     resolveConsolePrefs(),
     // Screens switched off in Feature access drop out of the nav. Chrome too:
-    // a failed read shows everything rather than hiding the refund queue.
+    // a failed read shows everything rather than hiding a screen.
     adminFeaturesOff().catch(() => []),
   ]);
 
   return (
     <>
+      <DesktopOnlyGate />
       {/* Ops alarms ("kitchen hasn't accepted", "no rider yet") are pushed. */}
       <OneSignalInit userId={isSupabaseConfigured ? operator.id : null} />
       <AdminShell

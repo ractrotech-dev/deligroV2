@@ -14,7 +14,7 @@
 export type SettleDecision =
   /** Paid in full (or over). Mark the order paid and ring the kitchen. */
   | { kind: "accept"; overpaidPaise: number }
-  /** Money arrived for an order that is already cancelled. Mark paid, queue a refund, stay silent. */
+  /** Money arrived for an order that is already cancelled. Mark paid and stay silent (no refund row). */
   | { kind: "accept_cancelled" }
   /** Less than the order costs. Keep the order unpaid, keep the kitchen quiet, raise an alert. */
   | { kind: "hold_underpaid"; shortfallPaise: number };

@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/api.dart';
+import '../../core/customer_features.dart';
 import '../../data/account_repository.dart';
 import '../../state/prefs.dart';
 import '../../state/providers.dart';
@@ -94,9 +95,11 @@ class _Body extends ConsumerWidget {
     final p = profile;
     final name = p.fullName?.trim().isNotEmpty == true ? p.fullName!.trim() : null;
     final settings = ref.watch(settingsProvider).value;
+    final walletBalance = ref.watch(walletProvider).value?.balance;
     final online = settings?.featureOnlinePayment == true;
     final favCount = ref.watch(favoritesProvider).value?.length;
     final mode = ref.watch(themeModeProvider);
+    final features = ref.watch(customerFeaturesProvider);
 
     return ListView(
       physics: const AlwaysScrollableScrollPhysics(),
@@ -135,11 +138,12 @@ class _Body extends ConsumerWidget {
                 ],
               ),
             ),
-            IconButton(
-              tooltip: 'Edit name',
-              onPressed: () => _editName(context, ref, name),
-              icon: const Icon(Icons.edit_outlined),
-            ),
+            if (features.can(profileEditFeature))
+              IconButton(
+                tooltip: 'Edit name',
+                onPressed: () => _editName(context, ref, name),
+                icon: const Icon(Icons.edit_outlined),
+              ),
           ],
         ),
         if (!p.canOrder) ...[
@@ -174,20 +178,34 @@ class _Body extends ConsumerWidget {
             label: 'Orders',
             onTap: () => context.go('/orders'),
           ),
-          _Row(
-            icon: Icons.favorite_rounded,
-            tone: c.deal,
-            label: 'Favourites',
-            detail: favCount == null || favCount == 0 ? null : '$favCount saved',
-            onTap: () => context.push('/profile/favorites'),
-          ),
-          _Row(
-            icon: Icons.location_on_rounded,
-            tone: c.blue,
-            label: 'Saved addresses',
-            onTap: () => context.push('/profile/addresses'),
-          ),
+          if (features.can(favoritesFeature))
+            _Row(
+              icon: Icons.favorite_rounded,
+              tone: c.deal,
+              label: 'Favourites',
+              detail: favCount == null || favCount == 0 ? null : '$favCount saved',
+              onTap: () => context.push('/profile/favorites'),
+            ),
+          if (features.can(savedAddressesFeature))
+            _Row(
+              icon: Icons.location_on_rounded,
+              tone: c.blue,
+              label: 'Saved addresses',
+              onTap: () => context.push('/profile/addresses'),
+            ),
         ]),
+        if (features.can(walletFeature)) ...[
+          const _Head('Wallet'),
+          _Group(children: [
+            _Row(
+              icon: Icons.savings_outlined,
+              tone: c.green,
+              label: walletBalance == null ? 'Wallet' : '$walletBalance points',
+              detail: 'Change from cash orders. 1 point = ₹1.',
+              onTap: () => context.push('/profile/wallet'),
+            ),
+          ]),
+        ],
         const _Head('Payment'),
         _Group(children: [
           _Row(

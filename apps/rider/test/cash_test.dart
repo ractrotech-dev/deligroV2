@@ -571,7 +571,7 @@ void main() {
       await _pump(t, repo: repo);
 
       expect(find.byKey(const Key('cash-not-earnings')), findsOneWidget);
-      expect(find.textContaining('not part of your earnings'), findsOneWidget);
+      expect(find.textContaining('not part of your salary'), findsOneWidget);
       expect(_in('cash-pending', find.text('₹2,400')), findsOneWidget);
       expect(find.text('Cash in hand'), findsOneWidget);
       expect(_in('tile-to-collect', find.text('₹450')), findsOneWidget);
@@ -579,7 +579,7 @@ void main() {
       expect(_in('tile-deposited-today', find.text('₹300')), findsOneWidget);
       expect(_in('tile-awaiting', find.text('₹600')), findsOneWidget);
       expect(find.byKey(const Key('cash-awaiting-note')), findsOneWidget);
-      expect(find.text('₹600 of this is waiting for a manager.'), findsOneWidget);
+      expect(find.text('₹600 of this is waiting to be confirmed.'), findsOneWidget);
       // Within limits: no warning.
       expect(find.byKey(const Key('cash-over-reason')), findsNothing);
       expect(
@@ -699,11 +699,11 @@ void main() {
         _deposit(id: 'c', amount: 200, status: DepositStatus.confirmed),
       ];
       await _pump(t, repo: repo);
-      expect(_in('deposit-a', find.text('Waiting for a manager')), findsOneWidget);
+      expect(_in('deposit-a', find.text('Waiting to be confirmed')), findsOneWidget);
       expect(_in('deposit-a', find.text('Reference UTR-1')), findsOneWidget);
       expect(_in('deposit-b', find.text('Disputed')), findsOneWidget);
       expect(
-        _in('deposit-note-b', find.text("Manager's note: Only 300 reached me")),
+        _in('deposit-note-b', find.text('Note: Only 300 reached me')),
         findsOneWidget,
       );
       expect(_in('deposit-c', find.text('Confirmed')), findsOneWidget);
@@ -735,7 +735,7 @@ void main() {
       await _tap(t, find.byKey(const Key('withdraw-a')));
       await _tap(t, find.byKey(const Key('withdraw-confirm')));
       expect(
-        find.text('A manager has already looked at this deposit.'),
+        find.text('A manager or the owner has already looked at this deposit.'),
         findsOneWidget,
       );
     });
@@ -769,7 +769,7 @@ void main() {
       expect(sent.photo, isNull);
       // The sheet closed and the rider was told.
       expect(find.byKey(const Key('deposit-send')), findsNothing);
-      expect(find.text('Sent. A manager will confirm your deposit.'), findsOneWidget);
+      expect(find.text('Sent. A manager or the owner will confirm your deposit.'), findsOneWidget);
     });
 
     testWidgets('what is already waiting is not offered again', (t) async {
@@ -1008,12 +1008,12 @@ void main() {
       expect(find.byKey(const Key('cash-badge')), findsNothing);
     });
 
-    testWidgets('Home shows "Cash in hand" labelled Not your earnings', (
+    testWidgets('Home shows "Cash in hand" labelled Not your salary', (
       t,
     ) async {
       await _pump(t, repo: _Fake(), start: '/home');
       expect(find.text('Cash in hand ₹2,400'), findsOneWidget);
-      expect(find.text('Not your earnings'), findsOneWidget);
+      expect(find.text('Not your salary'), findsOneWidget);
     });
 
     testWidgets('Home shows nothing when no cash is held', (t) async {

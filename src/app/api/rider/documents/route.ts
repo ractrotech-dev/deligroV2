@@ -14,7 +14,7 @@ const MAX_BODY_BYTES = DOC_MAX_BYTES + 64 * 1024;
  *   401 · 403 not_rider · 429 · 503 migration_pending · 500
  */
 export async function GET() {
-  const gate = await riderProfileGate(ROUTE, { write: false, perMinute: 30 });
+  const gate = await riderProfileGate(ROUTE, { write: false, perMinute: 30, allowRejected: true });
   if (!gate.ok) return gate.response;
   try {
     return profileJson({ documents: await listRiderDocuments(gate.driverId) });
@@ -35,8 +35,9 @@ const field = (form: FormData, key: string): string | undefined => {
  * host's request-body limit is about 4.5 MB; the app compresses photos),
  * checked by its bytes. Stored in the private `rider-documents` bucket at a
  * path the server builds; the previous document of that type becomes history.
- * An unverified or rejected rider's verification goes to `pending`; a verified
- * rider stays verified and only the document waits (ruling P6-R1). An Aadhaar
+ * An unverified rider's verification goes to `pending`; a verified rider stays
+ * verified and only the document waits (ruling P6-R1). A rejected rider may
+ * upload too, and stays rejected until staff approve them (P8-R9). An Aadhaar
  * number is kept as its last four digits only.
  *
  *   201 { ok: true, id }
@@ -49,7 +50,7 @@ const field = (form: FormData, key: string): string | undefined => {
  * puc. Rate limit: 10 a minute per rider.
  */
 export async function POST(request: Request) {
-  const gate = await riderProfileGate(ROUTE, { write: true, perMinute: 10 });
+  const gate = await riderProfileGate(ROUTE, { write: true, perMinute: 10, allowRejected: true });
   if (!gate.ok) return gate.response;
 
   const length = request.headers.get("content-length");

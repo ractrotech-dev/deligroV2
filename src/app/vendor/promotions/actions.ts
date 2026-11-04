@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { vendorFeatureOn } from "@/lib/features/guards.server";
 import { FEATURE_OFF_MESSAGE } from "@/lib/features/catalog";
+import { istInputToIso } from "@/lib/utils/ist-time";
 import { redirect } from "next/navigation";
 import { requireVendorAccess } from "@/lib/auth/vendor-access";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
@@ -37,12 +38,6 @@ function toInt(raw: FormDataEntryValue | null, fallback: number): number {
   return Number.isFinite(n) ? Math.trunc(n) : fallback;
 }
 
-function toIso(raw: FormDataEntryValue | null): string | null {
-  if (typeof raw !== "string" || !raw.trim()) return null;
-  const d = new Date(raw);
-  return Number.isNaN(d.getTime()) ? null : d.toISOString();
-}
-
 /**
  * The two fields a vendor does not get to choose.
  *
@@ -62,7 +57,7 @@ function parse(form: FormData, restaurantId: string): PromotionDraft {
     minOrder: Math.max(0, toInt(form.get("minOrder"), 0)),
     maxDiscount: kind === "percent" ? toOptionalInt(form.get("maxDiscount")) : null,
     active: form.get("active") === "on",
-    expiresAt: toIso(form.get("expiresAt")),
+    expiresAt: istInputToIso(form.get("expiresAt")),
     maxPerCustomer: toOptionalInt(form.get("maxPerCustomer")),
     maxRedemptions: toOptionalInt(form.get("maxRedemptions")),
     restaurantId,

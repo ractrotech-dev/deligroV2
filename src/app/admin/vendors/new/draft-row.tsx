@@ -43,7 +43,7 @@ export function DraftRow({
     <li className="flex items-center gap-2">
       <Link
         href={`/admin/vendors/new?draft=${id}`}
-        className="press flex min-w-0 flex-1 items-center gap-3 rounded-xl bg-surface-2 px-3 py-2.5"
+        className="flex min-w-0 flex-1 items-center gap-3 rounded-[var(--c-r)] bg-surface-2 px-3 py-2.5"
       >
         <FileClock className="size-4 shrink-0 text-muted" />
         <span className="min-w-0 flex-1">
@@ -54,7 +54,7 @@ export function DraftRow({
       <button
         type="button"
         onClick={() => setConfirming(true)}
-        className="press grid size-9 shrink-0 place-items-center rounded-xl bg-surface-2 text-muted hover:text-deal"
+        className="grid size-9 shrink-0 place-items-center rounded-[var(--c-r)] bg-surface-2 text-muted hover:text-deal"
         aria-label={`Delete draft ${shopName}`}
       >
         <Trash2 className="size-4" />

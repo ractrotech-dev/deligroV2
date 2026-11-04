@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/api.dart';
+import '../../core/customer_features.dart';
 import '../../core/format.dart';
 import '../../core/options.dart';
 import '../../models/restaurant.dart';
@@ -348,17 +349,19 @@ class _HeroState extends ConsumerState<_Hero> {
       ),
       leadingWidth: 60,
       actions: [
-        IconButton(
-          tooltip: fav ? 'Remove from favourites' : 'Save to favourites',
-          style: circle(),
-          onPressed: _busy ? null : () => _toggleFavorite(fav),
-          icon: Icon(
-            fav ? Icons.favorite_rounded : Icons.favorite_border_rounded,
-            size: 21,
-            color: fav ? c.deal : c.ink,
+        if (ref.watch(customerFeaturesProvider).can(favoritesFeature)) ...[
+          IconButton(
+            tooltip: fav ? 'Remove from favourites' : 'Save to favourites',
+            style: circle(),
+            onPressed: _busy ? null : () => _toggleFavorite(fav),
+            icon: Icon(
+              fav ? Icons.favorite_rounded : Icons.favorite_border_rounded,
+              size: 21,
+              color: fav ? c.deal : c.ink,
+            ),
           ),
-        ),
-        const SizedBox(width: 10),
+          const SizedBox(width: 10),
+        ],
       ],
       flexibleSpace: LayoutBuilder(
         builder: (context, box) {

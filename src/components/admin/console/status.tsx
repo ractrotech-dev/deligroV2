@@ -121,6 +121,8 @@ export interface AttentionItem {
   /** Why it needs a person, in the words an operator would use. */
   detail: string;
   count: number;
+  /** Shown as the headline in place of the count, when the point is an amount. */
+  figure?: string;
   tone: Tone;
   /** The button's words: "View orders", "Open queue". */
   action?: string;
@@ -169,7 +171,7 @@ export function AttentionCards({ items }: Readonly<{ items: AttentionItem[] }>) 
               className="text-data text-[30px] font-extrabold leading-none tabular-nums"
               style={{ color }}
             >
-              {i.count}
+              {i.figure ?? i.count}
             </p>
             <p className="mt-1.5 text-[12.5px] font-semibold leading-snug text-ink">
               {i.title}

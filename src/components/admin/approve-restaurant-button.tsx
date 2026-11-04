@@ -74,7 +74,7 @@ export function ApproveRestaurantButton({
           disabled={pending}
           aria-label={`Approve ${name}`}
           onClick={() => setAsking(true)}
-          className={cn("c-btn-affirm press inline-flex items-center gap-1", pending && "opacity-60")}
+          className={cn("c-btn-affirm inline-flex items-center gap-1", pending && "opacity-60")}
         >
           {pending ? (
             <LoaderCircle className="size-3 animate-spin" />

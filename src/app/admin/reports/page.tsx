@@ -9,10 +9,10 @@ import {
   SectionCol,
   SectionRow,
 } from "@/components/admin/console";
-import { ConsoleOnly } from "@/components/admin/console-only";
 import { TrendChart } from "@/components/admin/charts/lazy";
 import { DataTable, type Column } from "@/components/admin/data-table";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
+import { captureError } from "@/lib/obs/emit";
 import {
   buildReport,
   defaultRange,
@@ -40,7 +40,7 @@ import { ReportExport } from "./report-export";
  *
  * ## The charts
  *
- * Two, and both plot the report's *own* rows: `buildReport` returns the daily
+ * Up to two, and each plots the report's *own* rows: `buildReport` returns the daily
  * series alongside the table, built from the same set of orders after the same
  * vendor and payment filters. A chart fetched separately would answer a
  * slightly different question, and a chart that disagrees with the table under
@@ -51,24 +51,11 @@ import { ReportExport } from "./report-export";
  * order volume rides beside it, because "was that a big day or a busy day" is
  * the first question anyone asks of a revenue line.
  *
- * The settlement report draws neither. It is grouped by payout rather than by
- * day, so a daily line beneath it would be a picture of something the table is
- * not about. A range too long to plot legibly likewise returns no series, and
- * the section says so rather than drawing six hundred points.
- *
- * ## What a phone gets
- *
- * The figures and the rows, not the charts and not the exports. Reading last
- * week's takings on the way to a shop is a real thing an operator does, so
- * nothing read-only is taken away; the table goes through `DataTable`, which
- * stacks into cards below the console breakpoint instead of scrolling a 640px
- * slab sideways in a 370px column.
- *
- * The Excel and Save-as-PDF buttons are console-only. An .xlsx that lands in a
- * phone's downloads folder is not a file anybody is going to do anything with,
- * and "Save as PDF" is a desktop print dialogue. That is a presentation
- * decision like every other `ConsoleOnly`: the report data is admin-gated
- * server-side and none of that changes.
+ * A chart is drawn only when the report has that column: Daily finance has no
+ * order count and Average order has no customer-paid figure, and plotting a
+ * missing column would draw a false flat zero. The settlement report draws
+ * neither. It is grouped by payout rather than by day, so a daily line beneath it
+ * would be a picture of something the table is not about.
  */
 export const dynamic = "force-dynamic";
 
@@ -147,9 +134,16 @@ export default async function ReportsPage({
       payment,
     },
     { id: admin.id, name: admin.full_name?.trim() || "Admin" }
-  ).catch(() => ({
-    error: "Could not build that report. Try a shorter date range.",
-  }));
+  ).catch((e: unknown) => {
+    // Only a query that ran out of time is helped by fewer days.
+    const timedOut = (e as { code?: string } | null)?.code === "57014";
+    if (!timedOut) captureError(e, { source: "admin-reports/build", attrs: { event: "report_failed", kind } });
+    return {
+      error: timedOut
+        ? "This report took too long. Try a shorter date range."
+        : "Could not build that report. Refresh to try again.",
+    };
+  });
 
   const error = "error" in result ? result.error : null;
   const report = "error" in result ? null : result;
@@ -166,6 +160,8 @@ export default async function ReportsPage({
     })) ?? [];
 
   const plottable = series.length > 0 && !report?.empty;
+  const showRevenue = plottable && report?.charts.revenue === true;
+  const showOrders = plottable && report?.charts.orders === true;
 
   return (
     <>
@@ -201,9 +197,9 @@ export default async function ReportsPage({
             title={report.title}
             meta={report.subtitle}
             actions={
-              <ConsoleOnly tool="Exporting a report" notice={false}>
+              <>
                 <ReportExport report={report} />
-              </ConsoleOnly>
+              </>
             }
           >
             {report.notes.map((n) => (
@@ -228,26 +224,26 @@ export default async function ReportsPage({
             )}
           </Section>
 
-          {plottable ? (
-            // Console-only, and lazily loaded with it: the figures above cover
-            // the same window and are the part worth reading on a phone, and a
-            // 90-day plot in a 370px column costs a charting library to draw
-            // something illegible.
-            <ConsoleOnly
-              tool="The report charts"
-              why="The figures above cover the same window, and the table below has every day in it."
-            >
-              <SectionRow>
+          {showRevenue || showOrders ? (
+            <SectionRow>
+              {showRevenue ? (
                 <SectionCol grow={1.7} basis={420}>
                   <Panel
                     title="Revenue over time"
                     meta="what customers paid, per day"
                   >
                     <div className="h-[210px]">
-                      <TrendChart days={series} metric="revenue" />
+                      <TrendChart
+                        days={series}
+                        metric="revenue"
+                        showVolume={showOrders}
+                        soloMetric={!showOrders}
+                      />
                     </div>
                   </Panel>
                 </SectionCol>
+              ) : null}
+              {showOrders ? (
                 <SectionCol basis={300}>
                   <Panel title="Orders over time" meta="per day">
                     <div className="h-[210px]">
@@ -257,25 +253,23 @@ export default async function ReportsPage({
                         days={series}
                         metric="orders"
                         showVolume={false}
+                        soloMetric={!showRevenue}
                       />
                     </div>
                   </Panel>
                 </SectionCol>
-              </SectionRow>
-            </ConsoleOnly>
+              ) : null}
+            </SectionRow>
           ) : null}
 
           {report.empty ? null : (
             <Section title="Detail" meta={`${report.table.rows.length} rows`}>
               <DataTable<ReportRow>
                 caption={report.title}
-                columns={report.table.columns.map((c, i): Column<ReportRow> => ({
+                columns={report.table.columns.map((c): Column<ReportRow> => ({
                   key: c.key,
                   header: c.label,
                   align: c.align,
-                  // The first column names the row; in a card it is the
-                  // headline, and every other column becomes a labelled line.
-                  role: i === 0 ? "title" : undefined,
                   cell: (row) => cellValue(row, c.key, c.money),
                 }))}
                 // Keyed by position: a report's first column is a date, a shop

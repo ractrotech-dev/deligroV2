@@ -57,7 +57,7 @@ export function ApprovalQueue({
           </span>
           <Link
             href={`/admin/vendors/${r.id}?tab=overview`}
-            className="c-btn-quiet press shrink-0"
+            className="c-btn-quiet shrink-0"
           >
             Review
           </Link>

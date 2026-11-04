@@ -153,7 +153,7 @@ export function PayoutAccountForm({ driverId }: Readonly<{ driverId: string }>) 
         </select>
       </Field>
       {kind === "bank" ? (
-        <div className="grid gap-3 @lg:grid-cols-2">
+        <div className="grid gap-3 grid-cols-2">
           <Field label="Account holder">
             <input name="holderName" required maxLength={100} className={fieldCls} />
           </Field>
@@ -168,7 +168,7 @@ export function PayoutAccountForm({ driverId }: Readonly<{ driverId: string }>) 
           </Field>
         </div>
       ) : (
-        <div className="grid gap-3 @lg:grid-cols-2">
+        <div className="grid gap-3 grid-cols-2">
           <Field label="UPI ID">
             <input name="upiId" required maxLength={300} className={`${fieldCls} text-data`} placeholder="name@bank" />
           </Field>

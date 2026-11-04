@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { requireRole } from "@/lib/auth";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { Empty, PageHeader, StatusText, Toolbar } from "@/components/admin/console";
@@ -10,6 +11,7 @@ import { listAudit } from "@/lib/data-access/manager-audit";
 import { listCitiesWithZones } from "@/lib/data-access/zones";
 import { AUDIT_ACTIONS, auditActionDef } from "@/lib/ops/audit-catalog";
 import { auditDiff, parseAuditQuery, type AuditEntry, type AuditQuery } from "@/lib/ops/alerts-contract";
+import { auditPager } from "@/lib/ops/audit-paging";
 import { formatRelativeTime } from "@/lib/utils/relative-time";
 
 export const metadata: Metadata = { title: "Audit log · Admin · Deligro" };
@@ -20,8 +22,6 @@ export const metadata: Metadata = { title: "Audit log · Admin · Deligro" };
  * nobody can edit it (0141 refuses even the service role). Contact and bank
  * details never appear: the RPCs leave them out and the reader redacts them
  * as a backstop.
- *
- * Platform: BOTH. Filters are a GET form; 100 most recent matching entries.
  */
 export const dynamic = "force-dynamic";
 
@@ -47,22 +47,25 @@ export default async function AdminAuditPage({
   const q = "error" in parsed ? (parseAuditQuery(new URLSearchParams()) as AuditQuery) : parsed;
 
   let entries: AuditEntry[] = [];
+  let nextCursor: string | null = null;
   let zones: { id: string; name: string }[] = [];
   let missing = false;
   if (isSupabaseConfigured) {
     try {
       const [page, cities] = await Promise.all([listAudit({ all: true }, { ...q, limit: 100 }), listCitiesWithZones()]);
       entries = page.items;
+      nextCursor = page.nextCursor;
       zones = cities.flatMap((c) => c.zones.map((z) => ({ id: z.id, name: `${z.name} · ${c.name}` })));
     } catch {
       missing = true;
     }
   }
   const zoneName = new Map(zones.map((z) => [z.id, z.name]));
-  const filtered = params.size > 0;
+  const filtered = [...params.keys()].some((k) => k !== "cursor" && k !== "back");
+  const pager = auditPager("/admin/audit", params, nextCursor);
 
   const columns: Column<AuditEntry>[] = [
-    { key: "action", header: "Action", role: "title", cell: (e) => {
+    { key: "action", header: "Action", cell: (e) => {
       const def = auditActionDef(e.action);
       return (
         <span className="block min-w-0">
@@ -74,7 +77,7 @@ export default async function AdminAuditPage({
     { key: "who", header: "By", cell: (e) => `${e.actor.name} (${e.actor.role})` },
     { key: "zone", header: "Zone", cell: (e) => (e.zoneId ? (zoneName.get(e.zoneId) ?? "—") : "Platform") },
     { key: "reason", header: "Reason", cell: (e) => e.reason ?? "—" },
-    { key: "change", header: "Change", role: "wideOnly", cell: (e) => {
+    { key: "change", header: "Change", cell: (e) => {
       const diff = auditDiff(e.before, e.after).slice(0, 4);
       if (diff.length === 0) return "—";
       return (
@@ -87,7 +90,7 @@ export default async function AdminAuditPage({
         </span>
       );
     } },
-    { key: "at", header: "When", role: "trailing", width: "w-[120px]", cell: (e) => (
+    { key: "at", header: "When", width: "w-[120px]", cell: (e) => (
       <span title={new Date(e.at).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })}>
         {auditActionDef(e.action)?.sensitive ? <StatusText tone="amber">{formatRelativeTime(e.at)}</StatusText> : formatRelativeTime(e.at)}
       </span>
@@ -121,6 +124,25 @@ export default async function AdminAuditPage({
           rows={entries}
           rowKey={(e) => String(e.id)}
           empty={<Empty action={filtered ? { href: "/admin/audit", label: "Clear filters" } : undefined}>No entries match.</Empty>}
+          footer={
+            pager.next || pager.back ? (
+              <nav className="flex items-center justify-between gap-2" aria-label="Pagination">
+                <span className="text-xs text-muted">Page {pager.page}</span>
+                <span className="flex items-center gap-1.5">
+                  {pager.back ? (
+                    <Link href={pager.back} className="c-btn c-btn-outline">
+                      Back
+                    </Link>
+                  ) : null}
+                  {pager.next ? (
+                    <Link href={pager.next} className="c-btn c-btn-outline">
+                      Next
+                    </Link>
+                  ) : null}
+                </span>
+              </nav>
+            ) : undefined
+          }
         />
       )}
     </>

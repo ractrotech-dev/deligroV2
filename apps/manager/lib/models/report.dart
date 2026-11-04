@@ -31,6 +31,18 @@ class ReportColumn {
   final ReportColumnType type;
 }
 
+/// A status a report can be filtered by: the value the server takes, and the
+/// words it gives for it.
+class ReportStatusOption {
+  const ReportStatusOption({required this.value, required this.label});
+  factory ReportStatusOption.fromJson(Map<String, dynamic> j) {
+    final value = jStrOr(j['value']);
+    return ReportStatusOption(value: value, label: jStrOr(j['label'], value));
+  }
+  final String value;
+  final String label;
+}
+
 /// One entry of `GET /api/manager/reports/kinds` — only kinds the caller may run.
 class ReportKindInfo {
   const ReportKindInfo({
@@ -45,7 +57,7 @@ class ReportKindInfo {
         label: jStrOr(j['label']),
         blurb: jStrOr(j['blurb']),
         filters: jStrings(j['filters']),
-        statusOptions: jStrings(j['statusOptions']),
+        statusOptions: [for (final o in jMaps(j['statusOptions'])) ReportStatusOption.fromJson(o)],
       );
   final String kind;
   final String label;
@@ -53,9 +65,13 @@ class ReportKindInfo {
 
   /// Which of `vendor`, `rider`, `status`, `zone`, `payment` this kind takes.
   final List<String> filters;
-  final List<String> statusOptions;
+  final List<ReportStatusOption> statusOptions;
 
   bool takes(String filter) => filters.contains(filter);
+
+  /// The words for a status value, or the value itself when it is not listed.
+  String statusLabel(String value) =>
+      statusOptions.where((o) => o.value == value).firstOrNull?.label ?? value.replaceAll('_', ' ');
 }
 
 class ReportKindList {

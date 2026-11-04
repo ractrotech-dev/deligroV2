@@ -22,7 +22,7 @@ import { initials } from "@/lib/utils/format";
 import { cn } from "@/lib/utils/cn";
 
 /**
- * The web console's left rail — the piece the phone shell has no room for.
+ * The console's left rail.
  *
  * Grouped rather than flat: an operator scanning for "where do I approve a
  * shop" is looking for a category first and a label second. Badges are live
@@ -71,7 +71,7 @@ export function AdminSidebar({
   const current = activeNavItem(pathname);
 
   return (
-    <aside className="admin-sidebar hidden lg:flex">
+    <aside className="admin-sidebar flex">
       <div
         className={cn(
           "flex h-full flex-col border-r border-[var(--sb-border)] bg-[var(--sb-bg)] transition-[width] duration-150",
@@ -86,7 +86,7 @@ export function AdminSidebar({
         >
           <Link
             href="/admin"
-            className="press flex min-w-0 items-center gap-[9px]"
+            className="flex min-w-0 items-center gap-[9px]"
             aria-label="Deligro ops console"
           >
             <span className="grid size-[28px] shrink-0 place-items-center rounded-[8px] bg-accent text-sm font-extrabold text-[var(--on-accent)]">
@@ -195,7 +195,7 @@ export function AdminSidebar({
                 <form action="/auth/signout?next=/admin/login" method="post">
                   <button
                     type="submit"
-                    className="press flex w-full items-center gap-2 rounded-[7px] px-2 py-1.5 text-[11.5px] font-semibold text-[var(--sb-meta)] transition-colors hover:bg-[var(--sb-hover)] hover:text-[var(--ink)]"
+                    className="flex w-full items-center gap-2 rounded-[7px] px-2 py-1.5 text-[11.5px] font-semibold text-[var(--sb-meta)] transition-colors hover:bg-[var(--sb-hover)] hover:text-[var(--ink)]"
                   >
                     <LogOut className="size-[15px]" strokeWidth={1.7} />
                     Sign out
@@ -222,7 +222,7 @@ function FootLink({
   return (
     <Link
       href={href}
-      className="press flex w-full items-center gap-2 rounded-[7px] px-2 py-1.5 text-[11.5px] font-semibold text-[var(--sb-meta)] transition-colors hover:bg-[var(--sb-hover)] hover:text-[var(--ink)]"
+      className="flex w-full items-center gap-2 rounded-[7px] px-2 py-1.5 text-[11.5px] font-semibold text-[var(--sb-meta)] transition-colors hover:bg-[var(--sb-hover)] hover:text-[var(--ink)]"
     >
       <Icon className="size-[15px]" strokeWidth={1.7} />
       {children}
@@ -231,12 +231,12 @@ function FootLink({
 }
 
 /**
- * Which queues read as urgent. Approvals and refunds are work sitting on a
+ * Which queues read as urgent. Approvals are work sitting on a
  * person; live orders is activity, not a to-do, so it stays neutral however
  * high it climbs — an orange 60 next to Orders on a busy evening would train
  * the operator to ignore the colour that matters.
  */
-const HOT = new Set<BadgeKey>(["pendingApprovals", "pendingRefunds"]);
+const HOT = new Set<BadgeKey>(["pendingApprovals"]);
 
 function NavLink({
   item,

@@ -53,7 +53,7 @@ export function PendingApprovals({ pending }: Readonly<{ pending: PendingRestaur
         <button
           type="button"
           onClick={() => setExpanded(true)}
-          className="press flex w-full items-center justify-center gap-1 border-t border-[color:var(--c-divider)] pt-2.5 text-[11.5px] font-semibold text-accent-ink"
+          className="flex w-full items-center justify-center gap-1 border-t border-[color:var(--c-divider)] pt-2.5 text-[11.5px] font-semibold text-accent-ink"
         >
           See {hidden} more
           <ChevronDown className="size-3.5" />

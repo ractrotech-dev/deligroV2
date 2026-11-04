@@ -10,6 +10,7 @@ class Dashboard {
     required this.liveAccepted,
     required this.livePreparing,
     required this.liveReady,
+    required this.liveOutForDelivery,
     required this.todayOrders,
     required this.todayCompleted,
     required this.todayCancelled,
@@ -32,6 +33,7 @@ class Dashboard {
       liveAccepted: n(live, 'accepted'),
       livePreparing: n(live, 'preparing'),
       liveReady: n(live, 'ready'),
+      liveOutForDelivery: n(live, 'outForDelivery'),
       todayOrders: n(today, 'orders'),
       todayCompleted: n(today, 'completed'),
       todayCancelled: n(today, 'cancelled'),
@@ -64,6 +66,11 @@ class Dashboard {
   final int liveAccepted;
   final int livePreparing;
   final int liveReady;
+  final int liveOutForDelivery;
+
+  /// Orders still in the kitchen. Accept moves an order straight to ready, so
+  /// this is only orders from before that, or one whose move did not land.
+  int get liveInKitchen => liveAccepted + livePreparing;
   final int todayOrders;
   final int todayCompleted;
   final int todayCancelled;

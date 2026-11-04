@@ -8,7 +8,7 @@ Color requestStatusColor(AppColors c, RequestStatus s) => switch (s) {
       RequestStatus.approved || RequestStatus.inProgress => c.blue,
       RequestStatus.completed => c.green,
       RequestStatus.rejected => c.deal,
-      RequestStatus.unknown => c.muted,
+      RequestStatus.cancelled || RequestStatus.unknown => c.muted,
     };
 
 Color campaignStateColor(AppColors c, CampaignState s, CampaignStatus status) {

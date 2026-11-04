@@ -60,28 +60,14 @@ class DashToday {
       );
 }
 
-/// Figures 7, 8, 9 and 12's amount, from the recorded ledger.
+/// What is still to be paid, from the recorded ledger.
 class DashMoney {
-  const DashMoney({
-    required this.today,
-    required this.total,
-    required this.pending,
-    required this.incentivesThisWeek,
-  });
-
-  final double today;
-  final double total;
+  const DashMoney({required this.pending});
 
   /// Signed: negative means the rider owes Deligro.
   final double pending;
-  final double incentivesThisWeek;
 
-  factory DashMoney.fromJson(Map<String, dynamic> j) => DashMoney(
-        today: _dbl(j['today']),
-        total: _dbl(j['total']),
-        pending: _dbl(j['pending']),
-        incentivesThisWeek: _dbl(j['incentivesThisWeek']),
-      );
+  factory DashMoney.fromJson(Map<String, dynamic> j) => DashMoney(pending: _dbl(j['pending']));
 }
 
 /// Figure 11: the delivery the rider is carrying.
@@ -116,31 +102,6 @@ class DashCurrent {
   }
 }
 
-/// Figure 12's progress: the incentive nearest to being earned.
-class NearestTarget {
-  const NearestTarget({
-    required this.name,
-    required this.done,
-    required this.target,
-    required this.bonus,
-  });
-
-  final String name;
-  final int done;
-  final int target;
-  final double bonus;
-
-  /// 0..1, never NaN.
-  double get fraction => target <= 0 ? 0 : (done / target).clamp(0.0, 1.0);
-
-  factory NearestTarget.fromJson(Map<String, dynamic> j) => NearestTarget(
-        name: '${j['name'] ?? ''}',
-        done: _int(j['done']),
-        target: _int(j['target']),
-        bonus: _dbl(j['bonus']),
-      );
-}
-
 /// Rain, a storm or heat in one of the rider's zones (0178), told on Home.
 class WeatherNotice {
   const WeatherNotice({required this.level, required this.title, required this.body});
@@ -161,7 +122,6 @@ class RiderDashboard {
     this.availability = RiderAvailabilityDto.offline,
     this.phase = 'offline',
     this.current,
-    this.nearestTarget,
     this.updatedAt,
     this.weather = const [],
   });
@@ -173,7 +133,6 @@ class RiderDashboard {
   final RiderAvailabilityDto availability;
   final String phase;
   final DashCurrent? current;
-  final NearestTarget? nearestTarget;
   final DateTime? updatedAt;
 
   /// The rider's zones with weather now; empty from an older server.
@@ -187,9 +146,6 @@ class RiderDashboard {
             : RiderAvailabilityDto.offline,
         phase: '${j['phase'] ?? 'offline'}',
         current: j['current'] is Map ? DashCurrent.fromJson(_map(j['current'])) : null,
-        nearestTarget: j['nearestTarget'] is Map
-            ? NearestTarget.fromJson(_map(j['nearestTarget']))
-            : null,
         updatedAt: _date(j['updatedAt']),
         weather: [
           for (final w in (j['weather'] is List ? j['weather'] as List : const []))

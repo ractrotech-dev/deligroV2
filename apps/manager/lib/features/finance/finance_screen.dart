@@ -90,7 +90,7 @@ class _FinanceOff extends StatelessWidget {
             const SizedBox(height: 10),
             const Text("Finance isn't switched on for your account", textAlign: TextAlign.center),
             const SizedBox(height: 4),
-            Text('Ask an admin to turn on Finance in Feature access.',
+            Text('Ask an admin to turn on Finance in App features.',
                 textAlign: TextAlign.center, style: TextStyle(color: context.colors.muted)),
           ],
         ),

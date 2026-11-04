@@ -75,6 +75,7 @@ export function formatOrderPlacedAt(iso: string, lang: Lang = "en"): string {
 }
 
 interface DbMenuItemRef {
+  id?: string | null;
   external_id: string | null;
   veg: boolean | null;
 }
@@ -95,7 +96,7 @@ interface DbOrderItemRow {
  *
  * `Order` in `@/types` is the shape the mock catalogue also satisfies, so it
  * carries nothing about money that has (or hasn't) moved. The tracker needs
- * that: whether to offer a refund request, and what to call the total. Extending
+ * that: what to call the total. Extending
  * rather than widening keeps every existing consumer working unchanged — a
  * `UiOrder` is an `Order`.
  */
@@ -103,6 +104,8 @@ export interface UiOrder extends Order {
   /** From migration 0025; undefined on a database that predates it (all COD). */
   paymentMethod?: PaymentMethod;
   paymentStatus?: PaymentStatus;
+  /** Wallet points on this order (0198). `total` stays the bill; cash due = total − this. */
+  pointsUsed?: number;
   /** Raw `created_at`. `placedAt` is a human label and can't be computed from. */
   createdAt?: string;
   /**
@@ -206,8 +209,7 @@ export function cancellationNote(
  * Money we are actually holding.
  *
  * `authorized` has not been captured and `refunded` has already gone back, so
- * neither is something to offer a refund against. Getting this wrong in the
- * generous direction means inviting a customer to claim money we never took.
+ * neither counts.
  */
 export function isOrderPaid(order: { paymentStatus?: PaymentStatus }): boolean {
   return order.paymentStatus === "paid";
@@ -233,6 +235,7 @@ export function mapDbOrderRow(row: DbOrder): UiOrder {
       (restaurant as { eta_min?: number } | null)?.eta_min ?? undefined,
     paymentMethod: row.payment_method,
     paymentStatus: row.payment_status,
+    pointsUsed: row.wallet_points_used ?? 0,
     cancelledBy: asCancelledBy(row.cancelled_by),
     cancellationReason: row.cancellation_reason ?? null,
     address: row.address,
@@ -249,7 +252,9 @@ export function mapDbOrderRow(row: DbOrder): UiOrder {
       const menu = item.menu_items;
       const menuItem = Array.isArray(menu) ? menu[0] : menu;
       return {
-        itemId: menuItem?.external_id ?? item.name,
+        // `external_id ?? id`, what createOrder accepts: a dish the shop added
+        // itself has no external id. The name is only for a dish since deleted.
+        itemId: menuItem?.external_id ?? menuItem?.id ?? item.name,
         name: item.name,
         qty: item.qty,
         price: item.price,

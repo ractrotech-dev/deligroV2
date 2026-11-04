@@ -43,7 +43,7 @@ export function BannerRowActions({
   // Base chip + a per-action colour, so the controls read as colourful as the
   // rest of the admin section. Each keeps its own hue with a matching hover tint.
   const base =
-    "press grid size-9 place-items-center rounded-full bg-surface-2 transition-colors disabled:opacity-50";
+    "grid size-9 place-items-center rounded-full bg-surface-2 transition-colors disabled:opacity-50";
   const tone = {
     blue: "text-blue hover:bg-blue/15",
     accent: "text-accent hover:bg-accent/15",

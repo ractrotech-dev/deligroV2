@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import { featureOffResponse, vendorFeatureOn } from "@/lib/features/guards.server";
+import { isFeatureOn } from "@/lib/features/flags.server";
+import { createClient } from "@/lib/supabase/server";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { getProfile } from "@/lib/auth";
 import { hasVendorAccess } from "@/lib/auth/vendor-access";
@@ -64,9 +66,20 @@ export async function PATCH(
   if (!body.status || !ALLOWED.has(body.status)) {
     return NextResponse.json({ error: "invalid_status" }, { status: 400 });
   }
-  // Rejecting / cancelling is switchable per shop; accept and ready are core.
-  if (body.status === "cancelled" && !(await vendorFeatureOn("vendor.reject_orders"))) {
-    return featureOffResponse("vendor.reject_orders");
+  // Rejecting a new order is switchable per shop; accept and ready are core. A shop
+  // can't cancel an accepted order: updateKitchenOrderStatus answers invalid_transition.
+  // Read for the order's own shop: an owner of two shops can have the other one
+  // open on screen. An order this session can't read gets the active shop's answer,
+  // and updateKitchenOrderStatus refuses it anyway.
+  if (body.status === "cancelled" && profile.role !== "admin") {
+    const { data: order } = await (await createClient())
+      .from("orders")
+      .select("restaurant_id")
+      .eq("id", id)
+      .maybeSingle();
+    const shopId = (order as { restaurant_id?: string } | null)?.restaurant_id ?? null;
+    const on = shopId ? await isFeatureOn("vendor.reject_orders", shopId) : await vendorFeatureOn("vendor.reject_orders");
+    if (!on) return featureOffResponse("vendor.reject_orders");
   }
 
   // Trimmed and capped here as well as in the database: the column's check

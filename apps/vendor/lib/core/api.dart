@@ -42,11 +42,14 @@ class ApiException implements Exception {
 /// picks one with the website's `vendor_restaurant_slug` cookie, which
 /// [shopSlug] supplies. The server still checks the shop is theirs.
 class ApiClient {
-  ApiClient(this._auth, {http.Client? client, this.shopSlug}) : _http = client ?? http.Client();
+  ApiClient(this._auth, {http.Client? client, this.shopSlug, this.onFeatureOff}) : _http = client ?? http.Client();
 
   final GoTrueClient _auth;
   final http.Client _http;
   final String? Function()? shopSlug;
+
+  /// A route refused because a switch is off: what the app holds is out of date.
+  final void Function()? onFeatureOff;
   final _cookieName = sessionCookieName(Env.supabaseUrl);
 
   Uri _uri(String path, [Map<String, String>? query]) =>
@@ -154,9 +157,11 @@ class ApiClient {
       }
     }
     if (res.statusCode >= 200 && res.statusCode < 300) return body;
+    final code = '${body['error'] ?? 'http_${res.statusCode}'}';
+    if (code == 'feature_disabled') onFeatureOff?.call();
     throw ApiException(
       res.statusCode,
-      '${body['error'] ?? 'http_${res.statusCode}'}',
+      code,
       message: body['message'] as String?,
       body: body,
     );

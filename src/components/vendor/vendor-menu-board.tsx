@@ -383,7 +383,7 @@ export function VendorMenuBoard({
                   View storefront
                 </Button>
               ) : null}
-              {canImport ? (
+              {canImport && canEdit ? (
                 <Button
                   type="button"
                   variant="outline"
@@ -473,6 +473,7 @@ export function VendorMenuBoard({
 
       {live && canImport ? (
         <div className="flex flex-wrap gap-2 sm:hidden">
+          {canEdit ? (
           <Button
             type="button"
             variant="outline"
@@ -482,6 +483,7 @@ export function VendorMenuBoard({
           >
             <FileUp className="size-4" /> Import
           </Button>
+          ) : null}
           <Button
             type="button"
             variant="outline"
@@ -675,7 +677,7 @@ export function VendorMenuBoard({
           title="Menu is empty"
           description="Add dishes one by one, or import a filled CSV template."
           action={
-            live && (canEdit || canImport) ? (
+            live && canEdit ? (
               <div className="flex flex-wrap justify-center gap-2">
                 {canEdit ? (
                   <Button size="sm" onClick={() => setSheet({ mode: "create" })}>

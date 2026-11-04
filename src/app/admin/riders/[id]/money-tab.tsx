@@ -12,7 +12,8 @@ import { AdjustmentForm, PayoutForm } from "./money-forms";
  * The rider's Money tab: where they stand, what to pay, what was paid, and the
  * ledger line by line.
  *
- * Riders are salaried (P3-R11): salary, bonuses, incentives, deductions and
+ * Riders are on a fixed salary (rule book). Old bonus and incentive rows stay
+ * on the ledger below, shown as "Older pay". Salary, deductions and
  * payouts are the ledger, and the ₹0 per-delivery rows the dormant rate card
  * writes are left out of the records table and the payout preview.
  *
@@ -24,8 +25,8 @@ import { AdjustmentForm, PayoutForm } from "./money-forms";
 
 const KIND_LABEL: Record<EarningRecord["kind"], string> = {
   delivery: "Delivery",
-  incentive: "Incentive",
-  bonus: "Bonus",
+  incentive: "Older pay",
+  bonus: "Older pay",
   adjustment: "Adjustment",
   deduction: "Deduction",
   salary: "Salary",
@@ -36,7 +37,7 @@ const isReversal = (r: EarningRecord) => r.kind === "adjustment" && r.reversesId
 function detailOf(r: EarningRecord): string {
   if (r.kind === "delivery") return deliveryDetail(r);
   if (isReversal(r)) return `The delivery was corrected, so its pay is taken back${r.orderCode ? ` (${r.orderCode})` : ""}.`;
-  if (r.kind === "incentive") return r.note ?? "Incentive target reached";
+  if (r.kind === "incentive") return r.note ?? "Older pay";
   return r.note ?? "";
 }
 
@@ -50,7 +51,6 @@ const columns: Column<EarningRecord>[] = [
   {
     key: "type",
     header: "Type",
-    role: "title",
     width: "w-[190px]",
     cell: (r) => (
       <span className="flex min-w-0 flex-col gap-0.5">
@@ -85,7 +85,6 @@ const columns: Column<EarningRecord>[] = [
     key: "amount",
     header: "Amount",
     align: "right",
-    role: "trailing",
     width: "w-[110px]",
     cell: (r) => (
       <span
@@ -123,7 +122,6 @@ const payoutColumns: Column<Payout>[] = [
   {
     key: "paidOn",
     header: "Paid on",
-    role: "title",
     width: "w-[120px]",
     cell: (p) => <span className="text-data text-[12.5px] font-semibold">{formatDay(p.paidOn)}</span>,
   },
@@ -131,7 +129,6 @@ const payoutColumns: Column<Payout>[] = [
     key: "amount",
     header: "Amount",
     align: "right",
-    role: "trailing",
     width: "w-[120px]",
     cell: (p) => <span className="text-data text-[13px] font-semibold tabular-nums">{formatMoney(p.amount)}</span>,
   },
@@ -167,6 +164,8 @@ export function MoneyTab({
   today,
   cursor,
   payTo = null,
+  mayPayNow = false,
+  waiting = null,
 }: Readonly<{
   riderId: string;
   money: RiderMoney;
@@ -179,6 +178,10 @@ export function MoneyTab({
    * approved on the Profile tab (Review Focus 3). Null before 0086.
    */
   payTo?: { masked: string | null; changePending: boolean } | null;
+  /** The one-admin rule is on: this admin records the payment here, in one step. */
+  mayPayNow?: boolean;
+  /** A payment already waiting for this rider. */
+  waiting?: { amount: number; askedBy: string } | null;
 }>) {
   const { summary: s, range } = money;
   const base = `/admin/riders/${riderId}?tab=money`;
@@ -188,11 +191,8 @@ export function MoneyTab({
     {
       label: "Owed - not yet paid",
       value: formatMoney(s.pending),
-      note: s.pending < 0 ? "Deductions outweigh earnings" : s.pending === 0 ? "All settled" : "Pending payout",
+      note: s.pending < 0 ? "Deductions outweigh salary" : s.pending === 0 ? "All settled" : "Pending payment",
     },
-    { label: "Earned today", value: formatMoney(s.today), note: "Deliveries and incentives" },
-    { label: "This week", value: formatMoney(s.week), note: "From Monday" },
-    { label: "This month", value: formatMoney(s.month) },
     {
       label: "Paid out",
       value: formatMoney(s.paid),
@@ -210,14 +210,6 @@ export function MoneyTab({
       <MetricRow items={tiles} />
 
       <FigureRow>
-        <Figure label="Total earned" value={formatMoney(s.total)} note={`${s.deliveriesCounted} ${s.deliveriesCounted === 1 ? "delivery" : "deliveries"} counted`} />
-        {s.perDeliveryAvg === null ? (
-          <Figure label="Per delivery" value="Salaried" note="Not paid per delivery" />
-        ) : (
-          <Figure label="Per delivery" value={formatMoney(s.perDeliveryAvg)} note="Average, live deliveries" />
-        )}
-        <Figure label="Incentives" value={formatMoney(s.incentives)} />
-        <Figure label="Bonuses" value={formatMoney(s.bonuses)} />
         <Figure label="Salary" value={formatMoney(s.salary)} />
         <Figure label="Adjustments" value={formatMoney(s.adjustments)} note="Plus or minus" />
         <Figure label="Deductions" value={formatMoney(s.deductions)} note="Subtracted" />
@@ -235,11 +227,13 @@ export function MoneyTab({
         </p>
       ) : null}
 
-      <div className="grid gap-4 @3xl:grid-cols-2">
+      <div className="grid gap-4 grid-cols-2">
         <PayoutForm
           driverId={riderId}
           today={today}
           pending={money.pending.map((r) => ({ id: r.id, kind: r.kind, date: r.date, amount: r.amount, reversesId: r.reversesId }))}
+          mayPayNow={mayPayNow}
+          waiting={waiting}
         />
         <AdjustmentForm driverId={riderId} today={today} orderCodes={orderCodes} />
       </div>
@@ -276,12 +270,12 @@ export function MoneyTab({
               </span>
               <span className="flex items-center gap-1.5">
                 {cursor ? (
-                  <Link href={`${base}${rangeQuery}`} className="press rounded-[7px] border border-line bg-surface px-2.5 py-1 text-xs font-semibold hover:border-[var(--c-border-hover)]">
+                  <Link href={`${base}${rangeQuery}`} className="rounded-[7px] border border-line bg-surface px-2.5 py-1 text-xs font-semibold hover:border-[var(--c-border-hover)]">
                     Back to newest
                   </Link>
                 ) : null}
                 {money.nextCursor ? (
-                  <Link href={`${base}${rangeQuery}&cursor=${money.nextCursor}`} className="press rounded-[7px] border border-line bg-surface px-2.5 py-1 text-xs font-semibold hover:border-[var(--c-border-hover)]">
+                  <Link href={`${base}${rangeQuery}&cursor=${money.nextCursor}`} className="rounded-[7px] border border-line bg-surface px-2.5 py-1 text-xs font-semibold hover:border-[var(--c-border-hover)]">
                     Older records
                   </Link>
                 ) : null}
@@ -292,7 +286,15 @@ export function MoneyTab({
         />
       </Section>
 
-      <Section title="Payouts" meta={`${money.payouts.length} recorded`}>
+      <Section
+        title="Payouts"
+        meta={`${money.payouts.length} recorded`}
+        actions={
+          <Link href="/admin/riders/payments" className="text-[12px] font-semibold text-accent-ink hover:underline">
+            Rider salaries
+          </Link>
+        }
+      >
         <DataTable
           caption="Payouts"
           columns={payoutColumns}

@@ -170,9 +170,9 @@ console.log("\n── commission and vendor money ──");
   check("total = commission + gst + other", pc.total === 236, pc);
 
   const ve = vendorEarnings(rows, refunds, pricing, new Set(["o5"]));
-  // completed, unpaid: o1 online → vendorNet 353 − refund 100 = 253; o2 COD → −(76+14+5) = −95.
-  check("payable counts completed orders not in a paid settlement", ve.payable === 253, ve);
-  check("COD vendor owing is recoverable, not payable", ve.recoverable === 95, ve);
+  // completed, unpaid: o1 online → vendorNet 353 − refund 100 = 253; o2 cash → 380 − (76+14+5) = 285.
+  check("payable counts completed orders not in a paid settlement", ve.payable === 538, ve);
+  check("a cash order pays the shop, so nothing is recoverable", ve.recoverable === 0, ve);
   check("in-flight orders are not payable", !ve.byVendor.get("shop-a")?.orderIds.includes("o3"));
   check("paid orders are excluded", !ve.byVendor.get("shop-a")?.orderIds.includes("o5"));
 

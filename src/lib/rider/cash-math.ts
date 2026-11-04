@@ -6,12 +6,13 @@ import { addDays, istDay } from "@/lib/rider/earnings-math";
  * arithmetic (`data-access/rider-cash.ts` only reads rows and maps them).
  *
  * Definitions (consistent with the Manager branch's `ops_rider_cash_position`,
- * migration 0154: collected − confirmed rider_to_manager handovers):
+ * migration 0154 and 0195: collected − confirmed handovers from the rider, to a
+ * manager or to the owner):
  *
  *   collected   `deliveries.cod_collected_amount` for the rider, by the IST day
  *               of `cod_collected_at`. An online-paid order is never in it.
- *   deposited   `cod_handovers` rider_to_manager from the rider, by
- *               `handover_date`. A confirmed deposit IS such a row, so it is
+ *   deposited   `cod_handovers` rider_to_manager or rider_to_owner from the rider,
+ *               by `handover_date`. A confirmed deposit IS such a row, so it is
  *               counted once, through the handover. A submitted, disputed or
  *               withdrawn deposit is not deposited.
  *   pending     collected − deposited, never below zero (0154 reads the same).
@@ -91,7 +92,7 @@ export interface CashDisputeRow {
 export interface CashPositionInput {
   toCollect: number;
   collections: CashCollection[];
-  /** The rider's rider_to_manager handovers, all time. */
+  /** The rider's handovers to a manager or the owner, all time. */
   handovers: CashHandoverRow[];
   deposits: CashDepositRow[];
   disputes: CashDisputeRow[];
@@ -261,7 +262,7 @@ export interface HandoverForDup {
  */
 export function sameDayHandoverTotal(handovers: HandoverForDup[], riderId: string, day: string): number {
   return sum(
-    handovers.filter((h) => h.leg === "rider_to_manager" && h.fromUser === riderId && h.handoverDate === day),
+    handovers.filter((h) => h.leg !== "manager_to_owner" && h.fromUser === riderId && h.handoverDate === day),
     (h) => h.amount
   );
 }

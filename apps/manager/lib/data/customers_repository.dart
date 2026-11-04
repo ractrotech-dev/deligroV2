@@ -1,6 +1,5 @@
 import '../core/api.dart';
 import '../models/customers.dart';
-import '../models/finance.dart' show RefundPage;
 import '../models/outcome.dart';
 import '../models/tickets.dart';
 
@@ -9,7 +8,6 @@ abstract interface class CustomersRepository {
   Future<CustomerPage> list(CustomerFilters f, {String? cursor});
   Future<CustomerDetail> detail(String id);
   Future<TicketPage> complaints(String id, {String? cursor});
-  Future<RefundPage> refunds(String id, {String? cursor});
   Future<CustomerFeedback> feedback(String id, {String? cursor});
 
   /// One audited reveal (§10.2). 403 without `manager.customers.contact`.
@@ -41,10 +39,6 @@ class ApiCustomersRepository implements CustomersRepository {
   @override
   Future<TicketPage> complaints(String id, {String? cursor}) async =>
       TicketPage.fromJson(await _api.get('${_p(id)}/complaints', query: {'cursor': ?cursor}));
-
-  @override
-  Future<RefundPage> refunds(String id, {String? cursor}) async =>
-      RefundPage.fromJson(await _api.get('${_p(id)}/refunds', query: {'cursor': ?cursor}));
 
   @override
   Future<CustomerFeedback> feedback(String id, {String? cursor}) async =>

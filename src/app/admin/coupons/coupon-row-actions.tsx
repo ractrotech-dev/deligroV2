@@ -33,7 +33,7 @@ export function CouponRowActions({
     });
 
   const base =
-    "press grid size-9 place-items-center rounded-full bg-surface-2 transition-colors disabled:opacity-50";
+    "grid size-9 place-items-center rounded-full bg-surface-2 transition-colors disabled:opacity-50";
 
   return (
     <div className="flex items-center gap-1.5">

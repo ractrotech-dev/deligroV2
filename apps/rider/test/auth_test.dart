@@ -169,7 +169,11 @@ Future<_Harness> _pumpApp(
   final overrides = [
     prefsProvider.overrideWithValue(await _prefs(prefs)),
     supabaseProvider.overrideWithValue(supabase),
-    apiProvider.overrideWithValue(ApiClient(supabase.auth, client: MockClient(server.handle))),
+    apiProvider.overrideWith((ref) => ApiClient(
+          supabase.auth,
+          client: MockClient(server.handle),
+          onRiderBlocked: () => ref.read(riderBlockedSignalProvider).value++,
+        )),
   ];
   final container = ProviderContainer(overrides: overrides);
   addTearDown(container.dispose);
@@ -335,6 +339,78 @@ void main() {
       expect(_location(h), '/home');
       final me = await h.container.read(meProvider.future);
       expect(me.riderCode, 'DR-0042');
+    });
+
+    testWidgets('a suspended rider is told why, with 112 on the page and no way to upload', (tester) async {
+      final server = _Server()
+        ..meStatus = 403
+        ..meBody = {
+          'error': 'account_suspended',
+          'reason': null,
+          'contact': {'phone': '+919000000000', 'whatsapp': null},
+        };
+      final h = await _pumpApp(tester, server: server, signedIn: true);
+
+      expect(_location(h), '/blocked');
+      expect(find.text('Your account is suspended'), findsOneWidget);
+      expect(find.textContaining("isn't a Deligro rider"), findsNothing);
+      expect(find.byKey(const Key('blocked-documents')), findsNothing);
+      await tester.ensureVisible(find.byKey(const Key('call-112')));
+      expect(find.byKey(const Key('call-112')), findsOneWidget);
+      expect(find.byKey(const Key('alert-deligro')), findsOneWidget);
+      expect(find.byKey(const Key('add-emergency-contact')), findsNothing);
+      expect(find.text('Sign out'), findsOneWidget);
+    });
+
+    testWidgets('a rejected rider sees the reason and can open their documents', (tester) async {
+      final server = _Server()
+        ..meStatus = 403
+        ..meBody = {
+          'error': 'verification_rejected',
+          'reason': 'The licence photo is too dark',
+          'contact': {'phone': '+919000000000', 'whatsapp': null},
+        };
+      final h = await _pumpApp(tester, server: server, signedIn: true);
+
+      expect(_location(h), '/blocked');
+      expect(find.text('Your registration was not approved'), findsOneWidget);
+      expect(find.textContaining('The licence photo is too dark'), findsOneWidget);
+      await tester.tap(find.byKey(const Key('blocked-documents')));
+      await _settle(tester, at: '/blocked/documents');
+      expect(_location(h), '/blocked/documents');
+
+      // Asking `/me` again (what an upload does) must not bounce them out.
+      h.container.invalidate(meProvider);
+      await _settle(tester);
+      expect(_location(h), '/blocked/documents');
+    });
+
+    testWidgets('reactivated: Check again takes the rider in', (tester) async {
+      final server = _Server()
+        ..meStatus = 403
+        ..meBody = {'error': 'account_suspended', 'contact': {'phone': null, 'whatsapp': null}};
+      final h = await _pumpApp(tester, server: server, signedIn: true);
+      expect(_location(h), '/blocked');
+
+      server
+        ..meStatus = 200
+        ..meBody = _Server().meBody;
+      await tester.tap(find.byKey(const Key('blocked-check-again')));
+      await _settle(tester, at: '/home');
+      expect(_location(h), '/home');
+    });
+
+    testWidgets('any route refusing a rider asks /me again: suspended mid-shift reaches the screen', (tester) async {
+      final server = _Server();
+      final h = await _pumpApp(tester, server: server, signedIn: true);
+      expect(_location(h), '/home');
+
+      server
+        ..meStatus = 403
+        ..meBody = {'error': 'account_suspended', 'contact': {'phone': null, 'whatsapp': null}};
+      h.container.read(apiProvider).onRiderBlocked?.call();
+      await _settle(tester, at: '/blocked');
+      expect(_location(h), '/blocked');
     });
 
     testWidgets('me() 403 not_rider goes to /not-rider and offers Sign out', (tester) async {

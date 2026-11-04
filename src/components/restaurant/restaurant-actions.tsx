@@ -6,6 +6,7 @@ import { Check, Heart, Loader2, Search, Share } from "lucide-react";
 import { useMenuSearch } from "@/stores/menu-search-store";
 import { cn } from "@/lib/utils/cn";
 import { useT } from "@/components/providers/lang-provider";
+import { useFeature } from "@/components/features/features-provider";
 
 /**
  * The three circular controls on the restaurant hero. They were decorative
@@ -30,6 +31,7 @@ export function RestaurantActions({
 }>) {
   const router = useRouter();
   const t = useT();
+  const canFavorite = useFeature("customer.favorites");
   const [favorite, setFavorite] = useState(initialFavorite);
   const [busy, setBusy] = useState(false);
   const [shared, setShared] = useState(false);
@@ -113,6 +115,7 @@ export function RestaurantActions({
   return (
     <div className="absolute right-4 top-[calc(var(--status-h)+1rem)] flex flex-col items-end gap-2">
       <div className="flex gap-2">
+        {canFavorite ? (
         <button
           type="button"
           onClick={toggleFavorite}
@@ -139,6 +142,7 @@ export function RestaurantActions({
             />
           )}
         </button>
+        ) : null}
 
         <button
           type="button"

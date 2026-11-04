@@ -29,7 +29,7 @@ enum ExceptionKind {
       // The server stores the free-form report kind as `other_issue`.
       s == 'other_issue' ? other : jEnum(values, s, unknown, (v) => v.wire);
 
-  /// Approving these cancels the order (and refunds per the usual rules).
+  /// Approving these cancels the order.
   bool get cancelsOrder => this == failedDelivery || this == customerUnreachable || this == wrongAddress;
 }
 

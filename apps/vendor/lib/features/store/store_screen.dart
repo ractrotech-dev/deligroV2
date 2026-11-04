@@ -58,7 +58,8 @@ class _StoreBody extends ConsumerWidget {
         _StatusCard(state: state),
         if (state.canBusy && s.takingOrders) ...[SectionHeading('Busy mode'), _BusyPanel(store: s)],
         SectionHeading('Opening hours'),
-        _HoursPanel(store: s, canEdit: state.canEdit),
+        // Hours decide whether the shop takes orders: the server asks for both switches.
+        _HoursPanel(store: s, canEdit: state.canEdit && state.canOpenClose),
         if (s.scheduleSupported) ...[
           SectionHeading(
             'Holidays',

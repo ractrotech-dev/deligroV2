@@ -53,11 +53,11 @@ const _held = <_Held>[
     'Delivery records',
     'Orders offered to you, and what you did with each: accepted, picked up, delivered or handed back, with times.',
     'You and Deligro staff.',
-    'Kept. They are the record behind receipts, refunds and payouts, so they are not cleared.',
+    'Kept. They are the record behind receipts and payouts, so they are not cleared.',
   ),
   _Held(
     Icons.payments_outlined,
-    'Earnings and cash records',
+    'Salary and cash records',
     'What you earned, the cash you collected from customers, what you handed over, and expenses you claimed.',
     'You, and the Deligro staff who handle payouts.',
     'Kept as financial records. They are not cleared.',

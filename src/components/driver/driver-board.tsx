@@ -31,6 +31,7 @@ import type { TrackPoint } from "@/lib/tracking/rider-position";
 import { cn } from "@/lib/utils/cn";
 import { acceptDeliveryAction, advanceDeliveryAction } from "@/app/driver/actions";
 import { AvailabilitySwitch } from "@/components/driver/availability-switch";
+import { WalletChangePanel } from "@/components/driver/wallet-change-panel";
 import { RiderAlert } from "@/components/driver/rider-alert";
 import {
   CashNotice,
@@ -431,6 +432,9 @@ function advanceErrorMessage(code: string | undefined): string {
   if (code === "order_not_active") {
     return "This order is no longer active — it may have been cancelled. Refreshing your board.";
   }
+  if (code === "food_not_ready") {
+    return "Food isn't ready yet. Wait for the shop to mark it ready, then try again.";
+  }
   if (code === "photo_required") {
     // The platform's proof-photo rule asks for one, and this portal has no
     // camera step: the Deligro Rider app does.
@@ -444,7 +448,9 @@ function paymentNote(payment: DriverPayment): string {
   if (payment.instruction === "collect") {
     return ` · Collect ${formatINR(payment.collectAmount)}`;
   }
-  if (payment.instruction === "prepaid") return " · Prepaid";
+  if (payment.instruction === "prepaid") {
+    return payment.paidWithPoints ? " · Paid with points" : " · Prepaid";
+  }
   return "";
 }
 
@@ -577,10 +583,10 @@ export function DriverBoard({
             code: active.job.code,
             customer: active.job.customer,
             distanceKm: active.job.distanceKm,
+            // What the rider really took: after adding change, the full amount received.
             cashCollected:
-              active.payment.instruction === "collect"
-                ? active.payment.collectAmount
-                : null,
+              active.payment.walletChange?.added?.received ??
+              (active.payment.instruction === "collect" ? active.payment.collectAmount : null),
           }
         : null;
     startTransition(async () => {
@@ -1003,6 +1009,7 @@ function ActiveDelivery({
         {/* Money first on the way to the customer — a rider glances at this
             once, at the door, with a bag in one hand. */}
         {!legIsPickup ? <CashNotice payment={active.payment} /> : null}
+        {!legIsPickup ? <WalletChangePanel orderId={active.job.id} payment={active.payment} /> : null}
 
         {/* The address, in full and not truncated. An address cut off at the
             width of a phone is not an address — it wraps. */}

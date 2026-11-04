@@ -3,9 +3,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../core/feature_gates.dart';
 import '../../core/format.dart';
 import '../../models/menu.dart';
 import '../../state/menu.dart';
+import '../../state/session.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/form_bits.dart';
 
@@ -63,6 +65,8 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
   Widget build(BuildContext context) {
     final async = ref.watch(menuProvider);
     final menu = async.value;
+    // Sheet upload and download follow their own switch, as well as editing.
+    final canImport = (menu?.canEdit ?? false) && (ref.watch(vendorMeProvider).value?.can(menuImportFeature) ?? false);
     return Scaffold(
       appBar: AppBar(
         title: _searching
@@ -81,7 +85,7 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
               if (!_searching) _query = '';
             }),
           ),
-          if (menu?.canEdit ?? false)
+          if (canImport)
             IconButton(
               tooltip: 'Bulk upload',
               icon: const Icon(Icons.upload_file_rounded),
@@ -105,7 +109,7 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
                 if (menu.canEdit) ...[
                   const PopupMenuDivider(),
                   PopupMenuItem(value: 'reorder', child: Text('Change menu order')),
-                  PopupMenuItem(value: 'bulk', child: Text('Bulk upload from a sheet')),
+                  if (canImport) PopupMenuItem(value: 'bulk', child: Text('Bulk upload from a sheet')),
                 ],
               ],
             ),
@@ -389,6 +393,43 @@ class VegMark extends StatelessWidget {
   }
 }
 
+/// What Deligro has done to a dish, in the shop's words: [short] for the list,
+/// [long] for the editor. Null when there is nothing to say. [serious]: customers
+/// can't see the dish, as opposed to a change that is only waiting.
+({String short, String long, bool serious})? moderationNotice(MenuItem i) {
+  String with_(String text, String? why) => (why ?? '').trim().isEmpty ? text : '$text ${why!.trim()}';
+  if (i.hidden) {
+    return (
+      short: 'Hidden by Deligro',
+      long: with_('Deligro hid this dish, so customers can\'t see it.', i.hiddenReason),
+      serious: true,
+    );
+  }
+  if (i.approvalStatus == 'rejected') {
+    return (
+      short: 'Not approved by Deligro',
+      long: with_('Deligro did not approve this dish, so customers can\'t see it.', i.approvalNote),
+      serious: true,
+    );
+  }
+  if (i.approvalStatus == 'pending') {
+    return (
+      short: 'Waiting for Deligro\'s approval',
+      long: 'Deligro is checking this dish. Customers will see it once it is approved.',
+      serious: true,
+    );
+  }
+  final parked = i.pendingPrice;
+  if (parked != null) {
+    return (
+      short: 'New price ${rupees(parked)} waiting for approval',
+      long: 'Your new price ${rupees(parked)} is waiting for Deligro\'s approval. Customers still pay ${rupees(i.price)}.',
+      serious: false,
+    );
+  }
+  return null;
+}
+
 class ProductTile extends ConsumerWidget {
   const ProductTile({super.key, required this.item, required this.canEdit, required this.inventory, this.rank});
 
@@ -488,7 +529,7 @@ class ProductTile extends ConsumerWidget {
             const SizedBox(width: 12),
             Expanded(
               child: Opacity(
-                opacity: item.available ? 1 : .55,
+                opacity: item.available && item.liveForCustomers ? 1 : .55,
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -508,6 +549,14 @@ class ProductTile extends ConsumerWidget {
                     ),
                     const SizedBox(height: 3),
                     Text('$price · ${item.soldCount} sold', style: TextStyle(color: c.muted, fontSize: 13)),
+                    if (moderationNotice(item) case final notice?) ...[
+                      const SizedBox(height: 5),
+                      Text(
+                        notice.short,
+                        key: Key('moderation-${item.id}'),
+                        style: TextStyle(color: notice.serious ? c.deal : c.accentInk, fontSize: 12.5, fontWeight: FontWeight.w800),
+                      ),
+                    ],
                     if (stockBadge != null || item.scheduled || item.hasOptions) ...[
                       const SizedBox(height: 5),
                       Wrap(

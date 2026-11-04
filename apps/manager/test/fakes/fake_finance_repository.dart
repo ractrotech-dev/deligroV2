@@ -2,6 +2,7 @@ import 'package:deligro_manager/data/finance_repository.dart';
 import 'package:deligro_manager/data/reports_repository.dart';
 import 'package:deligro_manager/models/finance.dart';
 import 'package:deligro_manager/models/outcome.dart';
+import 'package:deligro_manager/models/payment_request.dart';
 import 'package:deligro_manager/models/report.dart';
 import 'package:deligro_manager/models/settlement.dart';
 
@@ -20,7 +21,6 @@ class FakeFinanceRepository implements FinanceRepository {
   RiderPayoutPage payoutPage = RiderPayoutPage.fromJson(p6('rider_payouts'));
   SettlementPage settlementPage = SettlementPage.fromJson(p6('settlements_list'));
   SettlementDetail detail = SettlementDetail.fromJson(p6('settlement_detail'));
-  RefundPage refundPage = RefundPage.fromJson(p6('refunds'));
   final recon = {
     ReconSection.orders: Reconciliation.fromJson(p6('reconciliation_orders')),
     ReconSection.online: Reconciliation.fromJson(p6('reconciliation_online')),
@@ -29,17 +29,13 @@ class FakeFinanceRepository implements FinanceRepository {
 
   /// Thrown by the next read (then cleared), e.g. a 403 or a network fault.
   Object? readError;
-  Object? decideError;
   final List<Outcome<SettlementInitiated>> initiateOutcomes = [];
-  final List<Outcome<RefundItem>> refundOutcomes = [];
 
   final overviewCalls = <FinanceQuery>[];
   final vendorDuesCalls = <({String? zoneId, bool delayed})>[];
   final riderDuesCalls = <({String? zoneId, bool delayed})>[];
   final settlementCalls = <SettlementFilters>[];
   final initiateCalls = <SettlementInitiation>[];
-  final refundCalls = <({RefundStatus? status})>[];
-  final decideCalls = <({String id, RefundDecision decision})>[];
   final reconCalls = <({ReconSection section, String? state})>[];
   final issueCalls = <FinanceIssueType?>[];
 
@@ -106,22 +102,13 @@ class FakeFinanceRepository implements FinanceRepository {
     return _pop(initiateOutcomes) ?? Applied(SettlementInitiated.fromJson(p6('settlement_initiated')));
   }
 
-  @override
-  Future<RefundPage> refunds(FinanceQuery q, {RefundStatus? status, String? cursor}) async {
-    refundCalls.add((status: status));
-    _maybeThrow();
-    return refundPage;
-  }
+  final List<Outcome<PaymentRequest>> reversalOutcomes = [];
+  final reversalCalls = <({String id, SettlementReversal request})>[];
 
   @override
-  Future<Outcome<RefundItem>> decideRefund(String id, RefundDecision d) async {
-    decideCalls.add((id: id, decision: d));
-    final e = decideError;
-    if (e != null) {
-      decideError = null;
-      throw e;
-    }
-    return _pop(refundOutcomes) ?? Applied(refundPage.items.firstWhere((r) => r.id == id));
+  Future<Outcome<PaymentRequest>> requestSettlementReversal(String id, SettlementReversal r) async {
+    reversalCalls.add((id: id, request: r));
+    return _pop(reversalOutcomes) ?? const Applied(null);
   }
 
   @override

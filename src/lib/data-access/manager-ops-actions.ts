@@ -37,7 +37,7 @@ import { readOrderFacts, type OrderFacts } from "@/lib/data-access/manager-rider
  * Callers authorise first (managerApiContext + the action's switch, or
  * requireRole for the web portals). Each function also reads the order through
  * the actor's own scope before doing anything outside the RPC, so a side effect
- * (a queued refund, a push) can never happen for an order the actor cannot see.
+ * (a push) can never happen for an order the actor cannot see.
  */
 export type OpsActor = { id: string; role: "manager" | "admin" };
 

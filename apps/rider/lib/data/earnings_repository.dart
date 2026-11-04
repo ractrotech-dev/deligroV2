@@ -5,7 +5,7 @@ import '../models/earnings.dart';
 /// the website; a debug build can swap in the fixture backend
 /// (data/fixtures/fixture_earnings.dart).
 ///
-/// Every method throws [ApiException]: 403 `feature_disabled` (the Earnings
+/// Every method throws [ApiException]: 403 `feature_disabled` (the Salary
 /// switch is off for this rider), 429, 503 `migration_pending` or a dead
 /// connection. Reads only: nothing here writes.
 abstract interface class EarningsRepository {
@@ -23,9 +23,6 @@ abstract interface class EarningsRepository {
 
   /// `GET /api/rider/earnings/payouts`, newest first.
   Future<List<Payout>> payouts();
-
-  /// `GET /api/rider/earnings/incentives`.
-  Future<List<IncentiveProgress>> incentives();
 
   /// `GET /api/rider/earnings/statement` for [from]..[to] (at most 366 days).
   Future<Statement> statement(String from, String to);
@@ -74,15 +71,6 @@ class ApiEarningsRepository implements EarningsRepository {
     (j) => [
       for (final e in (j['payouts'] as List? ?? const []))
         if (e is Map) Payout.fromJson(Map<String, dynamic>.from(e)),
-    ],
-  );
-
-  @override
-  Future<List<IncentiveProgress>> incentives() => _read(
-    _api.get('/api/rider/earnings/incentives'),
-    (j) => [
-      for (final e in (j['incentives'] as List? ?? const []))
-        if (e is Map) IncentiveProgress.fromJson(Map<String, dynamic>.from(e)),
     ],
   );
 

@@ -13,7 +13,6 @@ import 'features/auth/login_screen.dart';
 import 'features/finance/finance_screen.dart';
 import 'features/finance/issues_screen.dart';
 import 'features/finance/reconciliation_screen.dart';
-import 'features/finance/refunds_screen.dart';
 import 'features/finance/rider_dues_screen.dart';
 import 'features/finance/rider_payouts_screen.dart';
 import 'features/finance/settlement_detail_screen.dart';
@@ -45,6 +44,7 @@ import 'features/profile/account_screens.dart';
 import 'features/profile/profile_screen.dart';
 import 'features/settings/settings_screen.dart';
 import 'features/shell/manager_shell.dart';
+import 'core/updates.dart';
 import 'features/shell/nav.dart';
 import 'features/stats/stats_screen.dart';
 import 'features/support/support_metrics_screen.dart';
@@ -54,7 +54,6 @@ import 'features/vendors/onboard/onboard_flow.dart';
 import 'features/vendors/vendor_detail_screen.dart';
 import 'features/vendors/vendors_screen.dart';
 import 'features/phase7_routes.dart';
-import 'widgets/phase_placeholder.dart';
 import 'models/manager_me.dart';
 import 'state/providers.dart';
 import 'state/session.dart';
@@ -69,11 +68,18 @@ const _gatePaths = {'/login', '/boot', '/not-manager'};
 /// for a fault, with Retry), /not-manager when the account is not a manager
 /// or admin, and on into the app once it answers. A screen whose permission
 /// is off sends them home — the server refuses its data either way.
+///
+/// A required update outranks all of it, signed in or not: every location,
+/// deep links and pushes included, lands on the update screen until the app is
+/// updated.
 String? gateRedirect({
   required bool signedIn,
   required AsyncValue<ManagerMe?> me,
   required String path,
+  bool updateRequired = false,
 }) {
+  if (updateRequired) return path == updateRequiredPath ? null : updateRequiredPath;
+  if (path == updateRequiredPath) return '/';
   if (!signedIn) return path == '/login' ? null : '/login';
   if (me.hasError && !me.isLoading) {
     final target = isNotManagerError(me.error) ? '/not-manager' : '/boot';
@@ -92,12 +98,9 @@ class _RouterRefresh extends ChangeNotifier {
   _RouterRefresh(Ref ref) {
     ref.listen(signedInProvider, (_, _) => notifyListeners());
     ref.listen(managerMeProvider, (_, _) => notifyListeners());
+    ref.listen(updateProvider, (_, _) => notifyListeners());
   }
 }
-
-/// A screen a later build phase delivers, labelled as such.
-Widget _pending({required String title, required IconData icon, required int phase}) =>
-    PhasePlaceholder(title: title, icon: icon, phase: phase);
 
 /// The signed-in app: the five tabs, with More's screens pushed over them.
 List<RouteBase> appRoutes() => [
@@ -145,11 +148,6 @@ List<RouteBase> appRoutes() => [
                   path: 'reconciliation',
                   parentNavigatorKey: rootNavigatorKey,
                   builder: (_, _) => const ReconciliationScreen(),
-                ),
-                GoRoute(
-                  path: 'refunds',
-                  parentNavigatorKey: rootNavigatorKey,
-                  builder: (_, state) => RefundsScreen(query: state.uri),
                 ),
                 GoRoute(
                   path: 'rider-payouts',
@@ -360,12 +358,6 @@ List<RouteBase> appRoutes() => [
                   ],
                 ),
                 ...phase7Routes(),
-                for (final m in moreItems.where((m) => m.phase != null))
-                  GoRoute(
-                    path: m.path.substring('/more/'.length),
-                    parentNavigatorKey: rootNavigatorKey,
-                    builder: (_, _) => _pending(title: m.en, icon: m.icon, phase: m.phase!),
-                  ),
               ],
             ),
           ]),
@@ -385,8 +377,12 @@ final routerProvider = Provider<GoRouter>((ref) {
       signedIn: ref.read(signedInProvider),
       me: ref.read(managerMeProvider),
       path: state.matchedLocation,
+      updateRequired: isBlocking(ref.read(updateProvider).value),
     ),
     routes: [
+      // A real route, not an overlay: the app underneath is not built at all, so
+      // Back, deep links, TalkBack and the keyboard have nothing to reach.
+      GoRoute(path: updateRequiredPath, builder: (_, _) => const UpdateRequiredScreen()),
       GoRoute(path: '/login', builder: (_, _) => const LoginScreen()),
       GoRoute(
         path: '/stats',

@@ -14,7 +14,7 @@ import 'cash_errors.dart';
 /// The longest note the server keeps.
 const depositNoteMax = 300;
 
-/// Declares a deposit: how much, cash or UPI, to which manager, with the
+/// Declares a deposit: how much, cash or UPI, to which manager or the owner, with the
 /// receipt. [available] is the cash that can still be declared (what the
 /// rider holds less deposits already waiting); the amount starts at it.
 /// True when the deposit was sent.
@@ -159,7 +159,7 @@ class _DepositSheetState extends ConsumerState<DepositSheet> {
               ),
               const SizedBox(height: 4),
               Text(
-                'A manager confirms it before it comes off your cash in hand.',
+                'A manager or the owner confirms it before it comes off your cash in hand.',
                 style: TextStyle(color: c.muted),
               ),
               const SizedBox(height: 16),
@@ -217,11 +217,11 @@ class _DepositSheetState extends ConsumerState<DepositSheet> {
                   key: const Key('deposit-manager'),
                   initialValue: _managerId,
                   isExpanded: true,
-                  decoration: const InputDecoration(labelText: 'Manager'),
+                  decoration: const InputDecoration(labelText: 'Given to'),
                   items: [
                     const DropdownMenuItem<String?>(
                       value: null,
-                      child: Text('Any manager'),
+                      child: Text('Any manager or the owner'),
                     ),
                     for (final m in list)
                       DropdownMenuItem<String?>(
@@ -234,7 +234,7 @@ class _DepositSheetState extends ConsumerState<DepositSheet> {
                 loading: () => const LinearProgressIndicator(),
                 // The manager is optional; a failed list is not a blocker.
                 error: (_, _) => Text(
-                  'The manager list could not be loaded. A manager can still confirm this.',
+                  'The list could not be loaded. A manager or the owner can still confirm this.',
                   style: TextStyle(color: c.muted, fontSize: 13),
                 ),
               ),
@@ -293,7 +293,7 @@ class _DepositSheetState extends ConsumerState<DepositSheet> {
                               height: 22,
                               child: CircularProgressIndicator(strokeWidth: 2.5),
                             )
-                          : const Text('Send to manager'),
+                          : const Text('Send'),
                     ),
                   ),
                 ],

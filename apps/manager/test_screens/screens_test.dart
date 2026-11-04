@@ -55,7 +55,6 @@ import 'package:deligro_manager/models/rider.dart';
 import 'package:deligro_manager/features/finance/finance_screen.dart';
 import 'package:deligro_manager/features/finance/issues_screen.dart';
 import 'package:deligro_manager/features/finance/reconciliation_screen.dart';
-import 'package:deligro_manager/features/finance/refunds_screen.dart';
 import 'package:deligro_manager/features/finance/settlement_detail_screen.dart';
 import 'package:deligro_manager/features/finance/settlements_screen.dart';
 import 'package:deligro_manager/features/finance/vendor_dues_screen.dart';
@@ -438,10 +437,6 @@ void main() {
         payments: FakePaymentsRepository(page: PaymentRequestPage.fromJson(p6('payment_requests_settlement'))),
         size: const Size(390, 1000));
     await _shot(t, 'approvals-settlements');
-  });
-  testWidgets('refunds', (t) async {
-    await _pump(t, const RefundsScreen(), size: const Size(390, 1000));
-    await _shot(t, 'refunds');
   });
   testWidgets('reports picker', (t) async {
     await _pump(t, const ReportsScreen(), size: const Size(390, 1100));

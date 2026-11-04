@@ -16,6 +16,7 @@
  *   g. a manager with no zones, or zones that cannot be read -> an empty scope, never "all"
  *   h. narrowing to a zone they do not hold    -> never widens
  *   i. backend not configured                  -> 503
+ *   j. a manager an admin has stopped          -> 403 account_suspended, whatever their switches say
  *
  * Offline. Usage: npx tsx --conditions=react-server scripts/qa/manager-gate.ts
  */
@@ -38,6 +39,8 @@ const Z2 = "22222222-2222-2222-2222-222222222222";
 interface World {
   configured: boolean;
   profile: { id: string; role: string } | null;
+  /** An admin has stopped this person. */
+  stopped?: boolean;
   zones: string[] | "error";
   /** rows of role_feature_flags, or "error" for a failing read */
   flags: { feature: string; subject_kind: string; subject_id: string | null; enabled: boolean }[] | "error";
@@ -55,6 +58,7 @@ O._load = function (request: string, parent: unknown, isMain: boolean) {
 
 stubs["server-only"] = {};
 stubs["@/lib/auth"] = { getProfile: async () => world.profile };
+stubs["@/lib/auth/staff-access.server"] = { staffAccountStopped: async () => world.stopped === true };
 stubs["@/lib/supabase/config"] = { get isSupabaseConfigured() { return world.configured; } };
 stubs["@/lib/rate-limit"] = { rateLimit: async () => ({ ok: true }), tooManyRequests: () => new Response(null, { status: 429 }) };
 stubs["@/lib/data-access/zones"] = {
@@ -66,8 +70,13 @@ stubs["@/lib/data-access/zones"] = {
 stubs["@/lib/supabase/admin"] = {
   createAdminClient: () => ({
     from: () => ({
-      select: async () =>
-        world.flags === "error" ? { data: null, error: { message: "boom", code: "XX000" } } : { data: world.flags, error: null },
+      // The reader pages through every row: select().order().range().
+      select: () => ({
+        order: () => ({
+          range: async () =>
+            world.flags === "error" ? { data: null, error: { message: "boom", code: "XX000" } } : { data: world.flags, error: null },
+        }),
+      }),
     }),
   }),
 };
@@ -164,6 +173,14 @@ const body = async (r: unknown) => (r instanceof Response ? ((await r.clone().js
   ok("h. narrowing to their own zone keeps it", scopeAllows(narrowedToOwn, Z1) && !scopeAllows(narrowedToOwn, Z2));
   const adminNarrow = narrowScope({ all: true }, Z2);
   ok("h. an admin narrowing to one zone sees only that zone", scopeAllows(adminNarrow, Z2) && !scopeAllows(adminNarrow, Z1));
+
+  // j. stopped by an admin
+  r = await run({ stopped: true }, "manager.orders.view");
+  ok("j. a stopped manager -> 403 account_suspended", status(r) === 403 && (await body(r)).error === "account_suspended", status(r));
+  r = await run({ stopped: true });
+  ok("j. ...even with no permission asked for", status(r) === 403);
+  r = await run({ profile: { id: MANAGER, role: "admin" }, stopped: true });
+  ok("j. the check is for managers: an admin is not read as stopped", status(r) === 200);
 
   console.log(`\n${passed} passed, ${failed} failed`);
   process.exit(failed ? 1 : 0);

@@ -32,8 +32,8 @@ const FAQ: { q: Bi; a: Bi }[] = [
   {
     q: { en: "How do I cancel?", hi: "ऑर्डर कैसे रद्द करें?" },
     a: {
-      en: "You can cancel from the order tracking screen before the kitchen starts preparing your food.",
-      hi: "रसोई में खाना बनना शुरू होने से पहले, ऑर्डर ट्रैकिंग वाले पेज से रद्द कर सकते हैं।",
+      en: "You can cancel only in the first few seconds after placing your order, from the order tracking screen, while the countdown is showing. After that your order will be delivered.",
+      hi: "ऑर्डर देने के बाद सिर्फ़ शुरू के कुछ सेकंड में, ऑर्डर ट्रैकिंग वाले पेज से रद्द कर सकते हैं, जब तक काउंटडाउन दिख रहा है। उसके बाद आपका ऑर्डर डिलीवर किया जाएगा।",
     },
   },
 ];
@@ -57,8 +57,8 @@ export default async function HelpPage() {
       q: t("Payment methods", "पेमेंट के तरीके"),
       a: onlinePayments
         ? t(
-            "You can pay cash on delivery, or online by card, UPI or netbanking at checkout. Some shops set a cash limit on larger orders — checkout will say so.",
-            "आप डिलीवरी पर नकद दे सकते हैं, या ऑर्डर करते समय कार्ड, UPI या नेटबैंकिंग से ऑनलाइन पेमेंट कर सकते हैं। कुछ दुकानें बड़े ऑर्डर पर नकद की सीमा रखती हैं — ऑर्डर करते समय यह बता दिया जाएगा।",
+            "You can pay cash on delivery, or online by card, UPI or netbanking at checkout. Larger orders can have a cash limit — checkout will say so.",
+            "आप डिलीवरी पर नकद दे सकते हैं, या ऑर्डर करते समय कार्ड, UPI या नेटबैंकिंग से ऑनलाइन पेमेंट कर सकते हैं। बड़े ऑर्डर पर नकद की सीमा हो सकती है — ऑर्डर करते समय यह बता दिया जाएगा।",
           )
         : t(
             "We currently accept Cash on Delivery. Online payment isn't available yet.",

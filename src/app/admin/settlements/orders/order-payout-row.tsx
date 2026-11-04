@@ -1,180 +1,167 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState, useTransition, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { ChevronDown, ChevronUp } from "lucide-react";
-import { formatINR } from "@/lib/utils/format";
-import {
-  OrderPayoutBreakdown,
-  payWord,
-} from "@/components/admin/payout-breakdown";
+import { StatusText, type Tone } from "@/components/admin/console";
+import type { Column } from "@/components/admin/data-table";
+import { PayoutLinesTable } from "@/components/admin/payout-breakdown";
 import { setOrderPaidAction } from "@/app/admin/settlements/actions";
 import type { OrderPayoutRow } from "@/lib/data-access/admin-settlements";
+import { formatINR } from "@/lib/utils/format";
+
+function statusOf(row: OrderPayoutRow): { tone: Tone; word: string } {
+  if (!row.paid) return { tone: "neutral", word: "Unpaid" };
+  if (row.settlementStatus === "draft") return { tone: "amber", word: "Waiting" };
+  return { tone: "green", word: "Paid" };
+}
 
 /**
- * One delivered order, with the Paid / Unpaid control and its full breakdown.
+ * Paying one order alone, or undoing it. The usual job is the Pay button at the
+ * top of the page, so these stay quiet.
  *
- * The dropdown is a real `<select>` rather than a switch: "Paid" and "Unpaid"
- * are the two words the operator is thinking in, and a switch would have to be
- * labelled with one of them anyway while hiding the other.
- *
- * Marking Paid is not undoable in one click when the order sits inside a batch —
- * the server refuses and says to void the batch instead. That refusal is
- * surfaced here rather than silently reverting the control, so the operator
- * learns why rather than watching a dropdown snap back.
+ * Paying one order makes it its own payment and opens it, where it is finished
+ * with the reference. Only an order that is its own payment can be undone from
+ * here: one in a payment with other orders can't come out alone, because that
+ * payment's total would no longer add up. So that row offers no Undo at all, and
+ * points to the payment's own Cancel or reversal. A refusal from the server is
+ * shown as it is, so the operator learns why.
  */
-export function OrderPayoutRowCard({
-  row,
-  commissionPct,
-  commissionGstPct,
-}: Readonly<{
-  row: OrderPayoutRow;
-  commissionPct: number;
-  commissionGstPct: number;
-}>) {
+function canUndoHere(row: OrderPayoutRow): boolean {
+  return row.paid && row.settlementKind === "instant";
+}
+
+function OrderRowActions({ row }: Readonly<{ row: OrderPayoutRow }>) {
   const router = useRouter();
   const [pending, start] = useTransition();
-  const [open, setOpen] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [message, setMessage] = useState<string | null>(null);
 
-  const change = (next: string) => {
-    const paid = next === "paid";
-    if (paid === row.paid) return;
-    setError(null);
-
-    if (paid) {
-      // Never paid by one person (0156): this sends a one-order payout for
-      // approval; whoever approves it records the reference.
-      if (
-        !window.confirm(
-          `Send ${formatINR(Math.abs(row.contribution))} for order ${row.code} for approval?\n\nAnother admin, or a manager who can approve payments, pays it and records the reference.`
-        )
-      ) {
-        return;
-      }
-      start(async () => {
-        const res = await setOrderPaidAction(row.orderId, true);
-        if (!res.ok) setError(res.error);
-        router.refresh();
-      });
+  const payThisOrder = () => {
+    if (
+      !window.confirm(
+        `Pay ${formatINR(row.contribution)} for order ${row.code} on its own?\n\nIt becomes its own payment, and you finish it on the next page.`
+      )
+    ) {
       return;
     }
+    setMessage(null);
+    start(async () => {
+      const res = await setOrderPaidAction(row.orderId, true);
+      if (!res.ok) {
+        setMessage(res.error);
+        router.refresh();
+        return;
+      }
+      if (res.id) router.push(`/admin/settlements/${res.id}`);
+      else router.refresh();
+    });
+  };
 
-    // A draft payout is voided; a PAID one is never undone by one person —
-    // this asks for a reversal that someone else approves.
+  const undo = () => {
     const reason = window.prompt(
-      `Mark order ${row.code} as unpaid?\n\nIf its payout was already sent, this asks for a reversal that someone else approves (for a transfer that bounced). Why?`,
+      row.settlementStatus === "draft"
+        ? `Cancel the payment for order ${row.code}? The order goes back to unpaid.\n\nWhy are you cancelling it?`
+        : `Reverse the payment for order ${row.code}?\n\nIt stays paid until the reversal is approved on the payment's page. Why are you reversing it?`,
       ""
     );
     if (reason === null) return;
     if (reason.trim().length < 3) {
-      setError("Say why the order should be unpaid.");
+      setMessage("Say why this order should be unpaid.");
       return;
     }
+    setMessage(null);
     start(async () => {
       const res = await setOrderPaidAction(row.orderId, false, reason.trim());
-      if (!res.ok) setError(res.error);
-      else if (res.reversalRequested) setError("Reversal sent for approval. Someone else approves it before the order is unpaid.");
+      if (!res.ok) setMessage(res.error);
+      else if (res.reversalRequested) {
+        setMessage("Reversal asked for. It stays paid until it is approved on the payment's page.");
+      }
       router.refresh();
     });
   };
 
-  const amount = Math.abs(row.contribution);
-  const shopIsOwed = row.contribution >= 0;
-  const youEarn = row.commission + row.commissionGst + row.otherCharges;
-
   return (
-    <li className="rounded-xl border border-line bg-surface">
-      <div className="flex flex-wrap items-center gap-3 p-3">
-        <button
-          type="button"
-          onClick={() => setOpen((v) => !v)}
-          className="press flex min-w-0 flex-1 items-center gap-3 text-left"
-          aria-expanded={open}
-        >
-          <span className="min-w-0 flex-1">
-            <span className="text-data block truncate text-[13px] font-semibold text-ink">
-              {row.code}
-            </span>
-            <span className="block truncate text-[11.5px] text-muted">
-              {new Date(row.deliveredAt).toLocaleDateString("en-IN", {
-                day: "2-digit",
-                month: "short",
-                timeZone: "Asia/Kolkata",
-              })}{" "}
-              · {payWord(row)} · customer paid {formatINR(row.orderTotal)} · you
-              earn {formatINR(youEarn)}
-            </span>
-          </span>
-          {open ? (
-            <ChevronUp className="size-4 shrink-0 text-muted" />
-          ) : (
-            <ChevronDown className="size-4 shrink-0 text-muted" />
-          )}
-        </button>
-
-        <div className="text-right">
-          <p
-            className={`text-data text-[14px] font-bold tabular-nums ${
-              shopIsOwed ? "text-ink" : "text-deal"
-            }`}
+    <div className="flex flex-col items-end gap-1">
+      <div className="flex items-center justify-end gap-1.5 whitespace-nowrap">
+        {!row.paid && row.contribution > 0 ? (
+          <button
+            type="button"
+            onClick={payThisOrder}
+            disabled={pending}
+            className="c-btn-affirm disabled:opacity-50"
           >
-            {shopIsOwed ? "" : "− "}
-            {formatINR(amount)}
-          </p>
-          <p className="text-[10.5px] text-muted">
-            {shopIsOwed ? "shop gets" : "platform collects"}
-          </p>
-        </div>
-
-        <select
-          value={row.paid ? "paid" : "unpaid"}
-          disabled={pending}
-          onChange={(e) => change(e.target.value)}
-          aria-label={`Payout status for order ${row.code}`}
-          className={
-            "h-9 shrink-0 rounded-xl border px-2.5 text-[12.5px] font-semibold " +
-            (row.paid
-              ? "border-green/40 bg-green/10 text-green"
-              : "border-line bg-surface-2 text-muted")
-          }
-        >
-          <option value="unpaid">Unpaid</option>
-          <option value="paid">Paid</option>
-        </select>
-      </div>
-
-      {error ? (
-        <p className="mx-3 mb-3 rounded-lg border border-deal/30 bg-deal/10 px-3 py-2 text-[12.5px] font-medium text-deal">
-          {error}
-        </p>
-      ) : null}
-
-      {row.paid && row.settlementId ? (
-        <p className="border-t border-line px-3 py-2 text-[11.5px] text-muted">
-          {row.settlementKind === "instant"
-            ? "Paid early, on its own."
-            : "Paid as part of a settlement batch."}{" "}
-          {row.paymentRef ? `Ref ${row.paymentRef}. ` : ""}
+            Pay this order
+          </button>
+        ) : null}
+        {row.settlementId ? (
           <Link
             href={`/admin/settlements/${row.settlementId}`}
-            className="font-medium text-accent-ink"
+            className="c-btn-affirm"
           >
-            View statement
+            See payment
           </Link>
+        ) : null}
+        {canUndoHere(row) ? (
+          <button
+            type="button"
+            onClick={undo}
+            disabled={pending}
+            className="c-btn-quiet disabled:opacity-50"
+          >
+            Undo
+          </button>
+        ) : null}
+      </div>
+      {row.paid && !canUndoHere(row) ? (
+        <p className="max-w-[240px] text-right text-[11.5px] text-muted">
+          To undo, open the payment. It holds other orders too.
         </p>
       ) : null}
-
-      {open ? (
-        <div className="border-t border-line p-3">
-          <OrderPayoutBreakdown
-            line={row}
-            commissionPct={commissionPct}
-            commissionGstPct={commissionGstPct}
-          />
-        </div>
+      {message ? (
+        <p className="max-w-[240px] text-right text-[11.5px] font-medium text-deal">
+          {message}
+        </p>
       ) : null}
-    </li>
+    </div>
+  );
+}
+
+const EXTRA_COLUMNS: Column<OrderPayoutRow>[] = [
+  {
+    key: "status",
+    header: "Status",
+    cell: (row) => {
+      const { tone, word } = statusOf(row);
+      return <StatusText tone={tone}>{word}</StatusText>;
+    },
+  },
+  {
+    key: "actions",
+    header: "",
+    align: "right",
+    cell: (row) => <OrderRowActions row={row} />,
+  },
+];
+
+/** One shop's delivered orders, each with its sum, status and actions. */
+export function OrderPayoutsTable({
+  rows,
+  commissionPct,
+  commissionGstPct,
+  empty,
+}: Readonly<{
+  rows: OrderPayoutRow[];
+  commissionPct: number;
+  commissionGstPct: number;
+  empty: ReactNode;
+}>) {
+  return (
+    <PayoutLinesTable
+      lines={rows}
+      commissionPct={commissionPct}
+      commissionGstPct={commissionGstPct}
+      extraColumns={EXTRA_COLUMNS}
+      empty={empty}
+    />
   );
 }

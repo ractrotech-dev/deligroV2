@@ -190,7 +190,7 @@ class _ExceptionCardState extends ConsumerState<ExceptionCard> {
           final go = await confirm(
             context,
             title: 'Approve: ${e.kind.label}?',
-            message: 'This cancels order ${e.orderCode} and refunds the customer per the usual rules.',
+            message: 'This cancels order ${e.orderCode}. The customer and the shop are told.',
             yes: 'Approve and cancel',
           );
           if (!go || !mounted) return;

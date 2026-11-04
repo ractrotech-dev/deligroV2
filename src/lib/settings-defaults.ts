@@ -33,6 +33,14 @@ export const DEFAULT_SETTINGS: PlatformSettings = {
   // unreadable settings row falls back to, which is the safe direction: the
   // failure mode is "COD only", never "offer a payment we cannot take".
   featureOnlinePayment: false,
+  // Mirrors the 0194 column defaults, and what a database without them reads as:
+  // cash on, no platform cash limit.
+  featureCashPayment: true,
+  cashLimitPerOrder: 0,
+  // What an un-migrated or unreadable settings row falls back to: no points move.
+  // The 0198 column itself defaults to on.
+  featureWallet: false,
+  walletChangeMaxPerOrder: 100,
 
   defaultPrepMinutes: 20,
   // One circle around Bemetara city centre — see lib/geo/service-area.ts.
@@ -47,9 +55,6 @@ export const DEFAULT_SETTINGS: PlatformSettings = {
   // Mirrors the 0085 column defaults: ₹5,000 held, or 24 hours, before the alert.
   riderCashLimit: 5000,
   riderCashMaxHours: 24,
-  // Mirrors the 0084 column defaults: no default target.
-  riderDailyTarget: 0,
-  riderWeeklyTarget: 0,
 
   // Mirrors the 0033 column defaults, and the fallbacks baked into
   // `review_window_open()` / `review_edit_open()` — three places that must agree,
@@ -101,6 +106,8 @@ export const DEFAULT_SETTINGS: PlatformSettings = {
   pickupReminderMinutes: 10,
   delayAlertMinutes: 10,
   routingBaseUrl: "https://router.project-osrm.org",
+  // Mirrors the 0191 column default: the rule book's 20 seconds.
+  customerCancelSeconds: 20,
 };
 
 /** Every `pod_photo_rule` value, in the order the admin form lists them (0082). */

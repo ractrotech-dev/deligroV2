@@ -16,7 +16,6 @@ const financeLinks = <(String, String, IconData)>[
   ('Failed and delayed, one by one', '/finance/issues', Icons.report_gmailerrorred_outlined),
   ('Settlement history', '/finance/settlements', Icons.history),
   ('Rider payouts', '/finance/rider-payouts', Icons.payments_outlined),
-  ('Refunds', '/finance/refunds', Icons.undo),
   ('Reconciliation', '/finance/reconciliation', Icons.balance_outlined),
 ];
 

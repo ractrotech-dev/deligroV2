@@ -48,7 +48,7 @@ function Card({
   return (
     <section
       className={cn(
-        "flex h-full flex-col rounded-xl border border-line bg-surface px-[17px] py-4",
+        "flex h-full flex-col rounded-[var(--c-r)] border border-line bg-surface px-[17px] py-4",
         className
       )}
     >
@@ -349,7 +349,7 @@ function AlertSoundRow({
           <button
             type="button"
             onClick={() => setCustom(null)}
-            className="press grid size-6 shrink-0 place-items-center rounded-full text-muted hover:text-deal"
+            className="grid size-6 shrink-0 place-items-center rounded-full text-muted hover:text-deal"
             aria-label={`Remove the custom ${role.toLowerCase()} sound`}
           >
             <X className="size-3.5" />
@@ -371,7 +371,7 @@ function AlertSoundRow({
             type="button"
             onClick={() => fileRef.current?.click()}
             disabled={uploading}
-            className="press inline-flex items-center gap-1.5 text-[11.5px] font-semibold text-accent-ink disabled:opacity-50"
+            className="inline-flex items-center gap-1.5 text-[11.5px] font-semibold text-accent-ink disabled:opacity-50"
           >
             <Upload className="size-3.5" />
             {uploading ? "Uploading…" : "Upload a custom sound"}
@@ -422,7 +422,8 @@ export function SettingsForm({
   commissionGstPct = 0,
   commissionCoverage = { inheriting: 0, overridden: 0, migrated: true },
   cashLimitsReady = true,
-  targetsReady = true,
+  cashLimitReady = true,
+  walletReady = true,
   docsSettingReady = true,
 }: Readonly<{
   settings: PlatformSettings;
@@ -444,8 +445,10 @@ export function SettingsForm({
     migrated: boolean;
   };
   cashLimitsReady?: boolean;
-  /** False until migration 0084 adds the default-target columns (same reasoning). */
-  targetsReady?: boolean;
+  /** False until migration 0194 adds the platform cash switch and limit. */
+  cashLimitReady?: boolean;
+  /** False before 0198: the wallet switch and limit can't be saved. */
+  walletReady?: boolean;
   /** False until migration 0086 adds `block_dispatch_on_expired_docs`. */
   docsSettingReady?: boolean;
 }>) {
@@ -455,21 +458,21 @@ export function SettingsForm({
   );
 
   return (
-    <form action={formAction} className="space-y-4 pb-24 @3xl:pb-0">
+    <form action={formAction} className="space-y-4 pb-0">
       {state.error ? (
-        <p className="rounded-xl border border-deal/30 bg-deal/10 px-3.5 py-3 text-sm font-medium text-deal">
+        <p className="rounded-[var(--c-r)] border border-deal/30 bg-deal/10 px-3.5 py-3 text-sm font-medium text-deal">
           {state.error}
         </p>
       ) : null}
       {state.ok ? (
-        <p className="rounded-xl border border-green/30 bg-green/10 px-3.5 py-3 text-sm font-medium text-green">
+        <p className="rounded-[var(--c-r)] border border-green/30 bg-green/10 px-3.5 py-3 text-sm font-medium text-green">
           Settings saved. The app now bills and behaves from these values.
         </p>
       ) : null}
 
-      <div className="grid grid-cols-1 items-stretch gap-3.5 @3xl:grid-cols-2">
+      <div className="grid items-stretch gap-3.5 grid-cols-2">
         <Card
-          className="@3xl:order-1"
+          className="order-1"
           title="Vendor commission"
           desc="What the platform keeps from each vendor's food subtotal. Settlements are generated from it."
         >
@@ -505,7 +508,7 @@ export function SettingsForm({
         </Card>
 
         <Card
-          className="@3xl:order-2"
+          className="order-2"
           title="Fees and tax"
           desc="Authoritative — every order is billed from these, free delivery and minimums included."
         >
@@ -538,7 +541,7 @@ export function SettingsForm({
         </Card>
 
         <Card
-          className="@3xl:order-3"
+          className="order-3"
           title="Availability"
           desc="Turn the whole platform — or individual verticals — on and off."
         >
@@ -552,6 +555,19 @@ export function SettingsForm({
               label="Accepting orders"
               name="acceptingOrders"
               defaultChecked={settings.acceptingOrders}
+            />
+          </Row>
+          <Row
+            label="Customer can cancel for"
+            hint="Seconds after placing an order. Rule book: 20. 0 turns it off. The shop accepting the order also ends it."
+            htmlFor="customerCancelSeconds"
+          >
+            <Num
+              id="customerCancelSeconds"
+              name="customerCancelSeconds"
+              defaultValue={settings.customerCancelSeconds}
+              min={0}
+              max={600}
             />
           </Row>
           {/* These two now gate the Stores tab's category tiles and their heroes
@@ -594,10 +610,93 @@ export function SettingsForm({
         </Card>
 
         <Card
-          className="@3xl:order-5"
-          title="Payments"
-          desc="Cash on delivery is always available. Online payment is off until you turn it on here."
+          className="order-5"
+          title="Customer wallet"
+          desc="A rider with no change can add the leftover to the customer's wallet as points. 1 point = ₹1."
         >
+          {walletReady ? null : (
+            <p
+              role="status"
+              className="rounded-lg border border-pop/40 bg-pop/10 px-3 py-2 text-[12px] font-medium leading-snug text-ink"
+            >
+              The wallet needs migration 0198. Until then it stays off.
+            </p>
+          )}
+          <Row
+            label="Wallet"
+            hint="Off: riders can't add points and customers can't use them. Balances stay as they are."
+            htmlFor="featureWallet"
+          >
+            {walletReady ? <input type="hidden" name="featureWalletShown" value="1" /> : null}
+            <Switch
+              id="featureWallet"
+              label="Wallet"
+              name="featureWallet"
+              disabled={!walletReady}
+              defaultChecked={settings.featureWallet}
+            />
+          </Row>
+          <Row
+            label="Most a rider can add per order"
+            hint="In rupees, from 1 to 10,000. A rider can't add more than this on one order."
+            htmlFor="walletChangeMaxPerOrder"
+          >
+            {/* A disabled input posts nothing, so the action keeps the stored value. */}
+            <Num
+              id="walletChangeMaxPerOrder"
+              name="walletChangeMaxPerOrder"
+              disabled={!walletReady}
+              defaultValue={settings.walletChangeMaxPerOrder}
+              min={1}
+              max={10000}
+              step={10}
+            />
+          </Row>
+        </Card>
+
+        <Card
+          className="order-5"
+          title="Payments"
+          desc="At least one must stay on. Online payment is off until you turn it on here."
+        >
+          {cashLimitReady ? null : (
+            <p
+              role="status"
+              className="rounded-lg border border-pop/40 bg-pop/10 px-3 py-2 text-[12px] font-medium leading-snug text-ink"
+            >
+              The cash switch and cash limit need migration 0194. Until then cash stays on, with no platform limit.
+            </p>
+          )}
+          <Row
+            label="Cash on delivery"
+            hint="Customers pay the rider in cash. Can't be off unless online payment is working."
+            htmlFor="featureCashPayment"
+          >
+            {cashLimitReady ? <input type="hidden" name="featureCashPaymentShown" value="1" /> : null}
+            <Switch
+              id="featureCashPayment"
+              label="Cash on delivery"
+              name="featureCashPayment"
+              disabled={!cashLimitReady}
+              defaultChecked={settings.featureCashPayment}
+            />
+          </Row>
+          <Row
+            label="Cash limit per order"
+            hint="Above this amount in rupees, the order can only be paid online. 0 = no limit. A shop's own limit stays, and the stricter applies. While online is off, orders above the limit can't be placed."
+            htmlFor="cashLimitPerOrder"
+          >
+            {/* A disabled input posts nothing, so the action keeps the stored value. */}
+            <Num
+              id="cashLimitPerOrder"
+              name="cashLimitPerOrder"
+              disabled={!cashLimitReady}
+              defaultValue={settings.cashLimitPerOrder}
+              min={0}
+              max={1000000}
+              step={50}
+            />
+          </Row>
           <Row
             label="Online payment (Razorpay)"
             hint={
@@ -640,7 +739,7 @@ export function SettingsForm({
         </Card>
 
         <Card
-          className="@3xl:order-6"
+          className="order-6"
           title="Dispatch"
           desc="Operational defaults for routing and prep time."
         >
@@ -662,7 +761,7 @@ export function SettingsForm({
         </Card>
 
         <Card
-          className="@3xl:order-6"
+          className="order-6"
           title="Riders"
           desc="How long a rider has to take an offer, when a delivery needs a photo, and where routes come from."
         >
@@ -709,42 +808,6 @@ export function SettingsForm({
               defaultValue={settings.unreachableWaitMinutes}
               min={3}
               max={30}
-            />
-          </Row>
-          {targetsReady ? null : (
-            <p
-              role="status"
-              className="rounded-lg border border-pop/40 bg-pop/10 px-3 py-2 text-[12px] font-medium leading-snug text-ink"
-            >
-              Default delivery targets need migration 0084 — saving them does nothing yet.
-            </p>
-          )}
-          <Row
-            label="Daily target"
-            hint="Deliveries a rider is aiming for each day, shown on their Performance screen. 0 shows the largest active daily incentive target instead."
-            htmlFor="riderDailyTarget"
-          >
-            <Num
-              id="riderDailyTarget"
-              name="riderDailyTarget"
-              disabled={!targetsReady}
-              defaultValue={settings.riderDailyTarget}
-              min={0}
-              max={1000}
-            />
-          </Row>
-          <Row
-            label="Weekly target"
-            hint="Deliveries a rider is aiming for each week (Monday to Sunday). 0 shows the largest active weekly incentive target instead."
-            htmlFor="riderWeeklyTarget"
-          >
-            <Num
-              id="riderWeeklyTarget"
-              name="riderWeeklyTarget"
-              disabled={!targetsReady}
-              defaultValue={settings.riderWeeklyTarget}
-              min={0}
-              max={5000}
             />
           </Row>
           <Row
@@ -801,7 +864,7 @@ export function SettingsForm({
             />
           </Stacked>
           <p className="text-[12.5px] leading-snug text-muted">
-            Riders are paid a fixed salary. Record salary, bonuses and deductions on each rider&apos;s Money tab.
+            Riders are paid a fixed salary. Record salary and deductions on each rider&apos;s Money tab.
           </p>
           {/* Cash riders collect for Deligro (0085). Not their pay: the Cash
               screen turns red and a reminder is pushed past either limit. */}
@@ -864,7 +927,7 @@ export function SettingsForm({
         </Card>
 
         <Card
-          className="@3xl:order-7"
+          className="order-7"
           title="Alert sounds"
           desc="What plays when a new order arrives — one sound per role, for every vendor and every rider."
         >
@@ -893,7 +956,7 @@ export function SettingsForm({
         </Card>
 
         <Card
-          className="@3xl:order-4"
+          className="order-4"
           title="Reviews"
           desc="How long a customer has to review an order, and to change their mind afterwards. Both are enforced by the database, not just the app."
         >
@@ -931,7 +994,7 @@ export function SettingsForm({
         </Card>
 
         <Card
-          className="@3xl:order-4"
+          className="order-4"
           title="Support and brand"
           desc="Shown to customers on the Help and Profile screens."
         >
@@ -1002,11 +1065,11 @@ export function SettingsForm({
         </Card>
 
         <Card
-          className="@3xl:order-7 @3xl:col-span-2"
+          className="order-7 col-span-2"
           title="App releases"
           desc="What the rider, customer, Partner and Manager Android apps are told when they check for an update. There is no Play Store behind these — the apps install from the APK link you put here."
         >
-          <div className="grid grid-cols-1 gap-x-6 @3xl:grid-cols-2 @5xl:grid-cols-4">
+          <div className="grid gap-x-6 grid-cols-2 @5xl:grid-cols-4">
             <div>
               <AppRelease
                 app="rider"
@@ -1057,18 +1120,11 @@ export function SettingsForm({
         </Card>
       </div>
 
-      <div className="action-dock flex items-center gap-3 border-t border-line bg-bg/95 px-4 py-3 backdrop-blur @3xl:mt-1 @3xl:justify-end">
-        <Button
-          type="submit"
-          disabled={pending}
-          className="@3xl:hidden"
-        >
-          {pending ? "Saving…" : "Save settings"}
-        </Button>
+      <div className="action-dock flex items-center gap-3 border-t border-line bg-bg/95 px-4 py-3 backdrop-blur mt-1 justify-end">
         <button
           type="submit"
           disabled={pending}
-          className="c-btn c-btn-dark press hidden disabled:opacity-50 @3xl:inline-flex"
+          className="c-btn c-btn-dark disabled:opacity-50 inline-flex"
         >
           {pending ? "Saving…" : "Save settings"}
         </button>

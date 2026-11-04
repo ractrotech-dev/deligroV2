@@ -15,7 +15,6 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Field, fieldCls } from "@/components/ui/field";
-import { ConsoleOnly } from "@/components/admin/console-only";
 import { cn } from "@/lib/utils/cn";
 import { createEmployeeAction } from "./actions";
 import type { EmployeeRole } from "@/lib/data-access/employees";
@@ -36,15 +35,6 @@ const ROLE_META: Record<
   },
 };
 
-/**
- * Console-only. Creating a staff account is an eight-field form that ends in a
- * credential shown exactly once (AGENTS.md rule 4) — do that where you can read
- * it down, not on a handset. Reading the team list works on a phone and stays.
- *
- * The button lives in a header's `shrink-0` action slot, which has no room for
- * a notice card, so it simply drops out on a phone; the page carries the
- * explanation once, in its body.
- */
 export function CreateEmployeeButton({
   configured,
 }: Readonly<{
@@ -53,12 +43,12 @@ export function CreateEmployeeButton({
   const [open, setOpen] = useState(false);
 
   return (
-    <ConsoleOnly tool="Creating an employee" notice={false}>
+    <>
       <button
         type="button"
         onClick={() => setOpen(true)}
         disabled={!configured}
-        className="c-btn c-btn-dark press disabled:pointer-events-none disabled:opacity-50"
+        className="c-btn c-btn-dark disabled:pointer-events-none disabled:opacity-50"
       >
         <UserPlus className="size-3.5" strokeWidth={2.4} /> Create employee
       </button>
@@ -68,16 +58,10 @@ export function CreateEmployeeButton({
           onCreated={() => setOpen(false)}
         />
       ) : null}
-    </ConsoleOnly>
+    </>
   );
 }
 
-/**
- * Console-only by construction: the only thing that opens it is gated above, so
- * this is a centred dialog and nothing else. It used to carry a parallel
- * bottom-sheet layout for the phone frame; that branch is unreachable now and
- * has been removed rather than left as a second way to draw the same form.
- */
 function CreateEmployeeDialog({
   onClose,
   onCreated,
@@ -142,7 +126,7 @@ function CreateEmployeeDialog({
       <div
         role="dialog"
         aria-modal="true"
-        className="relative z-10 flex max-h-[90vh] w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-line bg-surface shadow-xl"
+        className="relative z-10 flex max-h-[90vh] w-full max-w-lg flex-col overflow-hidden rounded-[var(--c-r)] border border-line bg-surface shadow-xl"
       >
         <div className="flex items-center justify-between border-b border-line px-5 py-3.5">
           <h2 className="text-heading">
@@ -151,7 +135,7 @@ function CreateEmployeeDialog({
           <button
             type="button"
             onClick={dismiss}
-            className="press grid size-9 place-items-center rounded-full bg-surface-2 text-muted"
+            className="grid size-9 place-items-center rounded-full bg-surface-2 text-muted"
           >
             <X className="size-5" />
           </button>
@@ -168,8 +152,8 @@ function CreateEmployeeDialog({
           </div>
         ) : (
           <div className="flex min-h-0 flex-1 flex-col">
-            <div className="grid gap-4 overflow-y-auto px-5 py-4 sm:grid-cols-2">
-              <div className="sm:col-span-2">
+            <div className="grid gap-4 overflow-y-auto px-5 py-4 grid-cols-2">
+              <div className="col-span-2">
                 <span className="text-xs font-semibold text-muted">Role</span>
                 <div className="mt-1.5 grid grid-cols-2 gap-2">
                   {(Object.keys(ROLE_META) as EmployeeRole[]).map((r) => {
@@ -182,7 +166,7 @@ function CreateEmployeeDialog({
                         type="button"
                         onClick={() => setRole(r)}
                         className={cn(
-                          "press rounded-xl border p-2.5 text-left transition-colors",
+                          "rounded-[var(--c-r)] border p-2.5 text-left transition-colors",
                           active
                             ? "border-accent bg-accent-soft"
                             : "border-line bg-surface-2"
@@ -251,7 +235,7 @@ function CreateEmployeeDialog({
               </Field>
 
               {error ? (
-                <p className="text-sm font-medium text-deal sm:col-span-2">
+                <p className="text-sm font-medium text-deal col-span-2">
                   {error}
                 </p>
               ) : null}
@@ -297,7 +281,7 @@ function CreatedPanel({
 }>) {
   return (
     <div className="space-y-4">
-      <div className="flex items-center gap-2 rounded-xl bg-green/10 px-3.5 py-3 text-sm font-medium text-green">
+      <div className="flex items-center gap-2 rounded-[var(--c-r)] bg-green/10 px-3.5 py-3 text-sm font-medium text-green">
         <Check className="size-4 shrink-0" />
         <span>
           {ROLE_META[role].label} account is ready. Share these credentials — the
@@ -340,7 +324,7 @@ function CopyRow({
   return (
     <div className="space-y-1.5">
       <span className="text-xs font-semibold text-muted">{label}</span>
-      <div className="flex items-center gap-2 rounded-xl bg-surface-2 p-2.5">
+      <div className="flex items-center gap-2 rounded-[var(--c-r)] bg-surface-2 p-2.5">
         {icon ? <KeyRound className="size-4 shrink-0 text-muted" /> : null}
         <code
           className={
@@ -353,7 +337,7 @@ function CopyRow({
         <button
           type="button"
           onClick={copy}
-          className="press grid size-9 shrink-0 place-items-center rounded-lg bg-surface text-muted hover:text-ink"
+          className="grid size-9 shrink-0 place-items-center rounded-lg bg-surface text-muted hover:text-ink"
           aria-label={`Copy ${label.toLowerCase()}`}
         >
           {copied ? (

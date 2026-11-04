@@ -41,7 +41,7 @@ export function RejectVendorButton({ id, name }: Readonly<{ id: string; name: st
         aria-label={`Reject ${name}`}
         onClick={() => setConfirm(true)}
         className={cn(
-          "c-btn-deny press inline-flex items-center gap-1",
+          "c-btn-deny inline-flex items-center gap-1",
           pending && "opacity-60"
         )}
       >
