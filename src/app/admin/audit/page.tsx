@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { requireRole } from "@/lib/auth";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { Empty, PageHeader, StatusText, Toolbar } from "@/components/admin/console";
@@ -10,6 +11,7 @@ import { listAudit } from "@/lib/data-access/manager-audit";
 import { listCitiesWithZones } from "@/lib/data-access/zones";
 import { AUDIT_ACTIONS, auditActionDef } from "@/lib/ops/audit-catalog";
 import { auditDiff, parseAuditQuery, type AuditEntry, type AuditQuery } from "@/lib/ops/alerts-contract";
+import { auditPager } from "@/lib/ops/audit-paging";
 import { formatRelativeTime } from "@/lib/utils/relative-time";
 
 export const metadata: Metadata = { title: "Audit log · Admin · Deligro" };
@@ -45,19 +47,22 @@ export default async function AdminAuditPage({
   const q = "error" in parsed ? (parseAuditQuery(new URLSearchParams()) as AuditQuery) : parsed;
 
   let entries: AuditEntry[] = [];
+  let nextCursor: string | null = null;
   let zones: { id: string; name: string }[] = [];
   let missing = false;
   if (isSupabaseConfigured) {
     try {
       const [page, cities] = await Promise.all([listAudit({ all: true }, { ...q, limit: 100 }), listCitiesWithZones()]);
       entries = page.items;
+      nextCursor = page.nextCursor;
       zones = cities.flatMap((c) => c.zones.map((z) => ({ id: z.id, name: `${z.name} · ${c.name}` })));
     } catch {
       missing = true;
     }
   }
   const zoneName = new Map(zones.map((z) => [z.id, z.name]));
-  const filtered = params.size > 0;
+  const filtered = [...params.keys()].some((k) => k !== "cursor" && k !== "back");
+  const pager = auditPager("/admin/audit", params, nextCursor);
 
   const columns: Column<AuditEntry>[] = [
     { key: "action", header: "Action", cell: (e) => {
@@ -119,6 +124,25 @@ export default async function AdminAuditPage({
           rows={entries}
           rowKey={(e) => String(e.id)}
           empty={<Empty action={filtered ? { href: "/admin/audit", label: "Clear filters" } : undefined}>No entries match.</Empty>}
+          footer={
+            pager.next || pager.back ? (
+              <nav className="flex items-center justify-between gap-2" aria-label="Pagination">
+                <span className="text-xs text-muted">Page {pager.page}</span>
+                <span className="flex items-center gap-1.5">
+                  {pager.back ? (
+                    <Link href={pager.back} className="c-btn c-btn-outline">
+                      Back
+                    </Link>
+                  ) : null}
+                  {pager.next ? (
+                    <Link href={pager.next} className="c-btn c-btn-outline">
+                      Next
+                    </Link>
+                  ) : null}
+                </span>
+              </nav>
+            ) : undefined
+          }
         />
       )}
     </>
