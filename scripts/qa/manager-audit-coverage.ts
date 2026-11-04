@@ -119,8 +119,8 @@ for (const f of migrations) {
 }
 for (const f of files("src", (p) => /\.tsx?$/.test(p))) {
   const src = readFileSync(f, "utf8");
-  if (!src.includes("logOpsAction(")) continue;
-  for (const m of src.matchAll(/logOpsAction\(\{[^}]*action:\s*"([a-z_.]+)"/g)) logged.add(m[1]);
+  if (!src.includes("logOpsAction(") && !src.includes("auditedChange(")) continue;
+  for (const m of src.matchAll(/(?:logOpsAction|auditedChange)\(\s*\{[^}]*action:\s*"([a-z_.]+)"/g)) logged.add(m[1]);
 }
 check("every _ops_log action argument resolves to codes", unresolved.length === 0, unresolved.join(" | "));
 const catalog = new Set(AUDIT_ACTIONS.map((a) => a.code));
@@ -130,6 +130,8 @@ check(`every logged code (${logged.size}) is in the catalog`, missing.length ===
 check("every catalog code is written by a migration", unused.length === 0, unused.join(", "));
 // The floor the design's audit list sets (§16, Audit log section).
 const REQUIRED = [
+  "vendor.edit", "vendor.delete", "vendor.open_set", "banner.update", "banner.delete", "category.delete", "offer.delete",
+  "staff.stop", "staff.start", "staff.password_reset",
   "order.advance", "order.cancel", "order.correct.status", "order.note", "order.escalate", "delivery.assign", "delivery.reassign",
   "vendor.suspend", "vendor.document.verified", "vendor.onboard", "product.flag", "product.hide", "product.approve", "product.stock",
   "rider.suspend", "rider.document.verify", "rider.onboard", "rider.adjustment", "payment.request", "payment.approve",

@@ -1,5 +1,6 @@
 "use client";
 
+import { isoToIstLocal } from "@/lib/utils/ist-time";
 import { useActionState, useState } from "react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
@@ -246,11 +247,11 @@ export function PromotionForm({
             </label>
 
             <label className="block space-y-1.5">
-              <span className={labelCls}>Ends</span>
+              <span className={labelCls}>Ends (India time)</span>
               <input
                 name="expiresAt"
                 type="datetime-local"
-                defaultValue={toLocalInput(promotion?.expiresAt)}
+                defaultValue={isoToIstLocal(promotion?.expiresAt)}
                 className={fieldCls}
               />
               <span className="block text-[11.5px] text-muted">
@@ -455,13 +456,3 @@ function exampleDiscount(
   return Math.min(cap && Number.isFinite(cap) ? cap : raw, raw, basket);
 }
 
-/** ISO → the `datetime-local` shape, in the viewer's own zone. */
-function toLocalInput(iso: string | null | undefined): string {
-  if (!iso) return "";
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return "";
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(
-    d.getHours()
-  )}:${pad(d.getMinutes())}`;
-}

@@ -33,6 +33,7 @@ const dateFmt = new Intl.DateTimeFormat("en-IN", {
   day: "numeric",
   month: "short",
   year: "numeric",
+  timeZone: "Asia/Kolkata",
 });
 
 /** Live, retired, or simply switched off — as a customer would experience it. */
