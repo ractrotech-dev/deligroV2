@@ -41,7 +41,7 @@ class HelpScreen extends ConsumerWidget {
         q: 'Payment methods',
         a: s.featureOnlinePayment
             ? 'You can pay cash on delivery, or online by card, UPI or netbanking at checkout. '
-                'Some shops set a cash limit on larger orders — checkout will say so.'
+                'Larger orders can have a cash limit — checkout will say so.'
             : 'We currently accept Cash on Delivery. Online payment isn\'t available yet.',
       ),
     ];

@@ -36,57 +36,34 @@ class LastPayout {
   );
 }
 
-/// `GET /api/rider/earnings/summary`.
-///
-/// today/week/month/total are what deliveries and incentives earned (a
-/// reversed earning is left out). Bonuses, salary, adjustments and deductions
-/// are separate all-time figures. [pending] is signed: negative means the
-/// rider owes Deligro (a deduction or reversal larger than everything unpaid).
+/// `GET /api/rider/earnings/summary`: the Salary tab. Riders get a fixed salary
+/// only. [olderPay] is what old ledger rows add up to, 0 for a rider with none.
+/// [pending] is signed: negative means the rider owes Deligro (a deduction
+/// larger than everything unpaid).
 class EarningsSummary {
   const EarningsSummary({
-    required this.today,
-    required this.week,
-    required this.month,
-    required this.total,
-    required this.perDeliveryAvg,
-    required this.deliveriesCounted,
-    required this.incentives,
-    required this.bonuses,
+    required this.salary,
     required this.adjustments,
     required this.deductions,
-    required this.salary,
+    required this.olderPay,
     required this.paid,
     required this.pending,
     required this.lastPayout,
   });
 
-  final double today;
-  final double week;
-  final double month;
-  final double total;
-  final double? perDeliveryAvg;
-  final int deliveriesCounted;
-  final double incentives;
-  final double bonuses;
+  final double salary;
   final double adjustments;
   final double deductions;
-  final double salary;
+  final double olderPay;
   final double paid;
   final double pending;
   final LastPayout? lastPayout;
 
   factory EarningsSummary.fromJson(Map<String, dynamic> j) => EarningsSummary(
-    today: _numOr0(j['today']),
-    week: _numOr0(j['week']),
-    month: _numOr0(j['month']),
-    total: _numOr0(j['total']),
-    perDeliveryAvg: _num(j['perDeliveryAvg']),
-    deliveriesCounted: _numOr0(j['deliveriesCounted']).round(),
-    incentives: _numOr0(j['incentives']),
-    bonuses: _numOr0(j['bonuses']),
+    salary: _numOr0(j['salary']),
     adjustments: _numOr0(j['adjustments']),
     deductions: _numOr0(j['deductions']),
-    salary: _numOr0(j['salary']),
+    olderPay: _numOr0(j['olderPay']),
     paid: _numOr0(j['paid']),
     pending: _numOr0(j['pending']),
     lastPayout: j['lastPayout'] is Map
@@ -112,9 +89,8 @@ DistanceSource? _source(Object? v) => switch (v) {
   _ => null,
 };
 
-/// One line of the rider's money: a delivery's earning, an incentive award, a
-/// bonus, salary, an adjustment (including the automatic reversal of a
-/// corrected delivery) or a deduction.
+/// One line of the rider's money: salary, an adjustment or a deduction. Old ledger
+/// rows (a delivery's pay, an incentive, a bonus) stay readable as "Older pay".
 class EarningRecord {
   const EarningRecord({
     required this.kind,
@@ -163,7 +139,7 @@ class EarningRecord {
   final String? settledOn;
   final String? reference;
 
-  /// An incentive's rule name, an adjustment's or deduction's reason.
+  /// An adjustment's or deduction's reason.
   final String? note;
 
   /// A delivery whose earning was reversed by a staff correction.
@@ -176,9 +152,8 @@ class EarningRecord {
   bool get isReversal => kind == RecordKind.adjustment && reversesId != null;
 
   /// Whether the row is money the rider sees as a line. Riders are on a fixed
-  /// salary (ruling P3-R11): a delivery's ₹0 earning row only counts the
-  /// delivery towards incentive targets, and its ₹0 reversal likewise, so
-  /// neither is listed. A per-delivery row with a real amount still is.
+  /// salary (ruling P3-R11): a delivery's ₹0 row and its ₹0 reversal are not
+  /// money, so neither is listed. An old row with a real amount still is.
   bool get isMoneyLine =>
       !((kind == RecordKind.delivery || isReversal) && amount == 0);
 
@@ -212,8 +187,7 @@ class EarningRecord {
     final code = orderCode;
     return switch (kind) {
       RecordKind.delivery => code == null ? 'Delivery' : 'Delivery $code',
-      RecordKind.incentive => note == null ? 'Incentive' : 'Incentive — $note',
-      RecordKind.bonus => note == null ? 'Bonus' : 'Bonus — $note',
+      RecordKind.incentive || RecordKind.bonus => 'Older pay',
       RecordKind.salary => note == null ? 'Salary' : 'Salary — $note',
       RecordKind.adjustment =>
         note == null ? 'Adjustment' : 'Adjustment — $note',
@@ -221,13 +195,12 @@ class EarningRecord {
     };
   }
 
-  /// "Delivery", "Incentive", … for the CSV's type column.
+  /// "Salary", "Deduction", … for the CSV's type column.
   String get kindLabel => isReversal
       ? 'Reversal'
       : switch (kind) {
           RecordKind.delivery => 'Delivery',
-          RecordKind.incentive => 'Incentive',
-          RecordKind.bonus => 'Bonus',
+          RecordKind.incentive || RecordKind.bonus => 'Older pay',
           RecordKind.adjustment => 'Adjustment',
           RecordKind.deduction => 'Deduction',
           RecordKind.salary => 'Salary',
@@ -288,55 +261,6 @@ class Payout {
     '' => 'Payout',
     final m => '${m[0].toUpperCase()}${m.substring(1).replaceAll('_', ' ')}',
   };
-}
-
-/// `GET /api/rider/earnings/incentives` — one rule in force today and the
-/// rider's progress in the current period.
-class IncentiveProgress {
-  const IncentiveProgress({
-    required this.ruleId,
-    required this.name,
-    required this.period,
-    required this.target,
-    required this.done,
-    required this.bonus,
-    this.window,
-    this.endsOn,
-    required this.earned,
-  });
-
-  final String ruleId;
-  final String name;
-
-  /// `daily` or `weekly`.
-  final String period;
-  final int target;
-  final int done;
-  final double bonus;
-
-  /// "12:00–15:00" (IST), or null for all day.
-  final String? window;
-  final String? endsOn;
-  final bool earned;
-
-  bool get daily => period == 'daily';
-
-  /// 0..1 for the bar; full once earned.
-  double get fraction =>
-      earned || target <= 0 ? 1 : (done / target).clamp(0, 1).toDouble();
-
-  factory IncentiveProgress.fromJson(Map<String, dynamic> j) =>
-      IncentiveProgress(
-        ruleId: '${j['ruleId']}',
-        name: '${j['name'] ?? ''}',
-        period: '${j['period'] ?? 'daily'}',
-        target: _numOr0(j['target']).round(),
-        done: _numOr0(j['done']).round(),
-        bonus: _numOr0(j['bonus']),
-        window: _str(j['window']),
-        endsOn: _str(j['endsOn']),
-        earned: j['earned'] == true,
-      );
 }
 
 /// `GET /api/rider/earnings/statement`: opening pending + earned − paid =

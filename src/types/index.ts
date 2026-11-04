@@ -364,6 +364,16 @@ export interface PlatformSettings {
    * that dead-ends. See `onlinePaymentsEnabled()`.
    */
   featureOnlinePayment: boolean;
+  /**
+   * Cash on delivery for the whole platform (0194). On by default and on a
+   * database without the column. Cannot be saved off while online is unavailable.
+   */
+  featureCashPayment: boolean;
+  /**
+   * Highest order total payable in cash, whole rupees, for every shop (0194).
+   * 0 = no limit. A shop's own limit stays and the stricter applies.
+   */
+  cashLimitPerOrder: number;
 
   // ---- Ops defaults ----
   defaultPrepMinutes: number;
@@ -395,15 +405,6 @@ export interface PlatformSettings {
   riderCashMaxHours: number;
 
   // ---- Rider targets (0084) ----
-  /**
-   * The default delivery targets on the rider Performance screen. 0 = none: the
-   * screen then shows the largest active incentive rule target for that period
-   * (`chooseTargets`), and nothing when there is none. Also 0 on a database
-   * without 0084.
-   */
-  riderDailyTarget: number;
-  riderWeeklyTarget: number;
-
   // ---- Reviews ----
   /**
    * Days after delivery that a customer may still review an order. Enforced in

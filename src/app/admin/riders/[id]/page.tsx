@@ -263,7 +263,7 @@ export default async function AdminRiderPage({
               <Link href={`${base}?tab=money`} className="font-semibold text-accent-ink hover:underline">
                 Open the Money tab
               </Link>{" "}
-              to see earnings, record a payout or add a bonus or deduction.
+              to see salary, record a payment or add a deduction.
             </p>
           </Section>
 

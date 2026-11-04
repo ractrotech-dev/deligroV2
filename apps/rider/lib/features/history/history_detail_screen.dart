@@ -12,7 +12,7 @@ import '../../state/providers.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/common.dart';
 import '../delivery/timeline.dart' show timelineLabel;
-import '../earnings/earnings_widgets.dart' show FieldRow, earningsFeature;
+import '../earnings/earnings_widgets.dart' show FieldRow;
 import 'history_screen.dart' show outcomeChip;
 
 /// Who cancelled, in words.
@@ -35,7 +35,7 @@ String proofText(String? proof) => switch (proof) {
   _ => 'Not recorded',
 };
 
-/// One finished job in full: times, distance, earning, why it ended, the
+/// One finished job in full: times, distance, why it ended, the
 /// proof, what was in the order and the timeline. [preview] is the row the
 /// rider tapped; it shows while the rest loads.
 class HistoryDetailScreen extends ConsumerWidget {
@@ -47,8 +47,6 @@ class HistoryDetailScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final detail = ref.watch(historyDetailProvider((rider: ref.watch(riderKeyProvider), orderId: orderId)));
-    final showMoney =
-        ref.watch(currentMeProvider)?.feature(earningsFeature) != false;
     return Scaffold(
       appBar: AppBar(title: Text(preview?.code ?? 'Delivery')),
       body: SafeArea(
@@ -62,12 +60,11 @@ class HistoryDetailScreen extends ConsumerWidget {
           },
           child: detail.when(
             skipLoadingOnRefresh: true,
-            data: (d) => _Body(detail: d, showMoney: showMoney),
+            data: (d) => _Body(detail: d),
             loading: () => preview == null
                 ? const Center(child: CircularProgressIndicator())
                 : _Body(
                     detail: HistoryDetail(item: preview!),
-                    showMoney: showMoney,
                     loadingRest: true,
                   ),
             error: (e, _) {
@@ -102,12 +99,10 @@ class HistoryDetailScreen extends ConsumerWidget {
 class _Body extends StatelessWidget {
   const _Body({
     required this.detail,
-    required this.showMoney,
     this.loadingRest = false,
   });
 
   final HistoryDetail detail;
-  final bool showMoney;
   final bool loadingRest;
 
   @override
@@ -180,12 +175,6 @@ class _Body extends StatelessWidget {
               label: 'Distance',
               value: it.distanceKm == null ? '—' : fmt.distance(it.distanceKm!),
             ),
-            if (showMoney && it.hasEarning)
-              FieldRow(
-                label: 'Earning',
-                value: money(it.earning!),
-                strong: true,
-              ),
           ],
         ),
         if (!delivered)

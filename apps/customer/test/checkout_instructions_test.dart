@@ -169,6 +169,49 @@ void main() {
       });
     });
 
+    // Rule book, "Payment methods". The basket is ₹380 of food, so above ₹300 in cash.
+    Future<void> checkoutWith(WidgetTester tester, PaymentRules rules) async {
+      // Tall enough that the whole list is built, or "not shown" proves nothing.
+      tester.view.physicalSize = const Size(1080, 9000);
+      tester.view.devicePixelRatio = 3;
+      addTearDown(tester.view.reset);
+      final prefs = await SharedPreferences.getInstance();
+      final api = ApiClient(_client.auth);
+      await tester.pumpWidget(ProviderScope(
+        overrides: [
+          prefsProvider.overrideWithValue(prefs),
+          supabaseProvider.overrideWithValue(_client),
+          userIdProvider.overrideWithValue('u1'),
+          settingsProvider.overrideWith((_) async => _settings),
+          restaurantProvider.overrideWith((_, _) async => _shop),
+          addressesProvider.overrideWith(_FakeAddresses.new),
+          checkoutRepoProvider.overrideWithValue(_FakeCheckout(api, rules)),
+          orderRepoProvider.overrideWithValue(_RecordingOrders(_client, api, placed)),
+        ],
+        child: MaterialApp(theme: buildTheme(Brightness.light), home: const CheckoutScreen()),
+      ));
+      for (var i = 0; i < 6; i++) {
+        await tester.pump(const Duration(milliseconds: 100));
+      }
+    }
+
+    testWidgets('above the cash limit with online off: says so plainly, hides cash, places nothing', (tester) async {
+      await checkoutWith(tester, const PaymentRules(true, false, 300));
+      expect(find.textContaining("Orders above ₹300 can't be placed right now"), findsWidgets);
+      expect(find.text('Cash on delivery'), findsNothing);
+      expect(find.textContaining('cannot take payment'), findsNothing);
+      await tester.tap(find.textContaining('Place order').last, warnIfMissed: false);
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(placed, isEmpty);
+    });
+
+    testWidgets('under the cash limit, cash is offered with the limit shown', (tester) async {
+      await checkoutWith(tester, const PaymentRules(true, false, 5000));
+      expect(find.text('Cash on delivery'), findsOneWidget);
+      expect(find.text('Cash on delivery is available up to ₹5,000.'), findsOneWidget);
+      expect(find.textContaining("can't be placed"), findsNothing);
+    });
+
     testWidgets('places the note as instructions and leaves the line as the address', (tester) async {
       tester.view.physicalSize = const Size(1080, 2340);
       tester.view.devicePixelRatio = 3;
@@ -324,12 +367,13 @@ class _FakeAddresses extends AddressesNotifier {
 }
 
 class _FakeCheckout extends CheckoutRepository {
-  _FakeCheckout(super.api);
+  _FakeCheckout(super.api, [this.rules = const PaymentRules(true, false, 0)]);
+  final PaymentRules rules;
   @override
   Future<Serviceability> serviceability(String slug, double lat, double lng) async =>
       const Serviceability('in_range', 1.2, 25, null);
   @override
-  Future<PaymentRules> paymentRules(String slug) async => const PaymentRules(true, false, 0);
+  Future<PaymentRules> paymentRules(String slug) async => rules;
 }
 
 final _shop = Restaurant.fromRow({

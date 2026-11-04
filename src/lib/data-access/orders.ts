@@ -377,7 +377,9 @@ function hindiRefusalMessage(
 ): string {
   switch (code) {
     case "cod_limit_exceeded":
-      return `${formatINR(Math.round(rules.codMaxOrder))} से ज़्यादा के ऑर्डर का भुगतान ऑनलाइन करना होगा।`;
+      return rules.acceptOnline
+        ? `${formatINR(Math.round(rules.codMaxOrder))} से ज़्यादा के ऑर्डर का भुगतान ऑनलाइन करना होगा।`
+        : `${formatINR(Math.round(rules.codMaxOrder))} से ज़्यादा के ऑर्डर अभी नहीं हो सकते। ऑर्डर करने के लिए कुछ आइटम हटाएं।`;
     case "cod_not_available":
       return "यह दुकान सिर्फ़ ऑनलाइन भुगतान लेती है।";
     case "online_not_available":

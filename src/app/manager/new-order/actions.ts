@@ -110,9 +110,9 @@ const MESSAGES: Record<PhoneOrderError, string> = {
   too_many_items: "That's too many separate dishes for one order.",
   account_failed: "Could not set up an account for that number. Try again.",
   cod_not_accepted:
-    "That shop does not take cash on delivery. A phone order can only be paid in cash, so it has to be placed in the app.",
+    "Cash on delivery is off for that shop. A phone order can only be paid in cash, so it has to be placed in the app.",
   cod_over_limit:
-    "This order is over that shop's cash limit. Remove some items, or ask the caller to order in the app and pay online.",
+    "This order is over the cash limit. Remove some items, or ask the caller to order in the app and pay online.",
   instructions_too_long: "That note is too long — keep it under 300 characters.",
   account_restricted: "Deligro has stopped this account from ordering. The order can't be placed for it.",
   order_not_created: "The order didn't save. Nothing was charged — try again.",

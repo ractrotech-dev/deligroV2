@@ -36,6 +36,7 @@
     "test:search-payload": "tsx scripts/qa/search-payload.ts",
     "test:idor": "tsx scripts/qa/idor-suite.ts",
     "test:payments": "tsx scripts/qa/payments-signature.ts",
+    "test:payment-rules": "tsx scripts/qa/payment-rules.ts",
     "test:app-version": "tsx scripts/qa/app-version.ts",
     "test:sw": "tsx scripts/qa/sw-cache-rules.ts",
     "test:obs": "tsx scripts/qa/obs-telemetry.ts",

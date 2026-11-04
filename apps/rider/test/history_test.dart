@@ -395,30 +395,7 @@ void main() {
       );
     });
 
-    testWidgets('earning shows only when real; never for 0 or null', (
-      tester,
-    ) async {
-      final repo = _Fake(
-        pages: (_) => HistoryPage.fromJson({
-          'items': [
-            _item(1, earning: 32),
-            _item(2, earning: 0),
-            _item(3, earning: null),
-          ],
-        }),
-      );
-      await _pump(tester, repo: repo);
-      expect(
-        find.descendant(
-          of: find.byKey(const Key('history-row-order-1')),
-          matching: find.text('₹32'),
-        ),
-        findsOneWidget,
-      );
-      expect(find.byKey(const Key('row-earning')), findsOneWidget);
-    });
-
-    testWidgets('earnings switch off hides the earning even if sent', (
+    testWidgets('no per-delivery money on a row, even if an older server sends it', (
       tester,
     ) async {
       final repo = _Fake(
@@ -426,13 +403,8 @@ void main() {
           'items': [_item(1, earning: 32)],
         }),
       );
-      await _pump(
-        tester,
-        repo: repo,
-        me: _me(features: const {'driver.earnings': false}),
-      );
-      expect(find.byKey(const Key('row-earning')), findsNothing);
-      expect(find.textContaining('₹'), findsNothing);
+      await _pump(tester, repo: repo);
+      expect(find.text('₹32'), findsNothing);
     });
 
     testWidgets('failed, cancelled and reassigned rows show why', (
@@ -546,7 +518,7 @@ void main() {
         expect(find.text('22 Oct, 8:42 AM'), findsOneWidget); // delivered
         expect(find.text('32 min'), findsOneWidget);
         expect(find.text('3.4 km'), findsOneWidget);
-        expect(find.text('₹32'), findsOneWidget);
+        expect(find.text('₹32'), findsNothing);
         expect(find.text("The customer's code"), findsOneWidget);
         final photo = tester.widget<Image>(
           find.byKey(const Key('proof-photo-image')),
@@ -1050,12 +1022,10 @@ void main() {
 
   group('model', () {
     test('a row is parsed as the server sends it', () {
-      final i = HistoryItem.fromJson(_item(7, earning: 32.5));
+      final i = HistoryItem.fromJson(_item(7));
       expect(i.outcome, HistoryOutcome.delivered);
-      expect(i.hasEarning, isTrue);
       expect(i.took, const Duration(minutes: 32));
       expect(i.dropArea, 'Sector 14');
-      expect(HistoryItem.fromJson(_item(8, earning: 0)).hasEarning, isFalse);
     });
   });
 }

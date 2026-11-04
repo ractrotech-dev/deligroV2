@@ -16,7 +16,7 @@
  *      mirrored as fixtures: records, the summary (pending may be negative),
  *      and statement reconciliation — opening pending + earned − paid = closing
  *      pending — including ruling P3-R6's reversal attachment. Date-range
- *      validation and incentive progress. Always run.
+ *      validation. Always run.
  *   2. The data layer (`data-access/rider-earnings.ts`) against an in-memory
  *      PostgREST: paging, the rider filter, cursors, statements, payouts,
  *      progress, award pushes (claimed once), and a database without 0083
@@ -551,39 +551,6 @@ async function pureTier(): Promise<void> {
     assert.equal(m.reconcile(m.buildRecords(f), f.payouts, "2025-11-01", "2025-11-30").balanced, false);
   });
 
-  await group("incentive progress: today's and this week's counts, window, earned, rule dates", () => {
-    const today = "2025-11-12"; // Wednesday
-    const earnings = [
-      earning("t1", order(91), ist(today, "10:00")),
-      earning("t2", order(92), ist(today, "12:30")),
-      earning("t3", order(93), ist(today, "14:59")),
-      earning("t4", order(94), ist(today, "15:00")),
-      earning("t5", order(95), ist("2025-11-10", "12:00")), // Monday
-      earning("t6", order(96), ist("2025-11-09", "12:00")), // Sunday: last week
-      earning("rv", order(97), ist(today, "13:00")),
-    ];
-    const reversed = new Set(["rv"]);
-    const rules = [
-      { id: "daily", name: "Daily 3", period: "daily", targetDeliveries: 3, bonusAmount: 100, windowStart: null, windowEnd: null, startsOn: "2025-11-01", endsOn: null, active: true },
-      { id: "lunch", name: "Lunch rush", period: "daily", targetDeliveries: 3, bonusAmount: 40, windowStart: "12:00:00", windowEnd: "15:00:00", startsOn: "2025-11-01", endsOn: "2025-11-30", active: true },
-      { id: "week", name: "Weekly 10", period: "weekly", targetDeliveries: 10, bonusAmount: 300, windowStart: null, windowEnd: null, startsOn: "2025-11-01", endsOn: null, active: true },
-      { id: "late", name: "Started Tuesday", period: "weekly", targetDeliveries: 2, bonusAmount: 50, windowStart: null, windowEnd: null, startsOn: "2025-11-11", endsOn: null, active: true },
-      { id: "ended", name: "Ended", period: "daily", targetDeliveries: 1, bonusAmount: 10, windowStart: null, windowEnd: null, startsOn: "2025-11-01", endsOn: "2025-11-11", active: true },
-      { id: "off", name: "Off", period: "daily", targetDeliveries: 1, bonusAmount: 10, windowStart: null, windowEnd: null, startsOn: "2025-11-01", endsOn: null, active: false },
-      { id: "future", name: "Future", period: "daily", targetDeliveries: 1, bonusAmount: 10, windowStart: null, windowEnd: null, startsOn: "2025-11-13", endsOn: null, active: true },
-    ] as const;
-    const awards = [{ ruleId: "daily", periodStart: today }];
-    const p = m.incentiveProgress(rules as never, earnings as never, reversed, awards, today);
-    assert.deepEqual(p.map((x) => x.ruleId), ["daily", "lunch", "week", "late"], "ended, inactive and not-yet-started rules are left out");
-    const by = new Map(p.map((x) => [x.ruleId, x]));
-    assert.deepEqual(by.get("daily"), { ruleId: "daily", name: "Daily 3", period: "daily", target: 3, done: 4, bonus: 100, window: null, endsOn: null, earned: true });
-    assert.equal(by.get("lunch")!.done, 2, "12:30 and 14:59 count; 15:00 does not; the reversed one does not");
-    assert.equal(by.get("lunch")!.window, "12:00–15:00");
-    assert.equal(by.get("lunch")!.endsOn, "2025-11-30");
-    assert.equal(by.get("lunch")!.earned, false);
-    assert.equal(by.get("week")!.done, 5, "Mon–Wed: 4 today + Monday; Sunday is last week");
-    assert.equal(by.get("late")!.done, 4, "a rule that started Tuesday does not count Monday");
-  });
 }
 
 // ---------------------------------------------------------------------------
@@ -934,77 +901,8 @@ async function dataTier(): Promise<void> {
     assert.equal(s8.riderCode, null, "no rider_profiles row: no code");
   });
 
-  await group("data: incentive progress reads active rules and this week's earnings", async () => {
-    reset();
-    const today = "2025-11-12";
-    seed(D2, {
-      earnings: [
-        earning("t1", order(91), ist(today, "10:00")),
-        earning("t2", order(92), ist(today, "12:30")),
-        earning("t5", order(95), ist("2025-11-10", "12:00")),
-        earning("t6", order(96), ist("2025-11-09", "12:00")),
-      ],
-      awards: [],
-      adjustments: [],
-      payouts: [],
-    }, [
-      { id: "daily", name: "Daily 2", period: "daily", target_deliveries: 2, bonus_amount: 50, window_start: null, window_end: null, starts_on: "2025-11-01", ends_on: null, active: true, created_at: "2025-11-01T00:00:00Z" },
-      { id: "week", name: "Weekly 5", period: "weekly", target_deliveries: 5, bonus_amount: 200, window_start: null, window_end: null, starts_on: "2025-11-01", ends_on: null, active: true, created_at: "2025-11-02T00:00:00Z" },
-      { id: "off", name: "Off", period: "daily", target_deliveries: 1, bonus_amount: 5, window_start: null, window_end: null, starts_on: "2025-11-01", ends_on: null, active: false, created_at: "2025-11-03T00:00:00Z" },
-    ]);
-    t("rider_incentive_awards").push({ id: "aw", rule_id: "daily", driver_id: D2, period_start: today, deliveries_count: 2, amount: 50, trigger_delivery_id: "del-t2", trigger_earning_id: "t2", awarded_at: ist(today, "12:30"), notified_at: null, payout_id: null });
-    const p = await x.getIncentiveProgress(D2, new Date(ist(today, "18:00")));
-    assert.deepEqual(p, [
-      { ruleId: "daily", name: "Daily 2", period: "daily", target: 2, done: 2, bonus: 50, window: null, endsOn: null, earned: true },
-      { ruleId: "week", name: "Weekly 5", period: "weekly", target: 5, done: 3, bonus: 200, window: null, endsOn: null, earned: false },
-    ]);
-  });
 
-  await group("data: notifyNewIncentiveAwards pushes each new award once, then never again", async () => {
-    reset();
-    t("rider_incentive_rules").push({ id: "r1", name: "Lunch rush", active: true });
-    t("rider_incentive_awards").push(
-      { id: "n1", rule_id: "r1", driver_id: D2, period_start: "2025-11-12", amount: 40, awarded_at: "2025-11-12T07:00:00Z", notified_at: null, payout_id: null },
-      { id: "n2", rule_id: "r1", driver_id: D2, period_start: "2025-11-11", amount: 40.5, awarded_at: "2025-11-11T07:00:00Z", notified_at: "2025-11-11T07:00:01Z", payout_id: null },
-      { id: "n3", rule_id: "r1", driver_id: OTHER, period_start: "2025-11-12", amount: 99, awarded_at: "2025-11-12T07:00:00Z", notified_at: null, payout_id: null }
-    );
-    const pushed: string[] = [];
-    const push = async (driverId: string, a: { name: string; amount: number }) => void pushed.push(`${driverId}:${a.name}:${a.amount}`);
-    await x.notifyNewIncentiveAwards(D2, { push });
-    assert.deepEqual(pushed, [`${D2}:Lunch rush:40`]);
-    assert.ok(t("rider_incentive_awards").find((a) => a.id === "n1")!.notified_at, "stamped");
-    assert.equal(t("rider_incentive_awards").find((a) => a.id === "n3")!.notified_at, null, "another rider's award is not touched");
-    await x.notifyNewIncentiveAwards(D2, { push });
-    assert.equal(pushed.length, 1, "a second call pushes nothing");
-    // A long history of announced awards must not crowd a new one out of the batch.
-    for (let i = 0; i < 12; i++) {
-      t("rider_incentive_awards").push({ id: `old${i}`, rule_id: "r1", driver_id: D2, period_start: "2025-10-01", amount: 1, awarded_at: `2025-10-0${(i % 9) + 1}T07:00:00Z`, notified_at: "2025-10-10T00:00:00Z", payout_id: null });
-    }
-    t("rider_incentive_awards").push({ id: "n4", rule_id: "r1", driver_id: D2, period_start: "2025-11-13", amount: 60, awarded_at: "2025-11-13T07:00:00Z", notified_at: null, payout_id: null });
-    await x.notifyNewIncentiveAwards(D2, { push });
-    assert.deepEqual(pushed, [`${D2}:Lunch rush:40`, `${D2}:Lunch rush:60`], "only the new award, past twelve announced ones");
-    await assert.rejects(x.listEarningRecords(D2, { from: "2025-11-01" }), /invalid_range/, "half a range is refused");
-    mode.missingTables.add("rider_incentive_awards");
-    await x.notifyNewIncentiveAwards(D2, { push }); // must not throw before 0083
-    assert.equal(pushed.length, 2, "and before 0083 it does nothing");
-  });
 
-  await group("data: one failing push does not drop the awards after it (Task 2 review carry-in)", async () => {
-    reset();
-    t("rider_incentive_rules").push({ id: "r1", name: "Lunch rush", active: true });
-    t("rider_incentive_awards").push(
-      { id: "f1", rule_id: "r1", driver_id: D2, period_start: "2025-11-10", amount: 10, awarded_at: "2025-11-10T07:00:00Z", notified_at: null, payout_id: null },
-      { id: "f2", rule_id: "r1", driver_id: D2, period_start: "2025-11-11", amount: 20, awarded_at: "2025-11-11T07:00:00Z", notified_at: null, payout_id: null },
-      { id: "f3", rule_id: "r1", driver_id: D2, period_start: "2025-11-12", amount: 30, awarded_at: "2025-11-12T07:00:00Z", notified_at: null, payout_id: null }
-    );
-    const pushed: number[] = [];
-    const push = async (_driverId: string, a: { name: string; amount: number }) => {
-      if (a.amount === 20) throw new Error("push provider down");
-      pushed.push(a.amount);
-    };
-    await x.notifyNewIncentiveAwards(D2, { push }); // must not throw
-    assert.deepEqual(pushed, [10, 30], "the awards either side of the failure are still pushed");
-  });
 
   await group("data: a statement still answers when the name cannot be read", async () => {
     reset();
@@ -1021,15 +919,13 @@ async function dataTier(): Promise<void> {
       records: () => x.listEarningRecords(D2, { from: "2025-11-01", to: "2025-11-30" }),
       statement: () => x.getStatement(D2, "2025-11-01", "2025-11-30"),
       payouts: () => x.listPayouts(D2),
-      incentives: () => x.getIncentiveProgress(D2),
     };
     // Which reads need which table (they all arrive together in 0083).
     const needs: Record<string, string[]> = {
-      rider_earnings: ["summary", "records", "statement", "payouts", "incentives"],
-      rider_adjustments: ["summary", "records", "statement", "payouts", "incentives"],
-      rider_incentive_awards: ["summary", "records", "statement", "payouts", "incentives"],
+      rider_earnings: ["summary", "records", "statement", "payouts"],
+      rider_adjustments: ["summary", "records", "statement", "payouts"],
+      rider_incentive_awards: ["summary", "records", "statement", "payouts"],
       rider_payouts: ["summary", "records", "statement", "payouts"],
-      rider_incentive_rules: ["incentives"],
     };
     for (const [table, names] of Object.entries(needs)) {
       for (const name of names) {
@@ -1057,7 +953,6 @@ const ROUTES = [
   "/api/rider/earnings/summary",
   "/api/rider/earnings/records",
   "/api/rider/earnings/payouts",
-  "/api/rider/earnings/incentives",
   "/api/rider/earnings/statement?from=2025-11-01&to=2025-11-30",
 ];
 

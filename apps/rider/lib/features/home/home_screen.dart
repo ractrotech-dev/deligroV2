@@ -4,7 +4,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../core/feature_routes.dart' show incentivesFeature;
 import '../../core/ist_time.dart';
 import '../../core/money.dart' show istDayKey;
 import '../../models/dashboard.dart';
@@ -38,8 +37,8 @@ const dashboardPollEvery = Duration(seconds: 15);
 const _historyFeature = 'driver.history';
 
 /// The rider's home: who they are, then the twelve figures: the availability
-/// card, the delivery in hand, today's counts, the money from the recorded
-/// ledger and the incentive target. Asked again every 15 s while it shows, when
+/// card, the delivery in hand, today's counts and the salary to be paid.
+/// Asked again every 15 s while it shows, when
 /// the app comes back to the front, and after an availability action.
 class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key});
@@ -239,7 +238,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
     }
     final money = me?.feature(earningsFeature) == false ? null : d.money;
     final historyOn = me?.feature(_historyFeature) ?? true;
-    final incentivesOn = me?.feature(incentivesFeature) ?? true;
     return [
       CurrentDeliveryCard(current: d.current, onTap: () => context.go('/jobs')),
       const SizedBox(height: 16),
@@ -255,13 +253,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
       if (money != null) ...[
         const SizedBox(height: 16),
         MoneyRow(figures: money),
-        if (incentivesOn) ...[
-          const SizedBox(height: 12),
-          IncentivesCard(
-            earned: money.incentivesThisWeek,
-            target: d.nearestTarget,
-          ),
-        ],
       ],
       const SizedBox(height: 14),
       _UpdatedLine(

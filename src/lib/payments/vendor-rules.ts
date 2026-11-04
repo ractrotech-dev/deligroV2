@@ -1,8 +1,9 @@
 import "server-only";
 import { createClient } from "@/lib/supabase/server";
 import { onlinePaymentsEnabled } from "@/lib/payments/availability";
+import { getSettings } from "@/lib/settings";
 import {
-  DEFAULT_PAYMENT_RULES,
+  strictestCashLimit,
   type VendorPaymentRules,
 } from "@/lib/payments/cod-rules";
 import {
@@ -21,10 +22,13 @@ import {
  * environment would otherwise be offered a checkout that dead-ends, which is
  * the fail-open shape AGENTS.md §2 rules out.
  *
- * Cash is the safe fallback in the other direction. Before migration 0034 the
- * columns do not exist, so the answer is DEFAULT_PAYMENT_RULES — both methods,
- * no ceiling — which is exactly how the app behaved before this feature. A
- * missing migration must not start refusing orders.
+ * Cash works the same way (0194): `acceptCod` is the shop's switch AND the
+ * platform's, and `codMaxOrder` is the stricter of the shop's limit and the
+ * platform's.
+ *
+ * Before migration 0034 the shop columns do not exist, so the shop half reads as
+ * "both methods, no ceiling" and only the platform's answer applies. A missing
+ * migration must not start refusing orders.
  */
 
 const RULE_COLUMNS = "restaurants.accept_cod";
@@ -35,12 +39,21 @@ interface RuleRow {
   cod_max_order?: number | null;
 }
 
-function mapRules(row: RuleRow | null, onlineOffered: boolean): VendorPaymentRules {
+interface PlatformCash {
+  featureCashPayment: boolean;
+  cashLimitPerOrder: number;
+}
+
+function mapRules(
+  row: RuleRow | null,
+  onlineOffered: boolean,
+  platform: PlatformCash,
+): VendorPaymentRules {
   return {
-    acceptCod: row?.accept_cod ?? true,
+    acceptCod: platform.featureCashPayment && (row?.accept_cod ?? true),
     // The vendor switch can only ever narrow what the platform already offers.
     acceptOnline: onlineOffered && (row?.accept_online ?? true),
-    codMaxOrder: Math.max(0, Math.round(Number(row?.cod_max_order ?? 0))),
+    codMaxOrder: strictestCashLimit(Number(row?.cod_max_order ?? 0), platform.cashLimitPerOrder),
   };
 }
 
@@ -48,13 +61,14 @@ async function fetchRules(
   column: "id" | "slug",
   value: string
 ): Promise<VendorPaymentRules> {
-  const [supabase, onlineOffered] = await Promise.all([
+  const [supabase, onlineOffered, platform] = await Promise.all([
     createClient(),
     onlinePaymentsEnabled(),
+    getSettings(),
   ]);
 
   if (columnKnownMissing(RULE_COLUMNS)) {
-    return { ...DEFAULT_PAYMENT_RULES, acceptOnline: onlineOffered };
+    return mapRules(null, onlineOffered, platform);
   }
 
   const { data, error } = await supabase
@@ -66,13 +80,13 @@ async function fetchRules(
   if (error) {
     if (isMissingColumn(error)) {
       rememberColumn(RULE_COLUMNS, false);
-      return { ...DEFAULT_PAYMENT_RULES, acceptOnline: onlineOffered };
+      return mapRules(null, onlineOffered, platform);
     }
     throw error;
   }
 
   rememberColumn(RULE_COLUMNS, true);
-  return mapRules(data as RuleRow | null, onlineOffered);
+  return mapRules(data as RuleRow | null, onlineOffered, platform);
 }
 
 export function getVendorPaymentRules(

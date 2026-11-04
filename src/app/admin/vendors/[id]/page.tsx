@@ -266,7 +266,7 @@ function PaymentTab({ v, id }: Readonly<{ v: VendorDetail; id: string }>) {
           />
           <Row
             label="COD max"
-            value={v.codMaxOrder > 0 ? rupees(v.codMaxOrder) : "No limit"}
+            value={v.codMaxOrder > 0 ? rupees(v.codMaxOrder) : "Platform limit"}
           />
           <Row
             label="Other charges"

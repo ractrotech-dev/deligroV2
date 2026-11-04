@@ -2,11 +2,11 @@ import "server-only";
 import { cache } from "react";
 import { DEFAULT_SETTINGS } from "@/lib/settings-defaults";
 import {
+  cashLimitAvailable,
   SettingsNotMigratedError,
   SettingsUnavailableError,
   getSettingsFromDb,
   riderCashLimitsAvailable,
-  riderTargetsAvailable,
   riderDocsSettingAvailable,
   settingsTableExists,
 } from "@/lib/data-access/settings";
@@ -128,14 +128,11 @@ export async function riderCashLimitsReady(): Promise<boolean> {
   }
 }
 
-/**
- * Can the rider default targets be saved here? False when migration 0084 has
- * not added the two columns (same reading as `riderCashLimitsReady`).
- */
-export async function riderTargetsReady(): Promise<boolean> {
+/** Can the platform cash limit and cash switch be saved here? False before 0194; as above otherwise. */
+export async function cashLimitReady(): Promise<boolean> {
   if (!isSupabaseConfigured) return true;
   try {
-    return await riderTargetsAvailable();
+    return await cashLimitAvailable();
   } catch {
     return true;
   }

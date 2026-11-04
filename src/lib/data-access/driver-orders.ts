@@ -9,7 +9,6 @@ import { DEFAULT_SETTINGS } from "@/lib/settings-defaults";
 import { roadDistanceKm } from "@/lib/rider/road-distance";
 import { deferNotify } from "@/lib/notifications/defer";
 import { captureError } from "@/lib/obs/emit";
-import { notifyNewIncentiveAwards } from "@/lib/data-access/rider-earnings";
 import { haversineKm } from "@/lib/geo/distance";
 import { isPlausibleFix } from "@/lib/geo/fix";
 import { kitchenPrepMinutes } from "@/lib/orders/eta";
@@ -1502,14 +1501,10 @@ export async function advanceDelivery(
  *     NOTHING is booked to them (no staff-collected record is invented either:
  *     the ledger has no such leg). The skip is logged
  *     (`cod_not_booked_never_picked_up`) so finance can see the order.
- *   * The rider is told of any incentive the completion earned
- *     (`notifyNewIncentiveAwards`), exactly as `completeDelivery` does.
  *
- * `opts.incentiveAwards` is a seam for scripts/qa/rider-cash.ts.
  */
 export async function recordCodForStaffDelivery(
-  orderId: string,
-  opts: { incentiveAwards?: (driverId: string) => Promise<unknown> } = {}
+  orderId: string
 ): Promise<void> {
   try {
     const supabase = createAdminClient();
@@ -1565,9 +1560,6 @@ export async function recordCodForStaffDelivery(
         ["picked_up", "assigned"]
       );
       if (error) throw error;
-      const driverId = delivery.driver_id;
-      const announce = opts.incentiveAwards ?? notifyNewIncentiveAwards;
-      deferNotify(() => announce(driverId));
     }
   } catch (err) {
     console.error("[driver-orders] could not record COD for staff delivery", orderId, err);

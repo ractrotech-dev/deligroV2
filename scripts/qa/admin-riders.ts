@@ -10,10 +10,10 @@
  *
  * Tiers:
  *
- *   1. Pure (`lib/rider/admin-money.ts`). `parseAdjustment`, `parsePayout` and
- *      `parseIncentiveRule` are what every action runs first, so the refusals
+ *   1. Pure (`lib/rider/admin-money.ts`). `parseAdjustment` and `parsePayout`
+ *      are what every action runs first, so the refusals
  *      the database would also make (a negative deduction, a zero adjustment,
- *      a window with one end, an end before its start, a payout paid before
+ *      a payout paid before
  *      its period ends) are checked here as sentences an operator can read.
  *      `previewPayout` mirrors the database's selection rule (`_rider_payout_preview`).
  *   2. Structure. Every exported function of the three action files is a
@@ -100,15 +100,19 @@ async function pureTier(): Promise<void> {
 
   const adj = (over: Record<string, string> = {}) =>
     m.parseAdjustment(
-      form({ kind: "bonus", amount: "500", reason: "Festival bonus", effectiveOn: TODAY, ...over }),
+      form({ kind: "salary", amount: "500", reason: "October salary", effectiveOn: TODAY, ...over }),
       { today: TODAY }
     );
   const bad = (r: { ok: boolean; error?: string }) => r.ok === false && typeof r.error === "string" && r.error.length > 8;
 
-  await group("parseAdjustment: a bonus", () => {
+  await group("parseAdjustment: a salary entry", () => {
     const r = adj();
     assert.ok(r.ok);
-    assert.deepEqual(r.value, { kind: "bonus", amount: 500, reason: "Festival bonus", orderCode: null, effectiveOn: TODAY });
+    assert.deepEqual(r.value, { kind: "salary", amount: 500, reason: "October salary", orderCode: null, effectiveOn: TODAY });
+  });
+  await group("parseAdjustment: a bonus is refused (rule book: fixed salary only)", () => {
+    assert.ok(bad(adj({ kind: "bonus" })));
+    assert.deepEqual([...m.ADJUSTMENT_KINDS], ["salary", "adjustment", "deduction"]);
   });
   await group("parseAdjustment: a deduction is stored positive; a negative or zero one is refused", () => {
     const ok = adj({ kind: "deduction", amount: "150" });
@@ -124,8 +128,7 @@ async function pureTier(): Promise<void> {
     assert.ok(bad(adj({ kind: "adjustment", amount: "0" })), "adjustment 0");
     assert.ok(bad(adj({ kind: "adjustment", amount: "0.00" })), "adjustment 0.00");
   });
-  await group("parseAdjustment: bonus and salary must be positive", () => {
-    assert.ok(bad(adj({ kind: "bonus", amount: "-5" })));
+  await group("parseAdjustment: salary must be positive", () => {
     assert.ok(bad(adj({ kind: "salary", amount: "0" })));
     const salary = adj({ kind: "salary", amount: "18,000" });
     assert.ok(salary.ok && salary.value.amount === 18000, "thousands separators are read");
@@ -168,7 +171,7 @@ async function pureTier(): Promise<void> {
     assert.ok(none.ok && none.value.orderCode === null);
   });
   await group("parseAdjustment: a field that is a File, not text, is refused rather than stringified", () => {
-    const f = form({ kind: "bonus", amount: "5", reason: "r", effectiveOn: TODAY });
+    const f = form({ kind: "salary", amount: "5", reason: "r", effectiveOn: TODAY });
     f.set("reason", new File(["x"], "x.txt"));
     assert.ok(bad(m.parseAdjustment(f, { today: TODAY })));
   });
@@ -219,76 +222,6 @@ async function pureTier(): Promise<void> {
     assert.ok(bad(pay({ note: "n".repeat(301) })));
   });
 
-  // ---- incentive rules
-  const rule = (over: Record<string, string> = {}, mode: Parameters<typeof m.parseIncentiveRule>[1] = { mode: "create" }) =>
-    m.parseIncentiveRule(
-      form({
-        name: "Ten a day",
-        period: "daily",
-        targetDeliveries: "10",
-        bonusAmount: "150",
-        windowStart: "",
-        windowEnd: "",
-        startsOn: "2026-10-22",
-        endsOn: "",
-        active: "on",
-        ...over,
-      }),
-      mode
-    );
-  await group("parseIncentiveRule: create", () => {
-    const r = rule();
-    assert.ok(r.ok);
-    assert.deepEqual(r.value, {
-      name: "Ten a day",
-      period: "daily",
-      startsOn: "2026-10-22",
-      targetDeliveries: 10,
-      bonusAmount: 150,
-      windowStart: null,
-      windowEnd: null,
-      endsOn: null,
-      active: true,
-    });
-  });
-  await group("parseIncentiveRule: a window needs both ends, and the end after the start", () => {
-    assert.ok(bad(rule({ windowStart: "12:00" })), "only a start");
-    assert.ok(bad(rule({ windowEnd: "15:00" })), "only an end");
-    assert.ok(bad(rule({ windowStart: "15:00", windowEnd: "12:00" })), "end before start");
-    assert.ok(bad(rule({ windowStart: "12:00", windowEnd: "12:00" })), "empty window");
-    assert.ok(bad(rule({ windowStart: "25:00", windowEnd: "26:00" })), "not a time");
-    const ok = rule({ windowStart: "12:00", windowEnd: "15:00" });
-    assert.ok(ok.ok && ok.value.windowStart === "12:00" && ok.value.windowEnd === "15:00");
-    const seconds = rule({ windowStart: "12:00:00", windowEnd: "15:30:00" });
-    assert.ok(seconds.ok && seconds.value.windowStart === "12:00" && seconds.value.windowEnd === "15:30", "seconds are dropped");
-  });
-  await group("parseIncentiveRule: dates", () => {
-    assert.ok(bad(rule({ startsOn: "" })), "create needs a start date");
-    assert.ok(bad(rule({ startsOn: "2026-02-30" })));
-    assert.ok(bad(rule({ endsOn: "2026-10-21" })), "ends before it starts");
-    assert.ok(rule({ endsOn: "2026-10-22" }).ok, "ends the day it starts");
-    assert.ok(bad(rule({ endsOn: "soon" })));
-  });
-  await group("parseIncentiveRule: target, bonus, name, period", () => {
-    for (const targetDeliveries of ["0", "-1", "2.5", "abc", "", "1001"]) assert.ok(bad(rule({ targetDeliveries })), `target ${targetDeliveries}`);
-    for (const bonusAmount of ["0", "-10", "abc", "", "1000001", "10.999"]) assert.ok(bad(rule({ bonusAmount })), `bonus ${bonusAmount}`);
-    assert.ok(bad(rule({ name: "  " })));
-    assert.ok(bad(rule({ name: "n".repeat(81) })));
-    assert.ok(bad(rule({ period: "monthly" })));
-    const weekly = rule({ period: "weekly", active: "" });
-    assert.ok(weekly.ok && weekly.value.period === "weekly" && weekly.value.active === false);
-  });
-  await group("parseIncentiveRule: an edit leaves period and start date alone", () => {
-    const r = rule(
-      { period: "weekly", startsOn: "2027-01-01", endsOn: "2026-12-31" },
-      { mode: "edit", startsOn: "2026-10-22" }
-    );
-    assert.ok(r.ok);
-    assert.equal(r.value.period, null, "a posted period is ignored");
-    assert.equal(r.value.startsOn, null, "a posted start date is ignored");
-    assert.equal(r.value.endsOn, "2026-12-31", "the end is judged against the STORED start");
-    assert.ok(bad(rule({ endsOn: "2026-10-01" }, { mode: "edit", startsOn: "2026-10-22" })), "ends before the stored start");
-  });
 
   // ---- the preview
   const rec = (id: string, kind: string, date: string, amount: number, over: Row = {}) => ({
@@ -359,13 +292,9 @@ async function pureTier(): Promise<void> {
     assert.match(m.writeErrorMessage({ code: "23514", message: "violates check constraint" }, "rule"), /rejected|check/i);
     assert.doesNotMatch(m.writeErrorMessage({ code: "XX000", message: "secret host" }, "rule"), /secret host/);
   });
-  await group("describeRule / formatDay: the words an operator reads", () => {
+  await group("formatDay: the words an operator reads", () => {
     assert.equal(m.formatDay("2026-10-22"), "22 Oct 2026");
     assert.equal(m.formatDay("2026-01-05"), "5 Jan 2026");
-    const d = m.describeRule({ period: "daily", targetDeliveries: 10, bonusAmount: 150, windowStart: "12:00:00", windowEnd: "15:00:00", startsOn: "2026-10-22", endsOn: null });
-    assert.deepEqual(d, { target: "10 deliveries in a day pays ₹150", window: "12:00-15:00 IST", dates: "From 22 Oct 2026" });
-    const w = m.describeRule({ period: "weekly", targetDeliveries: 1, bonusAmount: 99.5, windowStart: null, windowEnd: null, startsOn: "2026-10-22", endsOn: "2026-12-31" });
-    assert.deepEqual(w, { target: "1 delivery in a week pays ₹99.50", window: "All day", dates: "22 Oct 2026 to 31 Dec 2026" });
   });
   await group("deliveryDetail: how a delivery was paid", () => {
     const base = { baseFee: 20, distanceKm: 4, distanceSource: "road", distanceFee: 12, minTopup: 0, tip: 5, tipInCash: false } as const;
@@ -388,7 +317,6 @@ async function pureTier(): Promise<void> {
 const ACTION_FILES = [
   "src/app/admin/riders/[id]/money-actions.ts",
   "src/app/admin/riders/payments/actions.ts",
-  "src/app/admin/riders/incentives/actions.ts",
 ];
 
 function exportedFunctions(src: string): { name: string; body: string }[] {
@@ -425,11 +353,14 @@ async function structureTier(): Promise<void> {
     check("the one-step payment only runs under the one-admin rule", /const payNow = mode === true/.test(moneyActions) && /if \(!payNow\) \{/.test(moneyActions));
     check("Rider salaries is linked from the Riders page and the Money tab", /\/admin\/riders\/payments/.test(read("src/app/admin/riders/riders-view.tsx")) && /\/admin\/riders\/payments/.test(moneyTab));
     check("a database without payment requests gets a plain message", /aren&apos;t set up on this database yet/.test(read("src/app/admin/riders/payments/page.tsx")) && !/\b0\d{3}\b(?![^\n]*\*)/.test(read("src/app/admin/riders/payments/page.tsx").replace(/\/\*\*[\s\S]*?\*\//g, "")));
-    check("Money tab: the Per delivery tile reads Salaried - not paid per delivery", /label="Per delivery" value="Salaried" note="Not paid per delivery"/.test(moneyTab));
-    check("Add an entry starts on the default kind (Salary), not a hard-coded Bonus", moneyForms.includes("useState<AdjustmentKind>(DEFAULT_ADJUSTMENT_KIND)") && !/setKind\("bonus"\)/.test(moneyForms));
+    check(
+      "Money tab: no bonus, incentive or per-delivery figure (rule book: fixed salary only)",
+      !/label="(Bonuses|Incentives|Per delivery|Total earned)"/.test(moneyTab) && /label="Salary"/.test(moneyTab)
+    );
+    check("Add an entry starts on the default kind (Salary), not a hard-coded Bonus", moneyForms.includes("(DEFAULT_ADJUSTMENT_KIND)") && !/setKind\("bonus"\)/.test(moneyForms));
     check(
       "settings Riders card says riders are salaried",
-      form.includes("Riders are paid a fixed salary. Record salary, bonuses and deductions on each rider&apos;s Money tab.")
+      form.includes("Riders are paid a fixed salary. Record salary and deductions on each rider&apos;s Money tab.")
     );
     const group = settings.slice(settings.indexOf('key: "platform_settings.rider_base_fee"'));
     const groupEnd = group.indexOf("\n  },");
@@ -671,7 +602,6 @@ async function dataTier(): Promise<void> {
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = "y".repeat(40);
 
   const a = await import("../../src/lib/data-access/admin-riders");
-  const e = await import("../../src/lib/data-access/rider-earnings");
   const m = await import("../../src/lib/rider/admin-money");
   const { createAdminClient } = await import("../../src/lib/supabase/admin");
   const { isRiderSchemaPending } = await import("../../src/lib/data-access/rider-status");
@@ -833,95 +763,6 @@ async function dataTier(): Promise<void> {
     assert.doesNotMatch(m.describePayout(recorded, "bank", 205), /preview said/, "no caveat when the preview was right");
   });
 
-  await group("incentive rules: a create sends created_by, period and starts_on", async () => {
-    reset();
-    const parsed = m.parseIncentiveRule(
-      form({
-        name: "Lunch rush",
-        period: "daily",
-        targetDeliveries: "4",
-        bonusAmount: "80",
-        windowStart: "12:00",
-        windowEnd: "15:00",
-        startsOn: "2026-10-22",
-        endsOn: "",
-        active: "on",
-      }),
-      { mode: "create" }
-    );
-    assert.ok(parsed.ok);
-    const out = await a.createIncentiveRule(createAdminClient(), ADMIN, parsed.value);
-    assert.ok(out.ok);
-    const post = requests.find((r) => r.method === "POST" && r.table === "rider_incentive_rules");
-    assert.deepEqual(post?.body, {
-      name: "Lunch rush",
-      period: "daily",
-      target_deliveries: 4,
-      bonus_amount: 80,
-      window_start: "12:00",
-      window_end: "15:00",
-      starts_on: "2026-10-22",
-      ends_on: null,
-      active: true,
-      created_by: ADMIN,
-    });
-  });
-  await group("incentive rules: an edit never sends period or starts_on (the database refuses them)", async () => {
-    reset();
-    seedRiders();
-    const parsed = m.parseIncentiveRule(
-      form({
-        name: "Three a day",
-        period: "weekly",
-        targetDeliveries: "3",
-        bonusAmount: "120",
-        windowStart: "",
-        windowEnd: "",
-        startsOn: "2027-01-01",
-        endsOn: "2026-12-31",
-        active: "on",
-      }),
-      { mode: "edit", startsOn: "2026-10-01" }
-    );
-    assert.ok(parsed.ok);
-    const out = await a.updateIncentiveRule(createAdminClient(), "rule-1", parsed.value);
-    assert.ok(out.ok);
-    const patch = requests.find((r) => r.method === "PATCH" && r.table === "rider_incentive_rules");
-    assert.deepEqual(Object.keys(patch?.body as Row).sort(), [
-      "active",
-      "bonus_amount",
-      "ends_on",
-      "name",
-      "target_deliveries",
-      "window_end",
-      "window_start",
-    ]);
-    assert.equal(t("rider_incentive_rules")[0].period, "daily", "the stored period is untouched");
-    assert.equal(t("rider_incentive_rules")[0].starts_on, "2026-10-01");
-    assert.equal(t("rider_incentive_rules")[0].target_deliveries, 3);
-  });
-  await group("incentive rules: an update that matches no row is not a success", async () => {
-    reset();
-    seedRiders();
-    const gone = await a.setIncentiveRuleActive(createAdminClient(), "missing-rule", false);
-    assert.ok(!gone.ok && gone.notFound === true);
-    const off = await a.setIncentiveRuleActive(createAdminClient(), "rule-1", false);
-    assert.ok(off.ok);
-    assert.equal(t("rider_incentive_rules")[0].active, false);
-    const patch = requests.filter((r) => r.method === "PATCH" && r.table === "rider_incentive_rules").pop();
-    assert.deepEqual(patch?.body, { active: false });
-  });
-  await group("incentive rules: the list carries each rule's award count; one rule reads back", async () => {
-    reset();
-    seedRiders();
-    const rules = await e.listIncentiveRules();
-    assert.equal(rules.length, 1);
-    assert.equal(rules[0].awards, 1);
-    assert.equal((await e.getIncentiveRule("rule-1"))?.name, "Two a day");
-    assert.equal(await e.getIncentiveRule("nope"), null);
-    mode.missingTables.add("rider_incentive_rules");
-    await assert.rejects(e.listIncentiveRules(), (err: unknown) => isRiderSchemaPending(err));
-  });
 }
 
 // ---------------------------------------------------------------------------

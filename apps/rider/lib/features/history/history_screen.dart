@@ -10,10 +10,9 @@ import '../../models/insights.dart';
 import '../../models/rider_me.dart';
 import '../../state/clock.dart';
 import '../../state/history.dart';
-import '../../state/providers.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/common.dart';
-import '../earnings/earnings_widgets.dart' show StatusChip, earningsFeature;
+import '../earnings/earnings_widgets.dart' show StatusChip;
 import 'history_detail_screen.dart';
 import 'history_filters.dart';
 
@@ -191,8 +190,6 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
   @override
   Widget build(BuildContext context) {
     final s = ref.watch(historyListProvider);
-    final me = ref.watch(currentMeProvider);
-    final showMoney = me?.feature(earningsFeature) != false;
     final c = context.colors;
     // Short lists never scroll: look for a next page after each build.
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -235,7 +232,7 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
             Expanded(
               child: RefreshIndicator(
                 onRefresh: _refresh,
-                child: _body(s, showMoney),
+                child: _body(s),
               ),
             ),
           ],
@@ -244,7 +241,7 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
     );
   }
 
-  Widget _body(HistoryListState s, bool showMoney) {
+  Widget _body(HistoryListState s) {
     if (s.error != null && s.items.isEmpty) {
       return ListView(
         physics: const AlwaysScrollableScrollPhysics(),
@@ -332,7 +329,6 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
         final item = s.items[i];
         return HistoryRow(
           item: item,
-          showMoney: showMoney,
           onTap: () =>
               context.push('$historyPath/order/${item.orderId}', extra: item),
         );
@@ -384,14 +380,10 @@ class HistoryRow extends StatelessWidget {
     super.key,
     required this.item,
     required this.onTap,
-    this.showMoney = true,
   });
 
   final HistoryItem item;
   final VoidCallback onTap;
-
-  /// False when the rider's earnings switch is off.
-  final bool showMoney;
 
   @override
   Widget build(BuildContext context) {
@@ -468,14 +460,13 @@ class HistoryRow extends StatelessWidget {
                     style: muted.copyWith(color: c.deal),
                   ),
                 ],
-                if (facts.isNotEmpty || (showMoney && item.hasEarning)) ...[
+                if (facts.isNotEmpty) ...[
                   const SizedBox(height: 6),
-                  // The facts on the left, the earning at the far end; they
-                  // wrap rather than run off the edge with large text.
+                  // They wrap rather than run off the edge with large text.
                   SizedBox(
                     width: double.infinity,
                     child: Wrap(
-                      alignment: facts.isEmpty ? WrapAlignment.end : WrapAlignment.spaceBetween,
+                      alignment: WrapAlignment.spaceBetween,
                       crossAxisAlignment: WrapCrossAlignment.end,
                       spacing: 12,
                       runSpacing: 2,
@@ -487,16 +478,6 @@ class HistoryRow extends StatelessWidget {
                               context,
                               size: 13.5,
                               weight: FontWeight.w600,
-                            ),
-                          ),
-                        if (showMoney && item.hasEarning)
-                          Text(
-                            money(item.earning!),
-                            key: const Key('row-earning'),
-                            style: dataStyle(
-                              context,
-                              size: 15,
-                              weight: FontWeight.w800,
                             ),
                           ),
                       ],

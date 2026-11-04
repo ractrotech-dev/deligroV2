@@ -26,7 +26,7 @@ import {
 } from "@/lib/rider/admin-money";
 
 /**
- * The Money tab's two writes: an adjustment (bonus, adjustment, deduction,
+ * The Money tab's two writes: an adjustment (adjustment, deduction,
  * salary) and a payment.
  *
  * An adjustment runs on the admin's OWN cookie client: its policy needs
@@ -47,7 +47,7 @@ function refresh(driverId: string): void {
   revalidatePath("/admin/riders/payments");
 }
 
-/** Add a bonus, adjustment, deduction or salary entry to a rider's ledger. */
+/** Add an adjustment, deduction or salary entry to a rider's ledger. */
 export async function addAdjustmentAction(_prev: ActionResult, form: FormData): Promise<ActionResult> {
   const admin = await requireRole("admin");
   const limit = await rateLimit(`rider-adjustment:${admin.id}`, 30, 60_000);
@@ -79,18 +79,17 @@ export async function addAdjustmentAction(_prev: ActionResult, form: FormData): 
           attrs: { event: "adjustment_failed", driverId, code: result.error.code },
         });
       }
-      return { ok: false, error: writeErrorMessage(result.error, "adjustment") };
+      return { ok: false, error: writeErrorMessage(result.error) };
     }
   } catch (e) {
     if (isRiderSchemaPending(e)) return { ok: false, error: MIGRATION_PENDING_MESSAGE };
     captureError(e, { source: "admin-riders/adjustment", attrs: { event: "adjustment_failed", driverId } });
-    return { ok: false, error: writeErrorMessage({}, "adjustment") };
+    return { ok: false, error: writeErrorMessage({}) };
   }
 
   refresh(driverId);
   const verb = entry.kind === "deduction" ? "Deducted" : entry.kind === "salary" ? "Added salary of" : "Added";
-  const noun = entry.kind === "bonus" ? " bonus" : "";
-  return { ok: true, message: `${verb} ${formatMoney(entry.amount)}${noun} - it shows in the records below.` };
+  return { ok: true, message: `${verb} ${formatMoney(entry.amount)} - it shows in the records below.` };
 }
 
 /**

@@ -23,7 +23,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ ord
   const { orderId } = await params;
   if (!UUID.test(orderId)) return NextResponse.json({ error: "not_found" }, { status: 404 });
   try {
-    const detail = await getRiderHistoryDetail(gate.driverId, orderId, { earnings: gate.earnings });
+    const detail = await getRiderHistoryDetail(gate.driverId, orderId);
     if (!detail) return NextResponse.json({ error: "not_found" }, { status: 404 });
     return insightsJson(detail);
   } catch (e) {

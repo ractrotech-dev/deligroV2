@@ -33,6 +33,10 @@ export const DEFAULT_SETTINGS: PlatformSettings = {
   // unreadable settings row falls back to, which is the safe direction: the
   // failure mode is "COD only", never "offer a payment we cannot take".
   featureOnlinePayment: false,
+  // Mirrors the 0194 column defaults, and what a database without them reads as:
+  // cash on, no platform cash limit.
+  featureCashPayment: true,
+  cashLimitPerOrder: 0,
 
   defaultPrepMinutes: 20,
   // One circle around Bemetara city centre — see lib/geo/service-area.ts.
@@ -47,9 +51,6 @@ export const DEFAULT_SETTINGS: PlatformSettings = {
   // Mirrors the 0085 column defaults: ₹5,000 held, or 24 hours, before the alert.
   riderCashLimit: 5000,
   riderCashMaxHours: 24,
-  // Mirrors the 0084 column defaults: no default target.
-  riderDailyTarget: 0,
-  riderWeeklyTarget: 0,
 
   // Mirrors the 0033 column defaults, and the fallbacks baked into
   // `review_window_open()` / `review_edit_open()` — three places that must agree,

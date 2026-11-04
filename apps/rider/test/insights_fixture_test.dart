@@ -47,7 +47,5 @@ void main() {
   test('earnings off carries no money anywhere', () async {
     final repo = FixtureInsightsRepository.create(now: now, scenario: 'off');
     expect((await repo.dashboard()).money, isNull);
-    expect((await repo.history()).items.every((i) => i.earning == null), isTrue);
-    expect((await repo.performance()).months.every((m) => m.earnings == null), isTrue);
   });
 }

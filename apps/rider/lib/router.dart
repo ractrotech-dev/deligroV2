@@ -141,8 +141,8 @@ final routerProvider = Provider<GoRouter>((ref) {
         if (held != null && (onGate || path == '/home')) return held;
         // Through the gate: its own screens have nothing left to say.
         if (onGate) return '/home';
-        // A tab or section whose switch is off for this rider (Earnings,
-        // History, Cash, Performance, Incentives, Help tickets) is not reachable.
+        // A tab or section whose switch is off for this rider (Salary,
+        // History, Cash, Performance, Help tickets) is not reachable.
         final me = ref.read(meProvider).value;
         return earningsRedirect(path, me) ?? historyRedirect(path, me) ?? featureRedirect(path, me);
       }

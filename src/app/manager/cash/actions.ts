@@ -11,7 +11,7 @@ import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { staffScopeFor } from "@/lib/auth/manager-api.server";
 import { resolveRecordZone } from "@/lib/auth/manager-scope";
 import { riderInScope } from "@/lib/data-access/scoped-riders";
-import { decideDeposit } from "@/lib/data-access/rider-cash";
+import { alreadyDecidedMessage, decideDeposit } from "@/lib/data-access/rider-cash";
 import { resolveCashDispute } from "@/lib/data-access/manager-cash";
 import {
   recordCodHandover,
@@ -61,6 +61,12 @@ export async function recordHandoverAction(input: {
   const limit = await rateLimit(`cod-handover:${profile.id}`, 30, 60_000);
   if (!limit.ok) return { ok: false, error: "Slow down a moment." };
 
+  // This form writes two legs, and a server action takes whatever it is sent:
+  // rider → owner is the owner's alone, through the admin cash ledger.
+  if (input.leg !== "rider_to_manager" && input.leg !== "manager_to_owner") {
+    return { ok: false, error: "Choose who the cash went to." };
+  }
+
   const scope = await staffScopeFor(profile);
   const zone = resolveRecordZone(scope, input.zoneId);
   if (!zone.ok) return zone;
@@ -70,10 +76,14 @@ export async function recordHandoverAction(input: {
     return { ok: false, error: "That rider isn't in your zones." };
   }
 
+  // "Rider → me" and "Me → owner": the person signed in is the "me". An admin
+  // taking cash from a rider here is the owner receiving it directly.
+  const isManager = profile.role === "manager";
+  const fromRider = input.leg === "rider_to_manager";
   const result = await recordCodHandover({
-    leg: input.leg,
-    fromUserId: input.fromUserId,
-    toUserId: input.toUserId,
+    leg: fromRider && !isManager ? "rider_to_owner" : input.leg,
+    fromUserId: fromRider ? input.fromUserId : isManager ? profile.id : input.fromUserId,
+    toUserId: fromRider ? profile.id : input.toUserId,
     amount: input.amount,
     note: input.note,
     recordedBy: profile.id,
@@ -120,8 +130,8 @@ export async function recordExpenseAction(input: {
 
 /**
  * Confirm or dispute a cash deposit a rider declared (§5.14). Confirming writes
- * the rider → manager handover; both are one audited RPC (0152) that re-checks
- * the rider's zone in the database. Same gates as the actions above.
+ * the handover to whoever confirmed; both are one audited RPC (0152, 0195) that
+ * re-checks the rider's zone in the database. Same gates as the actions above.
  */
 export async function decideDepositAction(input: {
   depositId: string;
@@ -149,7 +159,7 @@ export async function decideDepositAction(input: {
       ok: false,
       error:
         result.error === "already_decided"
-          ? "Someone already decided this deposit. Refresh."
+          ? alreadyDecidedMessage(result.decided)
           : result.error === "manual_handover_exists"
             ? `A handover for this rider on ${result.day ?? "that day"} was already recorded by hand. Dispute the deposit instead, so it isn't counted twice.`
             : result.error === "note_required"

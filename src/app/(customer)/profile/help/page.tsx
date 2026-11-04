@@ -57,8 +57,8 @@ export default async function HelpPage() {
       q: t("Payment methods", "पेमेंट के तरीके"),
       a: onlinePayments
         ? t(
-            "You can pay cash on delivery, or online by card, UPI or netbanking at checkout. Some shops set a cash limit on larger orders — checkout will say so.",
-            "आप डिलीवरी पर नकद दे सकते हैं, या ऑर्डर करते समय कार्ड, UPI या नेटबैंकिंग से ऑनलाइन पेमेंट कर सकते हैं। कुछ दुकानें बड़े ऑर्डर पर नकद की सीमा रखती हैं — ऑर्डर करते समय यह बता दिया जाएगा।",
+            "You can pay cash on delivery, or online by card, UPI or netbanking at checkout. Larger orders can have a cash limit — checkout will say so.",
+            "आप डिलीवरी पर नकद दे सकते हैं, या ऑर्डर करते समय कार्ड, UPI या नेटबैंकिंग से ऑनलाइन पेमेंट कर सकते हैं। बड़े ऑर्डर पर नकद की सीमा हो सकती है — ऑर्डर करते समय यह बता दिया जाएगा।",
           )
         : t(
             "We currently accept Cash on Delivery. Online payment isn't available yet.",

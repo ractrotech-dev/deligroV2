@@ -8,7 +8,12 @@
  * convenience.
  */
 
-export type CashHandoverLeg = "rider_to_manager" | "manager_to_owner";
+export type CashHandoverLeg = "rider_to_manager" | "rider_to_owner" | "manager_to_owner";
+
+/** Cash that left a rider's hands: to a manager, or straight to the owner (0195). */
+export function isRiderLeg(leg: string): boolean {
+  return leg === "rider_to_manager" || leg === "rider_to_owner";
+}
 
 export type ExpenseCategory =
   | "rider_salary"

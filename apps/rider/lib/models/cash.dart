@@ -177,7 +177,7 @@ class CollectionsPage {
 }
 
 enum DepositStatus {
-  submitted('Waiting for a manager'),
+  submitted('Waiting to be confirmed'),
   confirmed('Confirmed'),
   disputed('Disputed'),
   withdrawn('Withdrawn'),
@@ -204,6 +204,7 @@ class CashDeposit {
     required this.status,
     required this.createdAt,
     this.managerName,
+    this.decidedByName,
     this.reference,
     this.note,
     this.hasReceipt = false,
@@ -216,6 +217,9 @@ class CashDeposit {
   final DepositStatus status;
   final DateTime createdAt;
   final String? managerName;
+
+  /// Who confirmed or disputed it. Null while it waits, and from an older server.
+  final String? decidedByName;
   final String? reference;
   final String? note;
   final bool hasReceipt;
@@ -234,6 +238,7 @@ class CashDeposit {
         DateTime.tryParse('${j['createdAt']}') ??
         DateTime.fromMillisecondsSinceEpoch(0),
     managerName: _str(j['managerName']),
+    decidedByName: _str(j['decidedByName']),
     reference: _str(j['reference']),
     note: _str(j['note']),
     hasReceipt: j['hasReceipt'] == true,

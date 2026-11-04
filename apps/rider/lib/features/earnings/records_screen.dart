@@ -15,8 +15,8 @@ import 'earnings_widgets.dart';
 /// Records per request (the server allows up to 100).
 const _pageSize = 25;
 
-/// Every delivery, incentive, bonus, adjustment and deduction in a date range,
-/// newest first. The last 31 days to begin with.
+/// Every salary entry, adjustment and deduction in a date range, and any older
+/// pay, newest first. The last 31 days to begin with.
 class RecordsScreen extends ConsumerStatefulWidget {
   const RecordsScreen({super.key});
 

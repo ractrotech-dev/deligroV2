@@ -59,6 +59,7 @@ export default async function ManagerCashPage() {
   let summary: CodDaySummary = {
     collectedToday: 0,
     handedToManagerToday: 0,
+    riderToOwnerToday: 0,
     handedToOwnerToday: 0,
   };
   let outstanding: CodLedgerSummary | null = null;
@@ -165,7 +166,9 @@ export default async function ManagerCashPage() {
                       <span className="font-semibold text-ink">
                         {h.leg === "rider_to_manager"
                           ? `${h.fromUserName ?? "Rider"} → ${h.toUserName ?? "Manager"}`
-                          : `${h.fromUserName ?? "Manager"} → ${h.toUserName ?? "Owner"}`}
+                          : h.leg === "rider_to_owner"
+                            ? `${h.fromUserName ?? "Rider"} → Owner`
+                            : `${h.fromUserName ?? h.recordedByName ?? "Manager"} → Owner`}
                       </span>
                       <span className="font-semibold text-ink">
                         {formatINR(h.amount)}
@@ -174,7 +177,9 @@ export default async function ManagerCashPage() {
                     <p className="mt-0.5 text-muted">
                       {h.handoverDate}
                       {h.note ? ` · ${h.note}` : ""}
-                      {h.recordedByName ? ` · recorded by ${h.recordedByName}` : ""}
+                      {h.confirmedByName
+                        ? ` · confirmed by ${h.confirmedByName}`
+                        : " · waiting for the owner to confirm"}
                     </p>
                   </li>
                 ))}

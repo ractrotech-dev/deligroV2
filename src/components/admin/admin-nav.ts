@@ -17,7 +17,6 @@ import {
   Store,
   TicketPercent,
   ToggleRight,
-  Trophy,
   UserCog,
   Users,
   Wallet,
@@ -198,18 +197,6 @@ export const ADMIN_NAV: AdminNavItem[] = [
     group: "People",
     tone: "pop",
     match: (p) => p.startsWith("/admin/riders"),
-  },
-  {
-    // A sub-route of Riders listed directly on the rail, like Featured slots
-    // under Vendors: incentive targets are a standing configuration an operator
-    // returns to, and activeNavItem's longest-href rule keeps Riders
-    // highlighted everywhere else.
-    href: "/admin/riders/incentives",
-    label: "Rider incentives",
-    icon: Trophy,
-    group: "People",
-    tone: "deal",
-    match: (p) => p.startsWith("/admin/riders/incentives"),
   },
   {
     href: "/admin/settings/employees",

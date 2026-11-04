@@ -547,10 +547,10 @@ async function pureTier(): Promise<void> {
   const alerts = await import("../../src/lib/rider/alert-rules");
   const rules = await import("../../src/lib/support/rules");
 
-  await group("pushAllowed: the twelve categories, three locked", () => {
+  await group("pushAllowed: the eleven categories, three locked", () => {
     assert.deepEqual([...prefs.NOTIFICATION_CATEGORIES], [
       "offers", "cancellations", "safety", "pickup_reminders", "delivery_updates", "payouts",
-      "incentives", "announcements", "support", "cash", "documents", "high_demand",
+      "announcements", "support", "cash", "documents", "high_demand",
     ]);
     assert.deepEqual([...prefs.LOCKED_CATEGORIES], ["offers", "cancellations", "safety"]);
     for (const c of prefs.NOTIFICATION_CATEGORIES) {
@@ -562,13 +562,13 @@ async function pureTier(): Promise<void> {
     }
     assert.equal(prefs.pushAllowed({ payouts: "false" }, "payouts"), true, "only an explicit false mutes");
     assert.equal(prefs.pushAllowed({ payouts: 0 }, "payouts"), true);
-    assert.equal(prefs.pushAllowed({ payouts: false }, "incentives"), true, "one category's switch mutes only that one");
+    assert.equal(prefs.pushAllowed({ payouts: false }, "cash"), true, "one category's switch mutes only that one");
     assert.equal(prefs.pushAllowed({ something_new: false }, "something_new"), false, "an unknown category obeys its switch");
     assert.equal(prefs.pushAllowed([] as unknown as Record<string, unknown>, "payouts"), true, "a non-object is no prefs");
     const eff = prefs.effectivePrefs({ payouts: false, offers: false, junk: 1 });
     assert.equal(eff.payouts, false);
     assert.equal(eff.offers, true, "a locked category reads on whatever is stored");
-    assert.equal(Object.keys(eff).length, 12);
+    assert.equal(Object.keys(eff).length, 11);
   });
 
   await group("alert rules at their thresholds", () => {
@@ -1001,9 +1001,9 @@ async function dataTier(): Promise<void> {
     fresh();
     rememberColumn("rider_profiles.notification_prefs", true);
     mode.missingColumns.add("rider_profiles.notification_prefs");
-    await events.notifyRiderIncentiveEarned(R1, { name: "Lunch rush", amount: 100 });
+    await events.notifyRiderDepositDecided(R1, { amount: 100, status: "confirmed" });
     assert.equal(pushes.length, 1, "pushed");
-    assert.equal(inboxOf(R1)[0].category, "incentives");
+    assert.equal(inboxOf(R1)[0].category, "cash");
   });
   await group("no inbox table (0087 not applied) -> the push still goes", async () => {
     fresh();

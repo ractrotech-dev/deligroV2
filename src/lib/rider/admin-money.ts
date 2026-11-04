@@ -40,11 +40,13 @@ export interface FormLike {
 }
 
 /** Salary first: riders are paid a fixed salary, so it is what an entry usually is (P3-R11). */
-export const ADJUSTMENT_KINDS: readonly AdjustmentKind[] = ["salary", "bonus", "adjustment", "deduction"];
+// Riders get a fixed salary only (rule book): no new bonus entries. Old ones stay on
+// the ledger, which is why AdjustmentKind still names the kind.
+export const ADJUSTMENT_KINDS = ["salary", "adjustment", "deduction"] as const;
 /** What "Add an entry" starts on. */
-export const DEFAULT_ADJUSTMENT_KIND: AdjustmentKind = "salary";
+export const DEFAULT_ADJUSTMENT_KIND: (typeof ADJUSTMENT_KINDS)[number] = "salary";
 export const ADJUSTMENT_LABELS: Record<AdjustmentKind, string> = {
-  bonus: "Bonus",
+  bonus: "Older pay",
   adjustment: "Adjustment (+ or −)",
   deduction: "Deduction",
   salary: "Salary",
@@ -63,8 +65,6 @@ export const MONEY_CEILING = 1_000_000;
 const REASON_MAX = 300;
 const NOTE_MAX = 300;
 const REFERENCE_MAX = 120;
-const RULE_NAME_MAX = 80;
-const TARGET_MAX = 1000;
 
 // ---------------------------------------------------------------------------
 // reading fields
@@ -123,12 +123,12 @@ export interface AdjustmentInput {
 
 /**
  * `kind`, `amount`, `reason`, `orderCode?`, `effectiveOn`. The sign rule is
- * `rider_adjustments_amount_sign`: bonus, salary and deduction are positive
+ * `rider_adjustments_amount_sign`: salary and deduction are positive
  * (a deduction is entered positive and subtracted); an adjustment is signed
  * and never zero.
  */
 export function parseAdjustment(form: FormLike, ctx: { today: string }): Parsed<AdjustmentInput> {
-  const kind = text(form, "kind") as AdjustmentKind;
+  const kind = text(form, "kind") as (typeof ADJUSTMENT_KINDS)[number];
   if (!ADJUSTMENT_KINDS.includes(kind)) return fail("Choose what kind of entry this is.");
 
   const amount = money(text(form, "amount"), "amount");
@@ -252,101 +252,6 @@ export function previewPayout(pending: readonly PendingItem[], periodEnd: string
 }
 
 // ---------------------------------------------------------------------------
-// incentive rules
-// ---------------------------------------------------------------------------
-
-export interface RuleInput {
-  name: string;
-  /** Null on an edit: a rule's period is fixed once created. */
-  period: "daily" | "weekly" | null;
-  /** Null on an edit: a rule's start date is fixed once created. */
-  startsOn: string | null;
-  targetDeliveries: number;
-  bonusAmount: number;
-  windowStart: string | null;
-  windowEnd: string | null;
-  endsOn: string | null;
-  active: boolean;
-}
-
-export type RuleMode = { mode: "create" } | { mode: "edit"; startsOn: string };
-
-const TIME = /^([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?$/;
-
-/**
- * `name`, `period`, `targetDeliveries`, `bonusAmount`, `windowStart?`,
- * `windowEnd?`, `startsOn`, `endsOn?`, `active`. English only.
- *
- * On an edit the posted `period` and `startsOn` are ignored (0083 refuses to
- * change either, for every role) and `endsOn` is judged against the STORED
- * start date.
- */
-export function parseIncentiveRule(form: FormLike, ctx: RuleMode): Parsed<RuleInput> {
-  const name = text(form, "name");
-  if (!name) return fail("Name the rule - riders see this name in their app.");
-  if (name.length > RULE_NAME_MAX) return fail(`Keep the name under ${RULE_NAME_MAX} characters.`);
-
-  let period: RuleInput["period"] = null;
-  let startsOn: string | null = null;
-  if (ctx.mode === "create") {
-    const p = text(form, "period");
-    if (p !== "daily" && p !== "weekly") return fail("Choose whether the target is counted per day or per week.");
-    period = p;
-    const raw = text(form, "startsOn");
-    if (raw === "") return fail("Pick the first day the rule is in force.");
-    if (!isDayKey(raw)) return fail("The start date is not a real date.");
-    startsOn = raw;
-  }
-  const effectiveStart = ctx.mode === "create" ? (startsOn as string) : ctx.startsOn;
-
-  const rawTarget = text(form, "targetDeliveries");
-  if (!/^\d+$/.test(rawTarget) || Number(rawTarget) < 1 || Number(rawTarget) > TARGET_MAX) {
-    return fail(`The target is a whole number of deliveries, from 1 to ${TARGET_MAX}.`);
-  }
-
-  const bonus = money(text(form, "bonusAmount"), "bonus");
-  if (!bonus.ok) return bonus;
-  if (bonus.value <= 0) return fail("The bonus must be more than ₹0.");
-
-  const ws = text(form, "windowStart");
-  const we = text(form, "windowEnd");
-  let windowStart: string | null = null;
-  let windowEnd: string | null = null;
-  if (ws || we) {
-    if (!ws || !we) return fail("A time window needs both a start and an end. Clear both for all day.");
-    if (!TIME.test(ws) || !TIME.test(we)) return fail("Write the window times as HH:MM, for example 12:00.");
-    windowStart = ws.slice(0, 5);
-    windowEnd = we.slice(0, 5);
-    if (windowEnd <= windowStart) {
-      return fail("The window must end after it starts (a window can't run past midnight - use two rules).");
-    }
-  }
-
-  let endsOn: string | null = null;
-  const rawEnd = text(form, "endsOn");
-  if (rawEnd) {
-    if (!isDayKey(rawEnd)) return fail("The end date is not a real date.");
-    if (rawEnd < effectiveStart) return fail(`The end date can't be before the start date (${effectiveStart}).`);
-    endsOn = rawEnd;
-  }
-
-  return {
-    ok: true,
-    value: {
-      name,
-      period,
-      startsOn,
-      targetDeliveries: Number(rawTarget),
-      bonusAmount: bonus.value,
-      windowStart,
-      windowEnd,
-      endsOn,
-      active: text(form, "active") === "on",
-    },
-  };
-}
-
-// ---------------------------------------------------------------------------
 // what the database said, as sentences
 // ---------------------------------------------------------------------------
 
@@ -401,18 +306,16 @@ export function riderPaymentMessage(code: string, extra: { amount?: number } = {
   }
 }
 
-/** A refused adjustment or incentive-rule write, as a sentence. */
-export function writeErrorMessage(error: DbError, what: "adjustment" | "rule"): string {
+/** A refused adjustment write, as a sentence. */
+export function writeErrorMessage(error: DbError): string {
   if (isSchemaMissing(error)) return MIGRATION_PENDING_MESSAGE;
   if (error.code === "42501") {
     return "The database says this account is not allowed to write rider money. Only an admin account can.";
   }
   if (error.code === "23514" || error.code === "22P02" || error.code === "22007") {
-    return `The database rejected those values (a check failed). Review the ${what === "rule" ? "rule" : "entry"} and try again.`;
+    return "The database rejected those values (a check failed). Review the entry and try again.";
   }
-  return what === "rule"
-    ? "Couldn't save the rule. Nothing was changed - try again, and if it keeps failing check the server logs."
-    : "Couldn't save the entry. Nothing was changed - try again, and if it keeps failing check the server logs.";
+  return "Couldn't save the entry. Nothing was changed - try again, and if it keeps failing check the server logs.";
 }
 
 // ---------------------------------------------------------------------------
@@ -436,24 +339,6 @@ const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "
 export function formatDay(day: string | null | undefined): string {
   if (!day || !isDayKey(day)) return day ?? "";
   return `${Number(day.slice(8, 10))} ${MONTHS[Number(day.slice(5, 7)) - 1]} ${day.slice(0, 4)}`;
-}
-
-/** A rule in the words an operator would use: "10 deliveries in a day". */
-export function describeRule(r: {
-  period: "daily" | "weekly";
-  targetDeliveries: number;
-  bonusAmount: number;
-  windowStart: string | null;
-  windowEnd: string | null;
-  startsOn: string;
-  endsOn: string | null;
-}): { target: string; window: string; dates: string } {
-  const unit = r.targetDeliveries === 1 ? "delivery" : "deliveries";
-  return {
-    target: `${r.targetDeliveries} ${unit} in a ${r.period === "daily" ? "day" : "week"} pays ${formatMoney(r.bonusAmount)}`,
-    window: r.windowStart && r.windowEnd ? `${r.windowStart.slice(0, 5)}-${r.windowEnd.slice(0, 5)} IST` : "All day",
-    dates: r.endsOn ? `${formatDay(r.startsOn)} to ${formatDay(r.endsOn)}` : `From ${formatDay(r.startsOn)}`,
-  };
 }
 
 /** How a delivery's pay was made up, for the Money tab: "₹20 base + ₹12 distance (4 km by road) + ₹5 tip". */

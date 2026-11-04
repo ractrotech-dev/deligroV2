@@ -170,7 +170,10 @@ async function loadPosition(supabase: AdminClient, driverId: string): Promise<Po
       supabase
         .from("cod_handovers")
         .select("id, amount, handover_date")
-        .eq("leg", "rider_to_manager")
+        // Cash that left the rider's hands: to a manager or to the owner (0195).
+        // "Not manager → owner" rather than naming both, so this still reads on a
+        // database before 0195, which has no rider_to_owner to name.
+        .neq("leg", "manager_to_owner")
         .eq("from_user", driverId)
         .order("id")
         .range(from, to)
@@ -477,6 +480,8 @@ export interface RiderDeposit {
   status: "submitted" | "confirmed" | "disputed" | "withdrawn";
   managerId: string | null;
   managerName: string | null;
+  /** Who confirmed or disputed it. Null while it waits. */
+  decidedByName: string | null;
   reference: string | null;
   note: string | null;
   hasReceipt: boolean;
@@ -491,7 +496,7 @@ export async function listRiderDeposits(driverId: string, limit = 50): Promise<R
   const supabase = createAdminClient();
   const { data, error } = await supabase
     .from("cash_deposits")
-    .select("id, amount, method, status, manager_id, reference, photo_path, note, decision_note, decided_at, created_at")
+    .select("id, amount, method, status, manager_id, decided_by, reference, photo_path, note, decision_note, decided_at, created_at")
     .eq("driver_id", driverId)
     .order("created_at", { ascending: false })
     .order("id")
@@ -503,6 +508,7 @@ export async function listRiderDeposits(driverId: string, limit = 50): Promise<R
         method: "cash" | "upi";
         status: RiderDeposit["status"];
         manager_id: string | null;
+        decided_by: string | null;
         reference: string | null;
         photo_path: string | null;
         note: string | null;
@@ -515,7 +521,7 @@ export async function listRiderDeposits(driverId: string, limit = 50): Promise<R
   const rows = data ?? [];
   const names = await profileNames(
     supabase,
-    rows.map((r) => r.manager_id)
+    rows.flatMap((r) => [r.manager_id, r.decided_by])
   );
   return rows.map((r) => ({
     id: r.id,
@@ -524,6 +530,7 @@ export async function listRiderDeposits(driverId: string, limit = 50): Promise<R
     status: r.status,
     managerId: r.manager_id,
     managerName: r.manager_id ? (names.get(r.manager_id) ?? null) : null,
+    decidedByName: r.decided_by ? (names.get(r.decided_by) ?? null) : null,
     reference: r.reference,
     note: r.note,
     hasReceipt: !!r.photo_path,
@@ -547,17 +554,29 @@ async function profileNames(supabase: AdminClient, ids: (string | null)[]): Prom
   return out;
 }
 
-/** The managers a rider can name when depositing: id and name, nothing else. */
+/**
+ * Who a rider can name when depositing: the managers, then the owner (an admin
+ * profile, shown as "Owner"). Id and name, nothing else. Naming is only a hint:
+ * whoever received the cash confirms it, and that is who it is recorded against.
+ */
 export async function listDepositManagers(): Promise<{ id: string; name: string }[]> {
   const { data, error } = await createAdminClient()
     .from("profiles")
-    .select("id, full_name")
-    .eq("role", "manager")
+    .select("id, full_name, role")
+    .in("role", ["manager", "admin"])
     .order("full_name")
     .limit(100)
-    .overrideTypes<{ id: string; full_name: string | null }[]>();
+    .overrideTypes<{ id: string; full_name: string | null; role?: string }[]>();
   if (error) throw error;
-  return (data ?? []).map((m) => ({ id: m.id, name: m.full_name?.trim() || "Manager" }));
+  const rows = data ?? [];
+  const owners = rows.filter((p) => p.role === "admin");
+  return [
+    ...rows.filter((p) => p.role !== "admin").map((m) => ({ id: m.id, name: m.full_name?.trim() || "Manager" })),
+    ...owners.map((a) => ({
+      id: a.id,
+      name: owners.length > 1 && a.full_name?.trim() ? `Owner (${a.full_name.trim()})` : "Owner",
+    })),
+  ];
 }
 
 /**
@@ -761,6 +780,8 @@ export type DecideDepositResult =
   | {
       ok: false;
       error: "not_found" | "already_decided" | "note_required" | "manual_handover_exists";
+      /** For `already_decided`: what happened to it, and who did it, for the plain message. */
+      decided?: { status: string; byName: string | null };
       /** For `manual_handover_exists`: the IST day of the deposit (and of the handover written by hand). */
       day?: string;
     };
@@ -788,11 +809,13 @@ function isMissingFunction(error: { code?: string; message?: string }): boolean 
  * function with zone checks and an audit row), which in ONE transaction locks
  * the deposit, refuses one that is not `submitted`, and either disputes it
  * (the note the rider reads) or confirms it: the `cod_handovers` row
- * (`rider_to_manager`, from the rider, to the confirmer — ruling P8-R11, never
- * the manager the rider named — recorded by the confirmer, dated to the day the rider
+ * (from the rider, to the confirmer — ruling P8-R11, never the manager the rider
+ * named — `rider_to_manager` for a manager and `rider_to_owner` for an admin (0195),
+ * recorded by the confirmer, dated to the day the rider
  * declared the deposit) is inserted and linked in the same statement set. There
  * is no claim step to leave half-done: a failure rolls everything back, and a
- * replayed or concurrent confirm finds the row decided.
+ * replayed or concurrent confirm finds the row decided. So when a manager and the
+ * owner both act, the first wins and the second is told who got there first.
  *
  * A handover already written by hand for that rider on the deposit's day is
  * refused (`manual_handover_exists`): confirming would count the same cash
@@ -820,7 +843,7 @@ export async function decideDeposit(
     .overrideTypes<DepositRow>();
   if (readError) failRead(readError);
   if (!deposit) return { ok: false, error: "not_found" };
-  if (deposit.status !== "submitted") return { ok: false, error: "already_decided" };
+  if (deposit.status !== "submitted") return alreadyDecided(supabase, id);
 
   // What the rider holds BEFORE this confirmation, for the "more than they hold" warning. A failed read
   // only loses the warning; it never blocks the decision.
@@ -844,7 +867,7 @@ export async function decideDeposit(
   if (error) {
     const message = error.message ?? "";
     if (/manual_handover_exists/.test(message)) return { ok: false, error: "manual_handover_exists", day: istDay(deposit.created_at) };
-    if (/already_decided/.test(message)) return { ok: false, error: "already_decided" };
+    if (/already_decided/.test(message)) return alreadyDecided(supabase, id);
     if (/note_required/.test(message)) return { ok: false, error: "note_required" };
     // `forbidden` is also what the function answers for an unknown deposit: no oracle.
     if (error.code === "42501" || /forbidden/.test(message)) return { ok: false, error: "not_found" };
@@ -862,6 +885,37 @@ export async function decideDeposit(
   return pendingBefore !== null && deposit.amount > pendingBefore
     ? { ok: true, warning: { code: "exceeds_pending", pending: pendingBefore } }
     : { ok: true };
+}
+
+/** The refusal for a deposit someone else got to first, naming them when that can be read. */
+async function alreadyDecided(supabase: AdminClient, id: string): Promise<DecideDepositResult> {
+  try {
+    const { data } = await supabase
+      .from("cash_deposits")
+      .select("status, decided_by")
+      .eq("id", id)
+      .maybeSingle()
+      .overrideTypes<{ status: string; decided_by: string | null }>();
+    if (!data) return { ok: false, error: "already_decided" };
+    const names = await profileNames(supabase, [data.decided_by]);
+    return {
+      ok: false,
+      error: "already_decided",
+      decided: { status: data.status, byName: data.decided_by ? (names.get(data.decided_by) ?? null) : null },
+    };
+  } catch {
+    return { ok: false, error: "already_decided" };
+  }
+}
+
+/** The plain sentence for `already_decided`. The first confirmation stands. */
+export function alreadyDecidedMessage(decided?: { status: string; byName: string | null }): string {
+  if (!decided) return "Someone already decided this deposit.";
+  const who = decided.byName ? ` by ${decided.byName}` : "";
+  if (decided.status === "confirmed") return `Already confirmed${who}. It isn't counted twice.`;
+  if (decided.status === "disputed") return `Already disputed${who}.`;
+  if (decided.status === "withdrawn") return "The rider withdrew this deposit.";
+  return "Someone already decided this deposit.";
 }
 
 /** What `ops_decide_cash_deposit` refused with, for the Manager API's error mapping. */
@@ -957,7 +1011,7 @@ export async function listDepositQueue(): Promise<QueuedDeposit[]> {
     supabase
       .from("cod_handovers")
       .select("id, leg, from_user, amount, handover_date")
-      .eq("leg", "rider_to_manager")
+      .neq("leg", "manager_to_owner")
       .in("from_user", riderIds)
       .in("handover_date", days)
       .limit(1000)
@@ -1141,6 +1195,12 @@ export interface RecentDeposit {
   amount: number;
   method: "cash" | "upi";
   status: string;
+  /** Who the rider said they gave it to. */
+  namedName: string | null;
+  reference: string | null;
+  note: string | null;
+  /** Who confirmed or disputed it. */
+  decidedByName: string | null;
   decisionNote: string | null;
   createdAt: string;
 }
@@ -1150,7 +1210,7 @@ export async function listRecentDeposits(limit = 30): Promise<RecentDeposit[]> {
   const supabase = createAdminClient();
   const { data, error } = await supabase
     .from("cash_deposits")
-    .select("id, driver_id, amount, method, status, decision_note, created_at")
+    .select("id, driver_id, amount, method, status, manager_id, reference, note, decided_by, decision_note, created_at")
     .order("created_at", { ascending: false })
     .limit(Math.min(Math.max(1, limit), 200))
     .overrideTypes<
@@ -1160,19 +1220,27 @@ export async function listRecentDeposits(limit = 30): Promise<RecentDeposit[]> {
         amount: number;
         method: "cash" | "upi";
         status: string;
+        manager_id: string | null;
+        reference: string | null;
+        note: string | null;
+        decided_by: string | null;
         decision_note: string | null;
         created_at: string;
       }[]
     >();
   if (error) failRead(error);
   const rows = data ?? [];
-  const names = await profileNames(supabase, rows.map((r) => r.driver_id));
+  const names = await profileNames(supabase, rows.flatMap((r) => [r.driver_id, r.manager_id, r.decided_by]));
   return rows.map((r) => ({
     id: r.id,
     riderName: names.get(r.driver_id) ?? "Rider",
     amount: r.amount,
     method: r.method,
     status: r.status,
+    namedName: r.manager_id ? (names.get(r.manager_id) ?? null) : null,
+    reference: r.reference,
+    note: r.note,
+    decidedByName: r.decided_by ? (names.get(r.decided_by) ?? null) : null,
     decisionNote: r.decision_note,
     createdAt: r.created_at,
   }));
@@ -1229,7 +1297,7 @@ export async function sendCashReminders(
       supabase
         .from("cod_handovers")
         .select("id, from_user, amount, handover_date")
-        .eq("leg", "rider_to_manager")
+        .neq("leg", "manager_to_owner")
         .not("from_user", "is", null)
         .order("id")
         .range(from, to)
