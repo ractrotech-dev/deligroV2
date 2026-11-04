@@ -210,7 +210,7 @@ Future<void> reviewRiderDocument(
   );
 }
 
-/// Bonus, deduction or adjustment (`manager.finance.adjust`) — kind, amount
+/// Deduction or adjustment (`manager.finance.adjust`) — kind, amount
 /// in rupees and paise, date and a reason. Audited; no second approver.
 Future<void> addRiderAdjustment(BuildContext context, WidgetRef ref, RiderDetail rider) async {
   final draft = await showDialog<AddRiderAdjustment>(context: context, builder: (_) => const _AdjustmentDialog());
@@ -226,7 +226,7 @@ class _AdjustmentDialog extends StatefulWidget {
 }
 
 class _AdjustmentDialogState extends State<_AdjustmentDialog> {
-  AdjustmentKind _kind = AdjustmentKind.bonus;
+  AdjustmentKind _kind = AdjustmentKind.deduction;
   final _amount = TextEditingController();
   final _reason = TextEditingController();
   DateTime _date = DateTime.now();
@@ -322,8 +322,8 @@ class _AdjustmentDialogState extends State<_AdjustmentDialog> {
             onPressed: _ok
                 ? () {
                     final v = _value!;
-                    // Rider plan (0083): bonus and deduction amounts are
-                    // positive — the server subtracts a deduction; only an
+                    // Rider plan (0083): a deduction amount is
+                    // positive — the server subtracts it; only an
                     // adjustment carries its own sign.
                     final amount = _kind == AdjustmentKind.adjustment ? v : v.abs();
                     Navigator.pop(

@@ -816,9 +816,10 @@ class RatingPage {
 
 enum LedgerType {
   earning('Earning'),
-  incentive('Incentive'),
+  // Old ledger rows only: riders get a fixed salary (rule book).
+  incentive('Older pay'),
   salary('Salary'),
-  bonus('Bonus'),
+  bonus('Older pay'),
   deduction('Deduction'),
   adjustment('Adjustment'),
   unknown('Entry');
@@ -1098,7 +1099,6 @@ class RejectRiderDocument extends RiderAction {
 }
 
 enum AdjustmentKind {
-  bonus('Bonus'),
   deduction('Deduction'),
   adjustment('Adjustment');
 

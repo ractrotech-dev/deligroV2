@@ -712,25 +712,6 @@ function rupeesText(amount: number): string {
 }
 
 /**
- * An incentive target was reached (`rider_incentive_awards`, 0083). Sent by
- * `notifyNewIncentiveAwards` once per award. Riders are salaried and paid
- * outside the app, so the copy describes what was RECORDED on their ledger —
- * never a transfer the app made.
- */
-export function notifyRiderIncentiveEarned(
-  driverId: string,
-  award: { name: string; amount: number }
-): Promise<void> {
-  return notifyRider(
-    driverId,
-    "incentives",
-    { en: "Incentive earned" },
-    { en: `${award.name}: a ${rupeesText(award.amount)} incentive was recorded for you.` },
-    { url: "/earnings/incentives" }
-  );
-}
-
-/**
  * An admin recorded a payout to the rider (`record_rider_payout`, 0083). The
  * money moved outside the app (salary model); this reports the ledger entry.
  * Sent by `announcePayoutRecorded` (admin-riders.ts) once the payout row is

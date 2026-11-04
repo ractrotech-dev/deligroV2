@@ -8,7 +8,7 @@ export const dynamic = "force-dynamic";
 
 /**
  * GET /api/manager/riders/[id]/ledger — the rider's pay ledger and payouts
- * (§5.13): earnings, incentives, salary, bonuses, deductions and adjustments,
+ * (§5.13): salary, deductions and adjustments, with old earnings, incentives and bonuses still readable,
  * each pending or paid, with the payouts that paid them. Riders are salaried:
  * salary rows come from approved payout requests.
  *

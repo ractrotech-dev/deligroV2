@@ -79,6 +79,7 @@ String routeForNotification({
     'support' => ticketId is String && ticketId.isNotEmpty ? '$_help/tickets/$ticketId' : _help,
     'offers' || 'cancellations' || 'pickup_reminders' || 'delivery_updates' || 'high_demand' =>
       _finishedOrderPath(data, has) ?? _jobs,
+    // Older notices about incentives are still in people's inboxes.
     'payouts' || 'incentives' => earningsPath,
     'cash' => cashPath,
     'documents' => documentsPath,

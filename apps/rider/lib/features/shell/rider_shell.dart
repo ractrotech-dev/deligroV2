@@ -72,7 +72,7 @@ final _jobs = RiderTab(
 
 final _earnings = RiderTab(
   id: 'earnings',
-  label: 'Earnings',
+  label: 'Salary',
   icon: Icons.account_balance_wallet_outlined,
   selectedIcon: Icons.account_balance_wallet_rounded,
   route: earningsRoute,

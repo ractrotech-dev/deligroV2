@@ -4,7 +4,6 @@ import {
   getSettingsSnapshot,
   riderCashLimitsReady,
   riderDocsSettingReady,
-  riderTargetsReady,
   cashLimitReady as readCashLimitReady,
   settingsBackendReady,
 } from "@/lib/settings";
@@ -39,7 +38,6 @@ export default async function PlatformSettingsPage() {
     commissionCoverage,
     singleAdminPayments,
     cashLimitsReady,
-    targetsReady,
     cashLimitReady,
     docsSettingReady,
   ] = await Promise.all([
@@ -51,7 +49,6 @@ export default async function PlatformSettingsPage() {
     // A failed read shows the pre-0152 notice rather than a wrong state.
     singleAdminPaymentsOn().catch(() => null),
     riderCashLimitsReady(),
-    riderTargetsReady(),
     readCashLimitReady(),
     riderDocsSettingReady(),
   ]);
@@ -101,7 +98,6 @@ export default async function PlatformSettingsPage() {
         commissionGstPct={commissionGstPct}
         commissionCoverage={commissionCoverage}
         cashLimitsReady={cashLimitsReady}
-        targetsReady={targetsReady}
         cashLimitReady={cashLimitReady}
         docsSettingReady={docsSettingReady}
       />

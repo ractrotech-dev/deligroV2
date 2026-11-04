@@ -18,16 +18,13 @@ import type { FeatureKey } from "@/lib/features/catalog";
  *   3. `driver.earnings` switched off for this rider -> 403 feature_disabled
  *      (`featureOffResponse`): the money tab is hidden in the app, and the
  *      server refuses the figures as well rather than trusting the app to.
- *   4. `opts.feature` (the incentives route passes `driver.incentives`)
- *      switched off -> 403 feature_disabled, the same way.
  *
  * `earningsRouteError` maps what the data layer throws: a malformed query
  * (`EarningsInputError`) is 400 with its code; a database without 0083 is 503
  * migration_pending; anything else an opaque 500 (`riderRouteError`).
  */
 export async function riderEarningsGate(
-  route: string,
-  opts: { feature?: FeatureKey } = {}
+  route: string
 ): Promise<{ ok: true; driverId: string } | { ok: false; response: Response }> {
   const auth = await requireRiderApi();
   if (!auth.ok) return auth;
@@ -38,9 +35,6 @@ export async function riderEarningsGate(
 
   if (!(await isFeatureOn("driver.earnings", driverId))) {
     return { ok: false, response: featureOffResponse("driver.earnings") };
-  }
-  if (opts.feature && !(await isFeatureOn(opts.feature, driverId))) {
-    return { ok: false, response: featureOffResponse(opts.feature) };
   }
   return { ok: true, driverId };
 }

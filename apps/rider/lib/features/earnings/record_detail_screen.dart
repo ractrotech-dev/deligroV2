@@ -50,7 +50,7 @@ class RecordDetailScreen extends StatelessWidget {
       add('Type', r.kindLabel);
     }
     if (r.kind != RecordKind.delivery && r.note != null && !r.isReversal) {
-      add(r.kind == RecordKind.incentive ? 'Target' : 'Reason', r.note!);
+      add('Reason', r.note!);
     }
     if (r.baseFee != null) add('Base fee', money(r.baseFee!));
     if (r.kind == RecordKind.delivery) add('Distance', distanceText(r));
@@ -64,9 +64,6 @@ class RecordDetailScreen extends StatelessWidget {
             ? '${money(tip)} · paid to you in cash, not in this amount'
             : '${money(tip)} · included in this amount',
       );
-    }
-    if (r.kind == RecordKind.delivery && (r.incentive ?? 0) > 0) {
-      add('Incentive', money(r.incentive!));
     }
     if (r.kind == RecordKind.delivery && (r.deduction ?? 0) > 0) {
       add('Deduction', money(-r.deduction!));
@@ -108,14 +105,14 @@ class RecordDetailScreen extends StatelessWidget {
             if (r.reversed) ...[
               const SizedBox(height: 8),
               Text(
-                'This delivery was corrected, so its earning was taken back. The reversal is a separate record.',
+                'This delivery was corrected, so its pay was taken back. The reversal is a separate record.',
                 style: TextStyle(color: c.muted, fontSize: 14, height: 1.35),
               ),
             ],
             if (r.isReversal) ...[
               const SizedBox(height: 8),
               Text(
-                'Deligro corrected this delivery after it was completed, so the earning is taken back automatically.',
+                'Deligro corrected this delivery after it was completed, so its pay is taken back automatically.',
                 style: TextStyle(color: c.muted, fontSize: 14, height: 1.35),
               ),
             ],

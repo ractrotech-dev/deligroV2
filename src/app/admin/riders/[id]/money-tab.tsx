@@ -12,7 +12,8 @@ import { AdjustmentForm, PayoutForm } from "./money-forms";
  * The rider's Money tab: where they stand, what to pay, what was paid, and the
  * ledger line by line.
  *
- * Riders are salaried (P3-R11): salary, bonuses, incentives, deductions and
+ * Riders are on a fixed salary (rule book). Old bonus and incentive rows stay
+ * on the ledger below, shown as "Older pay". Salary, deductions and
  * payouts are the ledger, and the ₹0 per-delivery rows the dormant rate card
  * writes are left out of the records table and the payout preview.
  *
@@ -24,8 +25,8 @@ import { AdjustmentForm, PayoutForm } from "./money-forms";
 
 const KIND_LABEL: Record<EarningRecord["kind"], string> = {
   delivery: "Delivery",
-  incentive: "Incentive",
-  bonus: "Bonus",
+  incentive: "Older pay",
+  bonus: "Older pay",
   adjustment: "Adjustment",
   deduction: "Deduction",
   salary: "Salary",
@@ -36,7 +37,7 @@ const isReversal = (r: EarningRecord) => r.kind === "adjustment" && r.reversesId
 function detailOf(r: EarningRecord): string {
   if (r.kind === "delivery") return deliveryDetail(r);
   if (isReversal(r)) return `The delivery was corrected, so its pay is taken back${r.orderCode ? ` (${r.orderCode})` : ""}.`;
-  if (r.kind === "incentive") return r.note ?? "Incentive target reached";
+  if (r.kind === "incentive") return r.note ?? "Older pay";
   return r.note ?? "";
 }
 
@@ -190,11 +191,8 @@ export function MoneyTab({
     {
       label: "Owed - not yet paid",
       value: formatMoney(s.pending),
-      note: s.pending < 0 ? "Deductions outweigh earnings" : s.pending === 0 ? "All settled" : "Pending payout",
+      note: s.pending < 0 ? "Deductions outweigh salary" : s.pending === 0 ? "All settled" : "Pending payment",
     },
-    { label: "Earned today", value: formatMoney(s.today), note: "Deliveries and incentives" },
-    { label: "This week", value: formatMoney(s.week), note: "From Monday" },
-    { label: "This month", value: formatMoney(s.month) },
     {
       label: "Paid out",
       value: formatMoney(s.paid),
@@ -212,14 +210,6 @@ export function MoneyTab({
       <MetricRow items={tiles} />
 
       <FigureRow>
-        <Figure label="Total earned" value={formatMoney(s.total)} note={`${s.deliveriesCounted} ${s.deliveriesCounted === 1 ? "delivery" : "deliveries"} counted`} />
-        {s.perDeliveryAvg === null ? (
-          <Figure label="Per delivery" value="Salaried" note="Not paid per delivery" />
-        ) : (
-          <Figure label="Per delivery" value={formatMoney(s.perDeliveryAvg)} note="Average, live deliveries" />
-        )}
-        <Figure label="Incentives" value={formatMoney(s.incentives)} />
-        <Figure label="Bonuses" value={formatMoney(s.bonuses)} />
         <Figure label="Salary" value={formatMoney(s.salary)} />
         <Figure label="Adjustments" value={formatMoney(s.adjustments)} note="Plus or minus" />
         <Figure label="Deductions" value={formatMoney(s.deductions)} note="Subtracted" />

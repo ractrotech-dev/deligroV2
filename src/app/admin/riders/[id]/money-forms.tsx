@@ -17,7 +17,6 @@ import {
   type ActionResult,
   type PendingItem,
 } from "@/lib/rider/admin-money";
-import type { AdjustmentKind } from "@/lib/rider/earnings-math";
 import { addAdjustmentAction, payRiderAction } from "./money-actions";
 
 /**
@@ -29,8 +28,7 @@ import { addAdjustmentAction, payRiderAction } from "./money-actions";
  * Here a refusal leaves the form exactly as it was, and a success clears it.
  */
 
-const HINT: Record<AdjustmentKind, string> = {
-  bonus: "Added to what the rider is owed. Enter a positive amount.",
+const HINT: Record<(typeof ADJUSTMENT_KINDS)[number], string> = {
   adjustment: "Plus or minus, never zero. Use a minus to take money away.",
   deduction: "Enter a positive amount - it is subtracted from what the rider is owed.",
   salary: "The rider's salary for the period. Enter a positive amount.",
@@ -56,7 +54,7 @@ export function AdjustmentForm({
   today,
   orderCodes,
 }: Readonly<{ driverId: string; today: string; orderCodes: string[] }>) {
-  const [kind, setKind] = useState<AdjustmentKind>(DEFAULT_ADJUSTMENT_KIND);
+  const [kind, setKind] = useState<(typeof ADJUSTMENT_KINDS)[number]>(DEFAULT_ADJUSTMENT_KIND);
   const [result, setResult] = useState<ActionResult | null>(null);
   const [busy, start] = useTransition();
   const ref = useRef<HTMLFormElement>(null);
@@ -77,7 +75,7 @@ export function AdjustmentForm({
   return (
     <Panel
       title="Add an entry"
-      description="Salary, bonuses, deductions and corrections. Entries can't be edited afterwards - a mistake is fixed with another entry."
+      description="Salary, deductions and corrections. Entries can't be edited afterwards - a mistake is fixed with another entry."
     >
       <form ref={ref} onSubmit={submit} className="space-y-3">
         <input type="hidden" name="driverId" value={driverId} />
@@ -86,7 +84,7 @@ export function AdjustmentForm({
             <select
               name="kind"
               value={kind}
-              onChange={(e) => setKind(e.target.value as AdjustmentKind)}
+              onChange={(e) => setKind(e.target.value as (typeof ADJUSTMENT_KINDS)[number])}
               className={fieldCls}
             >
               {ADJUSTMENT_KINDS.map((k) => (

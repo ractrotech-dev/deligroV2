@@ -7,7 +7,7 @@ import '../../state/clock.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/common.dart';
 
-/// The Earnings tab's root (`/earnings`).
+/// The Salary tab's root (`/earnings`).
 const earningsPath = '/earnings';
 
 /// The `driver.earnings` switch in `/api/rider/me`'s `features`.
@@ -188,8 +188,7 @@ class RecordRow extends ConsumerWidget {
     if (r.isReversal) return Icons.undo_rounded;
     return switch (r.kind) {
       RecordKind.delivery => Icons.two_wheeler_rounded,
-      RecordKind.incentive => Icons.emoji_events_outlined,
-      RecordKind.bonus => Icons.card_giftcard_rounded,
+      RecordKind.incentive || RecordKind.bonus => Icons.history_rounded,
       RecordKind.salary => Icons.payments_outlined,
       RecordKind.adjustment => Icons.tune_rounded,
       RecordKind.deduction => Icons.remove_circle_outline_rounded,

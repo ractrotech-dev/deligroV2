@@ -69,13 +69,8 @@ class FixtureInsightsRepository implements InsightsRepository {
       'money': _scenario == 'off'
           ? null
           : empty
-          ? {'today': 0, 'total': 0, 'pending': 0, 'incentivesThisWeek': 0}
-          : {
-              'today': 185,
-              'total': 12450,
-              'pending': 650,
-              'incentivesThisWeek': 300,
-            },
+          ? {'pending': 0}
+          : {'pending': 650},
       'availability': {
         'isOnline': !empty,
         'breakUntil': null,
@@ -94,9 +89,6 @@ class FixtureInsightsRepository implements InsightsRepository {
               'status': 'on_the_way',
               'next': 'Reach the customer',
             },
-      'nearestTarget': _scenario == 'off' || empty
-          ? null
-          : {'name': 'Weekly warrior', 'done': 32, 'target': 40, 'bonus': 500},
       'updatedAt': _now.toUtc().toIso8601String(),
     });
   }
@@ -147,7 +139,6 @@ class FixtureInsightsRepository implements InsightsRepository {
         'endedAt': ended.toUtc().toIso8601String(),
         'distanceKm': 1.4 + (i % 7) * 0.9,
         // Riders are salaried: most rows carry no per-job money.
-        'earning': _scenario == 'off' || !delivered || i % 5 != 0 ? null : 32,
         'reason': switch (outcome) {
           'failed' => 'Customer did not pick up the phone',
           'cancelled' => 'Customer cancelled the order',
@@ -235,8 +226,6 @@ class FixtureInsightsRepository implements InsightsRepository {
   Future<RiderPerformance> performance() async {
     if (_scenario == 'empty') {
       return RiderPerformance.fromJson({
-        'daily': {'target': 0, 'done': 0},
-        'weekly': {'target': 0, 'done': 0},
         'avgAcceptToDeliverMin': null,
         'avgPickupToDeliverMin': null,
         'acceptanceRate': null,
@@ -259,8 +248,6 @@ class FixtureInsightsRepository implements InsightsRepository {
     }
     const delivered = [34, 41, 38, 52, 47, 60, 58, 66, 71, 64, 79, 33];
     return RiderPerformance.fromJson({
-      'daily': {'target': 12, 'done': 5},
-      'weekly': {'target': 60, 'done': 38},
       'avgAcceptToDeliverMin': 37,
       'avgPickupToDeliverMin': 24,
       'acceptanceRate': 86.5,
@@ -306,7 +293,6 @@ class FixtureInsightsRepository implements InsightsRepository {
             rate: 80.0 + i % 9,
             avg: 33.0 + i % 6,
             hours: 120.0 + i * 3,
-            earnings: _scenario == 'off' || i > 5 ? null : 2400.0 + i * 150,
           ),
       ],
     });
@@ -320,7 +306,6 @@ class FixtureInsightsRepository implements InsightsRepository {
     required double? rate,
     required double? avg,
     required double hours,
-    double? earnings,
   }) {
     final at = DateTime(_now.year, _now.month - agoMonths);
     return {
@@ -331,7 +316,6 @@ class FixtureInsightsRepository implements InsightsRepository {
       'cancelled': cancelled,
       'acceptanceRate': rate,
       'avgDeliverMin': avg,
-      'earnings': earnings,
       'onlineHours': hours,
     };
   }

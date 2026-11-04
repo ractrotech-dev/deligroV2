@@ -119,7 +119,6 @@ const notificationCategories = [
   NotificationCategory('delivery_updates', 'Delivery updates',
       'Changed instructions, delay alerts, the shop confirming your pickup, and answers to your reports and requests (such as manual pickup or delivering without the code).'),
   NotificationCategory('payouts', 'Payouts', 'When a payout is recorded.'),
-  NotificationCategory('incentives', 'Incentives', 'When you earn one.'),
   NotificationCategory('announcements', 'Announcements', 'News from Deligro.'),
   NotificationCategory('support', 'Support replies', 'Replies and status changes on your tickets.'),
   NotificationCategory('cash', 'Cash reminders', 'Cash to deposit, and when a deposit is confirmed or disputed.'),

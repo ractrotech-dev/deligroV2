@@ -69,7 +69,6 @@ class HistoryItem {
     this.deliveredAt,
     required this.endedAt,
     this.distanceKm,
-    this.earning,
     this.reason,
     this.cancelledBy,
     this.proof,
@@ -89,7 +88,6 @@ class HistoryItem {
   final double? distanceKm;
 
   /// A recorded ledger amount, or null (nothing recorded, ₹0, or money hidden).
-  final double? earning;
   final String? reason;
 
   /// `customer`, `vendor`, `manager`, `admin`, `system` (cancelled jobs only).
@@ -99,10 +97,6 @@ class HistoryItem {
   final String? proof;
   final int itemCount;
   final double orderValue;
-
-  /// Whether the row has a real earning to show. A ₹0 row is never money
-  /// (riders are on a fixed salary).
-  bool get hasEarning => earning != null && earning != 0;
 
   /// Accept to end, when both are known.
   Duration? get took {
@@ -125,7 +119,6 @@ class HistoryItem {
         _date(j['endedAt']) ??
         DateTime.fromMillisecondsSinceEpoch(0, isUtc: true),
     distanceKm: _num(j['distanceKm']),
-    earning: _num(j['earning']),
     reason: _str(j['reason']),
     cancelledBy: _str(j['cancelledBy']),
     proof: _str(j['proof']),
@@ -181,22 +174,6 @@ class HistoryDetail {
   );
 }
 
-/// A target and how far the rider is (0 = no target to show).
-class TargetProgress {
-  const TargetProgress({required this.target, required this.done});
-
-  final int target;
-  final int done;
-
-  bool get hasTarget => target > 0;
-
-  /// 0..1, never NaN.
-  double get fraction => target <= 0 ? 0 : (done / target).clamp(0.0, 1.0);
-
-  factory TargetProgress.fromJson(Map<String, dynamic> j) =>
-      TargetProgress(target: _int(j['target']), done: _int(j['done']));
-}
-
 class RecentRating {
   const RecentRating({required this.rating, this.comment, this.at});
 
@@ -235,7 +212,6 @@ class MonthRow {
     this.cancelled = 0,
     this.acceptanceRate,
     this.avgDeliverMin,
-    this.earnings,
     this.onlineHours = 0,
   });
 
@@ -246,7 +222,6 @@ class MonthRow {
   final int cancelled;
   final double? acceptanceRate;
   final double? avgDeliverMin;
-  final double? earnings;
   final double onlineHours;
 
   factory MonthRow.fromJson(Map<String, dynamic> j) => MonthRow(
@@ -256,7 +231,6 @@ class MonthRow {
     cancelled: _int(j['cancelled']),
     acceptanceRate: _num(j['acceptanceRate']),
     avgDeliverMin: _num(j['avgDeliverMin']),
-    earnings: _num(j['earnings']),
     onlineHours: _num(j['onlineHours']) ?? 0,
   );
 }
@@ -265,8 +239,6 @@ class MonthRow {
 /// [months] arrives newest first.
 class RiderPerformance {
   const RiderPerformance({
-    this.daily = const TargetProgress(target: 0, done: 0),
-    this.weekly = const TargetProgress(target: 0, done: 0),
     this.avgAcceptToDeliverMin,
     this.avgPickupToDeliverMin,
     this.acceptanceRate,
@@ -276,8 +248,6 @@ class RiderPerformance {
     this.months = const [],
   });
 
-  final TargetProgress daily;
-  final TargetProgress weekly;
   final double? avgAcceptToDeliverMin;
   final double? avgPickupToDeliverMin;
   final double? acceptanceRate;
@@ -287,8 +257,6 @@ class RiderPerformance {
   final List<MonthRow> months;
 
   factory RiderPerformance.fromJson(Map<String, dynamic> j) => RiderPerformance(
-    daily: TargetProgress.fromJson(_map(j['daily'])),
-    weekly: TargetProgress.fromJson(_map(j['weekly'])),
     avgAcceptToDeliverMin: _num(j['avgAcceptToDeliverMin']),
     avgPickupToDeliverMin: _num(j['avgPickupToDeliverMin']),
     acceptanceRate: _num(j['acceptanceRate']),

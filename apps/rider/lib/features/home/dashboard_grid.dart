@@ -202,12 +202,8 @@ class CountGrid extends StatelessWidget {
   }
 }
 
-/// What the Earnings tab says under the same figures: riders are on a salary,
-/// so these are not pay per delivery.
-const _salaryCaption = 'Salary, bonuses and incentives, less deductions';
-
-/// Figures 7-9 from the recorded ledger: today's earnings, the total, and
-/// what is still to be paid (negative: the rider owes Deligro).
+/// What is still to be paid, from the recorded ledger (negative: the rider owes
+/// Deligro). Riders get a fixed salary, so there is no pay per delivery to show.
 class MoneyRow extends StatelessWidget {
   const MoneyRow({super.key, required this.figures});
 
@@ -217,137 +213,17 @@ class MoneyRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final c = context.colors;
     final owing = figures.pending < 0;
-    return Column(
-      children: [
-        IntrinsicHeight(
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Expanded(
-                child: MoneyTile(
-                  key: const Key('tile-earnings-today'),
-                  label: "Today's earnings",
-                  value: money(figures.today),
-                  caption: _salaryCaption,
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: MoneyTile(
-                  key: const Key('tile-earnings-total'),
-                  label: 'Total earnings',
-                  value: money(figures.total),
-                  caption: _salaryCaption,
-                ),
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 10),
-        SizedBox(
-          width: double.infinity,
-          child: MoneyTile(
-            key: const Key('tile-earnings-pending'),
-            label: 'Pending payments',
-            value: money(figures.pending),
-            valueColor: owing ? c.deal : null,
-            caption: owing
-                ? 'You owe Deligro this — it comes off your next payout'
-                : 'Earned and waiting for your next payout',
-            captionColor: owing ? c.deal : null,
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-/// Figure 12: incentives earned this week and the nearest target's progress.
-class IncentivesCard extends StatelessWidget {
-  const IncentivesCard({super.key, required this.earned, required this.target});
-
-  final double earned;
-  final NearestTarget? target;
-
-  @override
-  Widget build(BuildContext context) {
-    final c = context.colors;
-    final t = target;
-    return Panel(
-      key: const Key('incentives-card'),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'Incentives this week',
-            style: TextStyle(
-              color: c.muted,
-              fontSize: 13,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            money(earned),
-            style: dataStyle(context, size: 24, weight: FontWeight.w800),
-          ),
-          const SizedBox(height: 12),
-          if (t == null)
-            Row(
-              children: [
-                Text(
-                  '—',
-                  style: dataStyle(context, size: 16, weight: FontWeight.w700),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Text(
-                    'No target to work towards right now',
-                    style: TextStyle(color: c.muted, fontSize: 14, height: 1.3),
-                  ),
-                ),
-              ],
-            )
-          else ...[
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    t.name,
-                    style: const TextStyle(
-                      fontSize: 15,
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Text(
-                  '${money(t.bonus)} bonus',
-                  style: TextStyle(
-                    color: c.green,
-                    fontSize: 13.5,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            ClipRRect(
-              borderRadius: BorderRadius.circular(8),
-              child: LinearProgressIndicator(
-                value: t.fraction,
-                minHeight: 10,
-                color: t.fraction >= 1 ? c.green : c.accent,
-                backgroundColor: c.surface2,
-              ),
-            ),
-            const SizedBox(height: 6),
-            Text(
-              '${t.done} of ${t.target}',
-              style: dataStyle(context, size: 14, weight: FontWeight.w700),
-            ),
-          ],
-        ],
+    return SizedBox(
+      width: double.infinity,
+      child: MoneyTile(
+        key: const Key('tile-earnings-pending'),
+        label: 'Salary to be paid',
+        value: money(figures.pending),
+        valueColor: owing ? c.deal : null,
+        caption: owing
+            ? 'You owe Deligro this — it comes off your next payment'
+            : 'Waiting for your next payment',
+        captionColor: owing ? c.deal : null,
       ),
     );
   }

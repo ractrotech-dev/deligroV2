@@ -35,12 +35,11 @@ export async function GET() {
   const gate = await riderInsightsGate(ROUTE);
   if (!gate.ok) return gate.response;
   try {
-    const [dashboard, incentives, weather] = await Promise.all([
+    const [dashboard, weather] = await Promise.all([
       getRiderDashboard(gate.driverId, new Date(), { earnings: gate.earnings }),
-      isFeatureOn("driver.incentives", gate.driverId),
       weatherForRider(gate.driverId),
     ]);
-    return insightsJson({ ...(incentives ? dashboard : { ...dashboard, nearestTarget: null }), weather });
+    return insightsJson({ ...dashboard, weather });
   } catch (e) {
     return insightsRouteError(e, ROUTE, gate.driverId);
   }

@@ -87,9 +87,8 @@ export const FEATURES = [
   { key: "manager.audit.view_zone", role: "manager", label: "Zone audit log", offMeans: "Sees only their own activity, not their zones' audit log.", defaultOn: false },
   // ---- rider ----
   { key: "driver.history", role: "driver", label: "Delivery history", offMeans: "History tab is hidden." },
-  { key: "driver.earnings", role: "driver", label: "Earnings & payouts", offMeans: "The Earnings tab is hidden: pay, payouts, statements, money totals and trip counts." },
-  { key: "driver.incentives", role: "driver", label: "Incentives & targets", offMeans: "Incentive targets and bonus progress are hidden. Bonuses already earned still count in earnings." },
-  { key: "driver.performance", role: "driver", label: "Performance & ratings", offMeans: "The Performance screen is hidden: delivery targets, customer ratings, rates and the monthly report." },
+  { key: "driver.earnings", role: "driver", label: "Salary & payments", offMeans: "The Salary tab is hidden: salary, payments, statements and trip counts." },
+  { key: "driver.performance", role: "driver", label: "Performance & ratings", offMeans: "The Performance screen is hidden: customer ratings, rates and the monthly report." },
   { key: "driver.cash", role: "driver", label: "Cash in hand & deposits", offMeans: "The Cash screen is hidden: no cash-in-hand figure or deposits in the app; a manager records handovers. Collecting cash on delivery still works." },
   { key: "driver.cod_change", role: "driver", label: "Cash change to wallet", offMeans: "The rider can't put a cash customer's extra money into their wallet; change is given back in cash." },
   { key: "driver.support", role: "driver", label: "Help tickets", offMeans: "No new tickets, replies or ticket history. Calling or WhatsApping Deligro, SOS and emergency reports still work." },

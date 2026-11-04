@@ -11,9 +11,6 @@ import {
 import { RiderSchemaPendingError, getRiderAvailability, isRiderSchemaPending } from "@/lib/data-access/rider-status";
 import {
   getEarningsSummary,
-  getIncentiveProgress,
-  getIncentivesSince,
-  getMonthlyMoney,
 } from "@/lib/data-access/rider-earnings";
 import { readHeldOffers } from "@/lib/data-access/rider-jobs";
 import { dropLabel } from "@/lib/data-access/driver-orders";
@@ -28,13 +25,11 @@ import {
   istDayStartIso,
   istWeekStart,
   parseRange,
-  type IncentiveProgress,
 } from "@/lib/rider/earnings-math";
 import {
   HISTORY_OUTCOMES,
   TERMINAL_KINDS,
   buildStints,
-  chooseTargets,
   decodeHistoryCursor,
   deliveredBetween,
   encodeHistoryCursor,
@@ -46,7 +41,6 @@ import {
   lastMonths,
   micros,
   monthlyReport,
-  nearestTarget,
   nextStepFor,
   onlineHours,
   performanceFigures,
@@ -182,12 +176,10 @@ async function readEvents(supabase: AdminClient, driverId: string, kinds: string
 export interface RiderDashboard {
   today: { deliveries: number; pending: number; accepted: number; pickedUp: number; completed: number; cancelled: number; failed: number };
   /** Null when the rider may not see money (`driver.earnings` off) or the ledger (0083) is not there yet. */
-  money: { today: number; total: number; pending: number; incentivesThisWeek: number } | null;
+  money: { pending: number } | null;
   availability: RiderAvailability;
   phase: string;
   current: { orderId: string; code: string; status: RiderDeliveryStatus; next: string } | null;
-  /** The incentive nearest to being earned; null with the money, or when none is open. */
-  nearestTarget: { name: string; done: number; target: number; bonus: number } | null;
   updatedAt: string;
 }
 
@@ -231,17 +223,10 @@ async function countPendingOffers(
   ).length;
 }
 
-async function readMoney(
-  driverId: string,
-  now: Date
-): Promise<{ money: NonNullable<RiderDashboard["money"]>; progress: IncentiveProgress[] } | null> {
+async function readMoney(driverId: string, now: Date): Promise<NonNullable<RiderDashboard["money"]> | null> {
   try {
-    const [summary, incentives, progress] = await Promise.all([
-      getEarningsSummary(driverId, now),
-      getIncentivesSince(driverId, istWeekStart(istDay(now))),
-      getIncentiveProgress(driverId, now),
-    ]);
-    return { money: { today: summary.today, total: summary.total, pending: summary.pending, incentivesThisWeek: incentives }, progress };
+    const summary = await getEarningsSummary(driverId, now);
+    return { pending: summary.pending };
   } catch (e) {
     // No ledger yet: the money is left out, not shown as ₹0.
     if (isRiderSchemaPending(e)) return null;
@@ -299,11 +284,10 @@ export async function getRiderDashboard(
       cancelled: figures.cancelled,
       failed: figures.failed,
     },
-    money: money?.money ?? null,
+    money,
     availability,
     phase: riderPhase(availability, now),
     current,
-    nearestTarget: money ? nearestTarget(money.progress) : null,
     updatedAt: now.toISOString(),
   };
 }
@@ -323,8 +307,6 @@ export interface HistoryItem {
   deliveredAt: string | null;
   endedAt: string;
   distanceKm: number | null;
-  /** Rupees, from the recorded ledger; null for a ₹0 or missing earning, or when the rider may not see money. */
-  earning: number | null;
   reason: string | null;
   cancelledBy: string | null;
   /** How a delivered job was proved; null otherwise. */
@@ -334,8 +316,6 @@ export interface HistoryItem {
 }
 
 export interface HistoryOptions {
-  /** `driver.earnings` is on for this rider. Default false: no earning is put on any row. */
-  earnings?: boolean;
 }
 
 export interface HistoryQuery {
@@ -407,28 +387,6 @@ async function readDeliveries(supabase: AdminClient, ids: string[]): Promise<Del
   return data;
 }
 
-/** Recorded earnings (latest attempt) for these deliveries; empty before 0083. */
-async function readEarnings(supabase: AdminClient, driverId: string, deliveryIds: string[]): Promise<Map<string, number>> {
-  const { data, error } = await readInChunks<{ delivery_id: string; amount: number | string; attempt: number }>(deliveryIds, (chunk) =>
-    supabase
-      .from("rider_earnings")
-      .select("delivery_id, amount, attempt")
-      .eq("driver_id", driverId)
-      .in("delivery_id", chunk)
-      .overrideTypes<{ delivery_id: string; amount: number | string; attempt: number }[]>()
-  );
-  if (error) {
-    if (isMissingTable(error as PgError)) return new Map();
-    throw error;
-  }
-  const best = new Map<string, { attempt: number; amount: number }>();
-  for (const r of data) {
-    const held = best.get(r.delivery_id);
-    if (!held || num(r.attempt) > held.attempt) best.set(r.delivery_id, { attempt: num(r.attempt), amount: num(r.amount) });
-  }
-  return new Map([...best].map(([k, v]) => [k, v.amount]));
-}
-
 interface Enriched {
   key: { at: string; id: number };
   item: HistoryItem;
@@ -451,7 +409,7 @@ async function enrich(
   const deliveryIds = [...new Set(rows.map((r) => r.delivery_id))];
   const orderIds = [...new Set(rows.map((r) => r.order_id))];
 
-  const [stintEvents, deliveries, orders, items, earnings] = await Promise.all([
+  const [stintEvents, deliveries, orders, items] = await Promise.all([
     readInChunks<EventRow>(
       deliveryIds,
       (chunk) =>
@@ -471,7 +429,6 @@ async function enrich(
     readInChunks<{ order_id: string; qty: number | string }>(orderIds, (chunk) =>
       supabase.from("order_items").select("order_id, qty").in("order_id", chunk).overrideTypes<{ order_id: string; qty: number | string }[]>()
     ),
-    opts.earnings ? readEarnings(supabase, driverId, deliveryIds) : Promise.resolve(new Map<string, number>()),
   ]);
   if (stintEvents.error) failEvents(stintEvents.error);
   if (items.error) throw items.error;
@@ -499,7 +456,6 @@ async function enrich(
     const delivery = deliveryById.get(row.delivery_id) ?? null;
     const order = orderById.get(row.order_id) ?? null;
     const outcome = stint.outcome;
-    const money = outcome === "delivered" && opts.earnings ? (earnings.get(row.delivery_id) ?? 0) : 0;
 
     let reason: string | null = null;
     if (outcome === "failed") reason = historyReason("failed", stint.reason ?? delivery?.failure_reason ?? null);
@@ -521,8 +477,6 @@ async function enrich(
         deliveredAt: outcome === "delivered" ? iso(stint.endedAt) : null,
         endedAt: iso(stint.endedAt) as string,
         distanceKm: delivery?.distance_km === null || delivery?.distance_km === undefined ? null : num(delivery.distance_km),
-        // A ₹0 per-delivery row is a count for incentives, not money.
-        earning: money > 0 ? money : null,
         reason,
         cancelledBy: outcome === "cancelled" ? (order?.cancelled_by ?? null) : null,
         proof: outcome === "delivered" ? proofOf(stint.method ?? delivery?.delivery_method) : null,
@@ -710,8 +664,6 @@ async function readProofPath(supabase: AdminClient, deliveryId: string): Promise
 // ---------------------------------------------------------------------------
 
 export interface RiderPerformance {
-  daily: { target: number; done: number };
-  weekly: { target: number; done: number };
   avgAcceptToDeliverMin: number | null;
   avgPickupToDeliverMin: number | null;
   acceptanceRate: number | null;
@@ -725,13 +677,6 @@ export interface RiderPerformance {
    * rates above, so both apps read one calculation.
    */
   last30: { from: string; to: string; delivered: number; failed: number; cancelled: number; onlineHours: number };
-}
-
-export interface PerformanceOptions {
-  /** `driver.earnings` is on for this rider. Default false: the months carry no money. */
-  earnings?: boolean;
-  /** Tests: the default targets come from here instead of the settings. */
-  settings?: Pick<PlatformSettings, "riderDailyTarget" | "riderWeeklyTarget">;
 }
 
 const RATING_COLUMNS = "id, rating, comment, created_at";
@@ -767,22 +712,19 @@ const average2 = (rows: RatingRow[]): number | null =>
 const RECENT_RATINGS = 10;
 
 /**
- * Performance: targets, times, rates, hours online, ratings and the
+ * Performance: times, rates, hours online, ratings and the
  * month-by-month report. The headline rates and averages look back 30 IST days;
  * the months table twelve.
  */
 export async function getRiderPerformance(
   driverId: string,
-  now: Date = new Date(),
-  opts: PerformanceOptions = {}
+  now: Date = new Date()
 ): Promise<RiderPerformance> {
   const supabase = createAdminClient();
   const today = istDay(now);
-  const weekStart = istWeekStart(today);
   const firstMonth = `${lastMonths(today)[11]}-01`;
-  const settings = opts.settings ?? (await getSettings());
 
-  const [events, shifts, ratings, progress, money] = await Promise.all([
+  const [events, shifts, ratings] = await Promise.all([
     readEvents(supabase, driverId, [...STINT_KINDS, ...OFFER_ONLY_KINDS], istDayStartIso(firstMonth)),
     readAllRows<{ id: number | string; started_at: string; ended_at: string | null }>((from, to) =>
       supabase
@@ -800,17 +742,6 @@ export async function getRiderPerformance(
       if (isRiderSchemaPending(e)) return [] as RatingRow[];
       throw e;
     }),
-    getIncentiveProgress(driverId, now).catch((e: unknown) => {
-      // Before 0083 there are no rules to take a target from.
-      if (isRiderSchemaPending(e)) return [] as IncentiveProgress[];
-      throw e;
-    }),
-    opts.earnings
-      ? getMonthlyMoney(driverId, firstMonth, today).catch((e: unknown) => {
-          if (isRiderSchemaPending(e)) return null;
-          throw e;
-        })
-      : Promise.resolve(null),
   ]);
   if (shifts.error) failEvents(shifts.error);
 
@@ -821,16 +752,10 @@ export async function getRiderPerformance(
   const shiftFacts: ShiftFact[] = shifts.data.map((s) => ({ startedAt: s.started_at, endedAt: s.ended_at }));
 
   const figures = performanceFigures(stints, offers, shiftFacts, now);
-  const targets = chooseTargets(
-    { daily: num(settings.riderDailyTarget), weekly: num(settings.riderWeeklyTarget) },
-    progress
-  );
 
   const from30 = addDays(today, 1 - HEADLINE_DAYS);
   const w30 = windowFigures(stints, offers, from30, today);
   return {
-    daily: { target: targets.daily, done: deliveredBetween(stints, today, today) },
-    weekly: { target: targets.weekly, done: deliveredBetween(stints, weekStart, today) },
     avgAcceptToDeliverMin: figures.avgAcceptToDeliverMin,
     avgPickupToDeliverMin: figures.avgPickupToDeliverMin,
     acceptanceRate: figures.acceptanceRate,
@@ -841,7 +766,7 @@ export async function getRiderPerformance(
       count: ratings.length,
       recent: ratings.slice(0, RECENT_RATINGS).map((r) => ({ rating: num(r.rating), comment: r.comment?.trim() || null, at: iso(r.created_at) as string })),
     },
-    months: monthlyReport(stints, offers, shiftFacts, now, money),
+    months: monthlyReport(stints, offers, shiftFacts, now),
     last30: {
       from: from30,
       to: today,

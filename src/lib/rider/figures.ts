@@ -40,7 +40,6 @@ import {
   istDayStartIso,
   istWeekStart,
   type EarningRecord,
-  type IncentiveProgress,
 } from "@/lib/rider/earnings-math";
 
 // ---------------------------------------------------------------------------
@@ -284,22 +283,6 @@ export function deliveredBetween(stints: Stint[], from: string, to: string): num
   return n;
 }
 
-/**
- * The incentive the rider is closest to: among the rules in force that are not
- * yet earned, the fewest deliveries still to go (ties: the larger bonus, then
- * the name). Null when there are none.
- */
-export function nearestTarget(
-  progress: Pick<IncentiveProgress, "name" | "done" | "target" | "bonus" | "earned">[]
-): { name: string; done: number; target: number; bonus: number } | null {
-  const open = progress.filter((p) => !p.earned && p.target > 0);
-  if (open.length === 0) return null;
-  const left = (p: (typeof open)[number]) => Math.max(p.target - p.done, 0);
-  open.sort((a, b) => left(a) - left(b) || b.bonus - a.bonus || a.name.localeCompare(b.name));
-  const best = open[0];
-  return { name: best.name, done: best.done, target: best.target, bonus: best.bonus };
-}
-
 // ---------------------------------------------------------------------------
 // Performance
 // ---------------------------------------------------------------------------
@@ -437,20 +420,17 @@ export interface MonthRow {
   cancelled: number;
   acceptanceRate: number | null;
   avgDeliverMin: number | null;
-  earnings: number | null;
   onlineHours: number;
 }
 
 /**
- * The month-by-month report: the last 12 IST months, newest first. `money` maps
- * a month to its recorded ledger total, or is null when money is not shown.
+ * The month-by-month report: the last 12 IST months, newest first.
  */
 export function monthlyReport(
   stints: Stint[],
   offers: OfferFact[],
   shifts: ShiftFact[],
   now: Date,
-  money: ReadonlyMap<string, number> | null,
   count = 12
 ): MonthRow[] {
   const today = istDay(now);
@@ -465,7 +445,6 @@ export function monthlyReport(
       cancelled: w.cancelled,
       acceptanceRate: w.acceptanceRate,
       avgDeliverMin: w.avgAcceptToDeliverMin,
-      earnings: money ? (money.get(month) ?? null) : null,
       onlineHours: round1(
         onlineHours(
           shifts,
@@ -491,23 +470,6 @@ export function monthlyMoney(records: Pick<EarningRecord, "date" | "amount">[]):
   const out = new Map<string, number>();
   for (const [m, p] of paise) if (p !== 0) out.set(m, p / 100);
   return out;
-}
-
-/**
- * Daily and weekly targets: the admin's default when it is above 0, else the
- * largest active incentive rule target for that period, else 0 (none shown).
- */
-export function chooseTargets(
-  settings: { daily: number; weekly: number },
-  rules: Pick<IncentiveProgress, "period" | "target">[]
-): { daily: number; weekly: number } {
-  const largest = (period: "daily" | "weekly") =>
-    rules.filter((r) => r.period === period).reduce((m, r) => Math.max(m, r.target), 0);
-  const whole = (n: number) => (Number.isFinite(n) && n > 0 ? Math.floor(n) : 0);
-  return {
-    daily: whole(settings.daily) || largest("daily"),
-    weekly: whole(settings.weekly) || largest("weekly"),
-  };
 }
 
 // ---------------------------------------------------------------------------

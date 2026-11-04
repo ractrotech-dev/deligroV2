@@ -59,7 +59,7 @@ String statementCsv(Statement s) {
     'From,${s.from}',
     'To,${s.to}',
     'Pending at start,${plainAmount(s.openingPending)}',
-    'Earned,${plainAmount(s.earned)}',
+    'Added,${plainAmount(s.earned)}',
     'Paid,${plainAmount(s.paid)}',
     'Pending at end,${plainAmount(s.closingPending)}',
     '',
@@ -91,7 +91,7 @@ List<String> statementPdfLines(Statement s) => [
   'Rider ID: ${s.riderCode ?? '—'}',
   'Period: ${formatRange(s.from, s.to)}',
   'Pending at start: ${money(s.openingPending)}',
-  'Earned: ${money(s.earned)}',
+  'Added: ${money(s.earned)}',
   'Paid: ${money(s.paid)}',
   'Pending at end: ${money(s.closingPending)}',
 ];
@@ -196,7 +196,7 @@ Future<Uint8List> statementPdf(Statement s) async {
           children: [
             total('Pending at start', s.openingPending),
             pw.SizedBox(width: 6),
-            total('Earned', s.earned),
+            total('Added', s.earned),
             pw.SizedBox(width: 6),
             total('Paid', s.paid),
             pw.SizedBox(width: 6),
@@ -206,7 +206,7 @@ Future<Uint8List> statementPdf(Statement s) async {
         if (s.closingPending < 0) ...[
           pw.SizedBox(height: 6),
           pw.Text(
-            'If Pending at end is a minus figure, you owe Deligro. It comes off your next payout.',
+            'If Pending at end is a minus figure, you owe Deligro. It comes off your next payment.',
             style: const pw.TextStyle(fontSize: 8, color: muted),
           ),
         ],

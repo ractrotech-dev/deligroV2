@@ -226,14 +226,9 @@ export function RidersView({
         title="Riders"
         description="Who is on the road, what they are carrying, and what they are owed."
         actions={
-          <>
-            <Link href="/admin/riders/payments" className="c-btn c-btn-outline">
-              Rider salaries
-            </Link>
-            <Link href="/admin/riders/incentives" className="c-btn c-btn-outline">
-              Incentive rules
-            </Link>
-          </>
+          <Link href="/admin/riders/payments" className="c-btn c-btn-outline">
+            Rider salaries
+          </Link>
         }
       />
 

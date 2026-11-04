@@ -252,15 +252,6 @@ function parse(
       ? routingBaseUrl(form.get("routingBaseUrl"), current.routingBaseUrl)
       : current.routingBaseUrl,
 
-    // Default delivery targets (0084): read only when posted, clamped to the
-    // CHECK bounds. 0 means "no default" (Performance falls back to the largest
-    // active incentive rule). On a database without 0084 the group is not written.
-    riderDailyTarget: form.has("riderDailyTarget")
-      ? clamp(int(form.get("riderDailyTarget"), current.riderDailyTarget), 0, 1000)
-      : current.riderDailyTarget,
-    riderWeeklyTarget: form.has("riderWeeklyTarget")
-      ? clamp(int(form.get("riderWeeklyTarget"), current.riderWeeklyTarget), 0, 5000)
-      : current.riderWeeklyTarget,
     // Rider alert thresholds (0087): read only when posted, clamped to the
     // 0087 CHECK bounds; not written at all on a database without them
     // (OPTIONAL_GROUPS).

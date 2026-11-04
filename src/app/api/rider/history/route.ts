@@ -38,8 +38,7 @@ export async function GET(request: Request) {
           to: q.get("to") ?? undefined,
           outcome: (q.get("outcome") ?? undefined) as HistoryOutcome | undefined,
           cursor: q.get("cursor"),
-        },
-        { earnings: gate.earnings }
+        }
       )
     );
   } catch (e) {

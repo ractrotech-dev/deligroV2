@@ -6,8 +6,8 @@ const ROUTE = "/api/rider/earnings/records";
 /**
  * GET /api/rider/earnings/records?from=YYYY-MM-DD&to=YYYY-MM-DD&cursor=…&limit=…
  *
- * The rider's money records, newest first: one per delivery earning, incentive
- * award, bonus, salary, adjustment (including a correction's reversal, linked
+ * The rider's money records, newest first: salary, adjustment, deduction, and
+ * old ledger rows kept readable (a correction's reversal is linked
  * to its order) and deduction, each with its paid/pending state and settlement
  * date and reference. `from`/`to` are IST days, both or neither (neither = the
  * last 31 days), at most 366 days apart; `limit` 1–100 (default 50);

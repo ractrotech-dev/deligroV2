@@ -20,7 +20,6 @@ export const NOTIFICATION_CATEGORIES = [
   "pickup_reminders",
   "delivery_updates",
   "payouts",
-  "incentives",
   "announcements",
   "support",
   "cash",

@@ -28,7 +28,7 @@ export async function GET() {
   const gate = await riderInsightsGate(ROUTE, { feature: "driver.performance" });
   if (!gate.ok) return gate.response;
   try {
-    return insightsJson(await getRiderPerformance(gate.driverId, new Date(), { earnings: gate.earnings }));
+    return insightsJson(await getRiderPerformance(gate.driverId, new Date()));
   } catch (e) {
     return insightsRouteError(e, ROUTE, gate.driverId);
   }

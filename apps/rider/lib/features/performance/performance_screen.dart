@@ -13,12 +13,12 @@ import '../../state/history.dart';
 import '../../state/providers.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/common.dart';
-import '../earnings/earnings_widgets.dart' show MoneyTile, earningsFeature;
+import '../earnings/earnings_widgets.dart' show MoneyTile;
 
 /// Performance's route under More (`/more/performance`).
 const performancePath = '/more/performance';
 
-/// How the rider is doing: today and this week against target, the last 30
+/// How the rider is doing: the last 30
 /// days' times and rates, hours online, what customers said, and the
 /// month-by-month report.
 class PerformanceScreen extends ConsumerWidget {
@@ -31,7 +31,6 @@ class PerformanceScreen extends ConsumerWidget {
     final perf = riderId == null
         ? const AsyncValue<RiderPerformance>.loading()
         : ref.watch(performanceProvider(riderId));
-    final showMoney = me?.feature(earningsFeature) != false;
     return Scaffold(
       appBar: AppBar(title: const Text('Performance')),
       body: SafeArea(
@@ -49,7 +48,7 @@ class PerformanceScreen extends ConsumerWidget {
             onRetry: () {
               if (riderId != null) ref.invalidate(performanceProvider(riderId));
             },
-            builder: (p) => _Body(perf: p, showMoney: showMoney),
+            builder: (p) => _Body(perf: p),
           ),
         ),
       ),
@@ -58,10 +57,9 @@ class PerformanceScreen extends ConsumerWidget {
 }
 
 class _Body extends StatelessWidget {
-  const _Body({required this.perf, required this.showMoney});
+  const _Body({required this.perf});
 
   final RiderPerformance perf;
-  final bool showMoney;
 
   @override
   Widget build(BuildContext context) {
@@ -79,37 +77,9 @@ class _Body extends StatelessWidget {
       physics: const AlwaysScrollableScrollPhysics(),
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
       children: [
-        Panel(
-          key: const Key('targets-card'),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text('Targets', style: Theme.of(context).textTheme.titleMedium),
-              const SizedBox(height: 14),
-              Row(
-                children: [
-                  Expanded(
-                    child: TargetRing(
-                      key: const Key('ring-daily'),
-                      label: 'Today',
-                      progress: p.daily,
-                    ),
-                  ),
-                  Expanded(
-                    child: TargetRing(
-                      key: const Key('ring-weekly'),
-                      label: 'This week',
-                      progress: p.weekly,
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
         const SectionTitle(
           'Last 30 days',
-          padding: EdgeInsets.fromLTRB(4, 22, 4, 8),
+          padding: EdgeInsets.fromLTRB(4, 8, 4, 8),
         ),
         IntrinsicHeight(
           child: Row(
@@ -203,86 +173,8 @@ class _Body extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 12),
-        MonthlyTable(months: p.months, showMoney: showMoney),
+        MonthlyTable(months: p.months),
       ],
-    );
-  }
-}
-
-/// A ring: [progress.done] of [progress.target]; grey and "No target" when
-/// there is none to show.
-class TargetRing extends StatelessWidget {
-  const TargetRing({super.key, required this.label, required this.progress});
-
-  final String label;
-  final TargetProgress progress;
-
-  @override
-  Widget build(BuildContext context) {
-    final c = context.colors;
-    final has = progress.hasTarget;
-    final reached = has && progress.done >= progress.target;
-    return Semantics(
-      label: has
-          ? '$label: ${progress.done} of ${progress.target} deliveries'
-          : '$label: no target',
-      excludeSemantics: true,
-      child: Column(
-        children: [
-          SizedBox(
-            width: 104,
-            height: 104,
-            child: CustomPaint(
-              painter: _RingPainter(
-                fraction: progress.fraction,
-                track: c.surface2,
-                color: reached ? c.green : c.accent,
-              ),
-              // Inside the ring: large text shrinks to fit, never spills out.
-              child: Padding(
-                padding: const EdgeInsets.all(14),
-                child: Center(
-                  child: FittedBox(
-                    fit: BoxFit.scaleDown,
-                    child: has
-                        ? Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Text(
-                                '${progress.done}',
-                                style: dataStyle(
-                                  context,
-                                  size: 24,
-                                  weight: FontWeight.w800,
-                                ),
-                              ),
-                              Text(
-                                'of ${progress.target}',
-                                style: TextStyle(color: c.muted, fontSize: 12.5),
-                              ),
-                            ],
-                          )
-                        : Text(
-                            'No target',
-                            textAlign: TextAlign.center,
-                            style: TextStyle(
-                              color: c.muted,
-                              fontSize: 13,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                  ),
-                ),
-              ),
-            ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            label,
-            style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
-          ),
-        ],
-      ),
     );
   }
 }
@@ -572,11 +464,9 @@ class MonthlyTable extends StatefulWidget {
   const MonthlyTable({
     super.key,
     required this.months,
-    required this.showMoney,
   });
 
   final List<MonthRow> months;
-  final bool showMoney;
 
   @override
   State<MonthlyTable> createState() => _MonthlyTableState();
@@ -592,12 +482,10 @@ class _MonthlyTableState extends State<MonthlyTable> {
   }
 
   List<MonthRow> get months => widget.months;
-  bool get showMoney => widget.showMoney;
 
   @override
   Widget build(BuildContext context) {
     final c = context.colors;
-    final earnings = showMoney && months.any((m) => m.earnings != null);
     DataColumn col(String t, {bool numeric = true}) => DataColumn(
       numeric: numeric,
       label: Text(
@@ -643,7 +531,6 @@ class _MonthlyTableState extends State<MonthlyTable> {
               col('Accepted'),
               col('Avg time'),
               col('Online'),
-              if (earnings) col('Earned'),
             ],
             rows: [
               for (final m in months)
@@ -665,8 +552,6 @@ class _MonthlyTableState extends State<MonthlyTable> {
                     cell(percentText(m.acceptanceRate)),
                     cell(minutesText(m.avgDeliverMin)),
                     cell(hoursText(m.onlineHours)),
-                    if (earnings)
-                      cell(m.earnings == null ? '—' : money(m.earnings!)),
                   ],
                 ),
             ],
