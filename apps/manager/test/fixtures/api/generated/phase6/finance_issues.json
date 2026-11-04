@@ -47,7 +47,6 @@
   "counts": {
     "failed_payment": 1,
     "stuck_payment": 0,
-    "refund_unsent": 0,
     "settlement_delayed": 1,
     "draft_stale": 0,
     "approval_overdue": 0,

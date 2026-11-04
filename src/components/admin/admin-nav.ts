@@ -12,7 +12,6 @@ import {
   MapPinned,
   Megaphone,
   ReceiptText,
-  RotateCcw,
   Settings,
   SlidersHorizontal,
   Store,
@@ -32,7 +31,7 @@ import type { FeatureKey } from "@/lib/features/catalog";
  * configuration are settings *sub*-pages that the rail lists directly, because
  * creating a staff login is a daily job.
  */
-export type BadgeKey = "pendingApprovals" | "pendingRefunds" | "liveOrders";
+export type BadgeKey = "pendingApprovals" | "liveOrders";
 
 export interface AdminNavItem {
   href: string;
@@ -69,16 +68,6 @@ export const ADMIN_NAV: AdminNavItem[] = [
     badge: "liveOrders",
     tone: "blue",
     match: (p) => p.startsWith("/admin/orders"),
-  },
-  {
-    href: "/admin/refunds",
-    label: "Refunds",
-    icon: RotateCcw,
-    group: "Operations",
-    badge: "pendingRefunds",
-    tone: "deal",
-    feature: "admin.refunds",
-    match: (p) => p.startsWith("/admin/refunds"),
   },
   {
     href: "/admin/settlements",

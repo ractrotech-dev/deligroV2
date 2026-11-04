@@ -162,14 +162,14 @@ export function PayoutTotals({
   ];
   if (totals.refundsRecovered > 0) {
     lines.push({
-      label: "Refunds",
+      label: "Old refunds",
       value: minus(totals.refundsRecovered),
       negative: true,
     });
   }
   if (corrections > 0) {
     lines.push({
-      label: "Refunds on orders already paid",
+      label: "Old refunds on orders already paid",
       value: minus(corrections),
       negative: true,
     });
@@ -290,7 +290,7 @@ export function PayoutLinesTable<T extends SettlementLine>({
   if (lines.some((l) => l.refundRecovered > 0)) {
     columns.push({
       key: "refund",
-      header: "Refund",
+      header: "Old refund",
       align: "right",
       cell: (l) => money(l.refundRecovered, "− "),
     });

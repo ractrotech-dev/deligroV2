@@ -21,13 +21,13 @@ String _plural(int n, String one, [String? many]) => '$n ${n == 1 ? one : (many 
 List<FinanceFigure> salesFigures(FinanceOverview o) {
   final s = o.sales;
   final adj = [
-    _plural(s.refunds.count, 'refund'),
+    _plural(s.refunds.count, 'old refund'),
     if (s.correctionsOutstanding.count > 0)
       'corrections outstanding ${rupees(s.correctionsOutstanding.amount)} (${s.correctionsOutstanding.count})',
     if (s.correctionsApplied.count > 0)
       'applied ${rupees(s.correctionsApplied.amount)} (${s.correctionsApplied.count})',
-    // In the refunds report, but cancelled orders were never sales.
-    if (s.refundsOnCancelled > 0) '${rupees(s.refundsOnCancelled)} on cancelled orders (in the refunds report, not off net sales)',
+    // In the report, but cancelled orders were never sales.
+    if (s.refundsOnCancelled > 0) '${rupees(s.refundsOnCancelled)} on cancelled orders (in the report, not off net sales)',
   ];
   return [
     FinanceFigure('Total gross sales', rupees(s.grossSales), detail: 'Customers paid ${rupees(s.customerPaid)}'),
@@ -44,14 +44,14 @@ List<FinanceFigure> salesFigures(FinanceOverview o) {
     ),
     FinanceFigure('Vendor-funded discounts', rupees(s.discounts.vendor)),
     FinanceFigure('Deligro-funded discounts', rupees(s.discounts.platform)),
-    FinanceFigure('Refunds and adjustments', rupees(s.refunds.amount),
-        detail: adj.join(' · '), route: '/finance/refunds'),
+    // Recorded before refunds stopped. The records are in Reports.
+    FinanceFigure('Old refunds and adjustments', rupees(s.refunds.amount), detail: adj.join(' · ')),
     FinanceFigure('Delivery fees collected', rupees(s.deliveryFees)),
     FinanceFigure('Rider delivery earnings', rupeesFlex(s.riderEarnings), detail: 'From the rider ledger (salary records)'),
     FinanceFigure(
       'Vendor earnings payable',
       rupees(s.vendorPayable),
-      detail: s.vendorRecoverable > 0 ? 'Refunds over orders: shops owe Deligro ${rupees(s.vendorRecoverable)}' : 'As of now',
+      detail: s.vendorRecoverable > 0 ? 'Old adjustments: shops owe Deligro ${rupees(s.vendorRecoverable)}' : 'As of now',
       route: '/finance/vendor-dues',
     ),
     FinanceFigure('Rider earnings payable', rupeesFlex(s.riderPayable), detail: 'As of now', route: '/finance/rider-dues'),

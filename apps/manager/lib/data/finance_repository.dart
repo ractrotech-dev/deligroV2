@@ -24,13 +24,6 @@ abstract interface class FinanceRepository {
   /// [Refused]; faults throw (Retry re-sends the same `clientActionId`).
   Future<Outcome<PaymentRequest>> requestSettlementReversal(String id, SettlementReversal r);
 
-  Future<RefundPage> refunds(FinanceQuery q, {RefundStatus? status, String? cursor});
-
-  /// 409 `already_decided` → [Refused]; 502 `effect_failed` (decision saved,
-  /// finishing it failed) and other faults throw so the same decision is
-  /// retried.
-  Future<Outcome<RefundItem>> decideRefund(String id, RefundDecision d);
-
   Future<Reconciliation> reconciliation(FinanceQuery q, ReconSection section, {String? state, String? cursor});
 }
 
@@ -80,20 +73,6 @@ class ApiFinanceRepository implements FinanceRepository {
   Future<Outcome<PaymentRequest>> requestSettlementReversal(String id, SettlementReversal r) => runAction(
         () => _api.post('$_base/settlements/${Uri.encodeComponent(id)}/reverse', r.toJson()),
         (res) => res['request'] is Map ? PaymentRequest.fromJson((res['request'] as Map).cast<String, dynamic>()) : null,
-      );
-
-  @override
-  Future<RefundPage> refunds(FinanceQuery q, {RefundStatus? status, String? cursor}) async =>
-      RefundPage.fromJson(await _api.get('$_base/refunds', query: {
-        ...q.toQuery(),
-        if (status != null && status != RefundStatus.unknown) 'status': status.wire,
-        'cursor': ?cursor,
-      }));
-
-  @override
-  Future<Outcome<RefundItem>> decideRefund(String id, RefundDecision d) => runAction(
-        () => _api.post('$_base/refunds/${Uri.encodeComponent(id)}/decide', d.toJson()),
-        (res) => res['refund'] is Map ? RefundItem.fromJson((res['refund'] as Map).cast<String, dynamic>()) : null,
       );
 
   @override

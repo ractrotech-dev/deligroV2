@@ -118,11 +118,8 @@ class OrderRepository {
     return Order.fromRow(Map<String, dynamic>.from(res['order'] as Map));
   }
 
-  /// Only while placed/kitchen; 409 `too_late` otherwise.
-  Future<bool> cancel(String orderId) async {
-    final res = await _api.post('/api/orders/$orderId/cancel');
-    return res['refundQueued'] == true;
-  }
+  /// Only inside the cancel window, on the database's clock; 409 `too_late` otherwise.
+  Future<void> cancel(String orderId) => _api.post('/api/orders/$orderId/cancel');
 
   Future<TrackingSnapshot> tracking(String orderId) async {
     final res = await _api.get('/api/orders/$orderId/tracking');
@@ -175,9 +172,6 @@ class OrderRepository {
         '/api/orders/$orderId/rider-rating',
         {'rating': rating, if (comment != null && comment.isNotEmpty) 'comment': comment},
       );
-
-  Future<void> requestRefund(String orderId, String reason) =>
-      _api.post('/api/refunds', {'orderId': orderId, 'reason': reason});
 
   /// Live prices for a reorder check: itemId → (effective price, available).
   Future<({bool open, Map<String, ({int price, bool available})> items})> menuPrices(

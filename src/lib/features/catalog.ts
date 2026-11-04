@@ -41,7 +41,7 @@ export const FEATURES = [
   { key: "vendor.busy_mode", role: "vendor", label: "Busy mode (+time)", offMeans: "No +10 / +20 / +30 minute pace control." },
   { key: "vendor.open_toggle", role: "vendor", label: "Open / close shop", offMeans: "The shop cannot open or close itself; admin controls it." },
   { key: "vendor.shop_profile", role: "vendor", label: "Edit shop profile", offMeans: "Shop details, logo, photos and map pin are read-only." },
-  { key: "vendor.reject_orders", role: "vendor", label: "Reject / cancel orders", offMeans: "The kitchen can accept and ready orders but not reject or cancel them." },
+  { key: "vendor.reject_orders", role: "vendor", label: "Reject new orders", offMeans: "The kitchen can accept new orders but not reject them. A shop can never cancel an accepted order." },
   { key: "vendor.reports", role: "vendor", label: "Reports", offMeans: "The Reports tab is hidden: no sales report, sales charts or report exports." },
   { key: "vendor.reviews", role: "vendor", label: "Customer reviews", offMeans: "Reviews are hidden: the shop can't read customer reviews or reply to them." },
   { key: "vendor.marketing", role: "vendor", label: "Marketing requests", offMeans: "The shop can't ask Deligro for banners, featured spots or campaigns, or see past requests." },
@@ -78,7 +78,7 @@ export const FEATURES = [
   { key: "manager.riders.onboard", role: "manager", label: "Onboard riders", offMeans: "Cannot create rider accounts.", defaultOn: false },
   { key: "manager.finance.initiate_payment", role: "manager", label: "Initiate payments", offMeans: "Cannot put a settlement or payout up for approval.", defaultOn: false },
   { key: "manager.finance.approve_payment", role: "manager", label: "Approve payments", offMeans: "Cannot mark a settlement or payout as paid.", defaultOn: false },
-  { key: "manager.finance.adjust", role: "manager", label: "Financial adjustments", offMeans: "Cannot decide refunds or record corrections and adjustments.", defaultOn: false },
+  { key: "manager.finance.adjust", role: "manager", label: "Financial adjustments", offMeans: "Cannot record corrections and adjustments.", defaultOn: false },
   { key: "manager.customers.contact", role: "manager", label: "Customer contact details", offMeans: "Customer phone numbers stay masked; no search by phone.", defaultOn: false },
   { key: "manager.customers.suspend", role: "manager", label: "Suspend customers", offMeans: "Cannot suspend or restrict customer accounts.", defaultOn: false },
   { key: "manager.products.adjust_stock", role: "manager", label: "Adjust stock", offMeans: "Stock stays with the vendor.", defaultOn: false },
@@ -100,8 +100,8 @@ export const FEATURES = [
   // Whole console screens, switched for every admin at once (no per-person
   // exceptions). Off hides the screen's menu entry and shortcuts, the route
   // shows a notice, and its Server Actions refuse. Turning it back on is this
-  // same switch, so an admin can never lock themselves out of it.
-  { key: "admin.refunds", role: "admin", label: "Refunds", offMeans: "The Refunds page, its menu entry and top-bar shortcut are hidden for every admin, and refund decisions are refused." },
+  // same switch, so an admin can never lock themselves out of it. None today:
+  // the first one went with the Refunds page (owner's rule, 2026-11-04).
 ] as const satisfies readonly FeatureDef[];
 
 export type FeatureKey = (typeof FEATURES)[number]["key"];

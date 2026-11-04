@@ -86,7 +86,7 @@ export type { ExceptionKind, ExceptionDecision } from "@/lib/rider/exception-rul
  *
  *   failed_delivery / customer_unreachable / wrong_address
  *       the delivery fails (`failure_reason` = kind + reason), then the order
- *       is cancelled through `cancelOrderAsOps` (refund rules unchanged,
+ *       is cancelled through `cancelOrderAsOps` (no refund,
  *       `cancelled_by` = the deciding role), and the rider is told to take the
  *       food back to the shop.
  *   complete_without_code
@@ -186,7 +186,7 @@ async function alertDeliveryFailed(info: { deliveryId: string; orderId: string; 
 export interface ExceptionEffects {
   cancelOrder: (
     orderId: string,
-    opts: { by: "admin" | "manager"; reason?: string | null; requestedBy: string }
+    opts: { by: "admin" | "manager"; reason: string; requestedBy: string }
   ) => Promise<CancelOpsResult>;
   dispatch: (orderId: string, stage: DispatchStage, opts: { excludeRiderIds?: string[] }) => Promise<unknown>;
   forceOffline: (driverId: string) => Promise<unknown>;

@@ -115,6 +115,7 @@ interface SettingsRow {
   rider_daily_target?: number;
   rider_weekly_target?: number;
   block_dispatch_on_expired_docs?: boolean;
+  customer_cancel_seconds?: number;
 }
 
 /**
@@ -270,6 +271,14 @@ const OPTIONAL_GROUPS = [
     select: "block_dispatch_on_expired_docs",
     write: (input: PlatformSettings): Record<string, unknown> => ({
       block_dispatch_on_expired_docs: input.blockDispatchOnExpiredDocs,
+    }),
+  },
+  {
+    /** Migration 0191. The customer's cancel window. */
+    key: "platform_settings.customer_cancel_seconds",
+    select: "customer_cancel_seconds",
+    write: (input: PlatformSettings): Record<string, unknown> => ({
+      customer_cancel_seconds: input.customerCancelSeconds,
     }),
   },
 ] as const;
@@ -441,6 +450,8 @@ function mapSettings(row: SettingsRow): PlatformSettings {
     riderWeeklyTarget: targetOf(row.rider_weekly_target, DEFAULT_SETTINGS.riderWeeklyTarget),
     // Absent column (pre-0086) reads as off, the 0086 default.
     blockDispatchOnExpiredDocs: row.block_dispatch_on_expired_docs === true,
+    // Absent column (pre-0191) reads as the rule book's 20.
+    customerCancelSeconds: targetOf(row.customer_cancel_seconds, DEFAULT_SETTINGS.customerCancelSeconds),
   };
 }
 

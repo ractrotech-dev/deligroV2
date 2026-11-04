@@ -35,7 +35,7 @@ const daysAgo = (d: number) => new Date(NOW.getTime() - d * 86_400_000);
 
 console.log("\n── thresholds ──");
 check("thresholds are the pinned values", JSON.stringify(FINANCE_THRESHOLDS) === JSON.stringify({
-  stuckPaymentMinutes: 30, refundUnsentHours: 24, settlementGraceDays: 3, cycleDays: { weekly: 7, monthly: 31 },
+  stuckPaymentMinutes: 30, settlementGraceDays: 3, cycleDays: { weekly: 7, monthly: 31 },
   draftStaleDays: 3, approvalOverdueHours: 48, riderPayoutDelayDays: 35,
 }));
 check("a payment pending 29 min is not stuck", !isStuckPayment(minutesAgo(29), NOW));

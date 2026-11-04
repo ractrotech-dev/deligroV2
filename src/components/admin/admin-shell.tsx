@@ -78,7 +78,7 @@ function AdminShellChrome({
           email={email}
         />
         <div className="admin-content">
-          <AdminTopBar counts={counts} featuresOff={featuresOff} />
+          <AdminTopBar counts={counts} />
           <main className="admin-main @container">{children}</main>
         </div>
       </div>

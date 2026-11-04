@@ -41,15 +41,12 @@ const PRESETS = [
  */
 export function RejectOrderDialog({
   code,
-  isReject,
   busy,
   onCancel,
   onConfirm,
 }: {
   /** The short order code, so the dialog names what it is about to do. */
   code: string;
-  /** True before the kitchen accepted it — "Reject"; after, it is "Cancel". */
-  isReject: boolean;
   busy: boolean;
   onCancel: () => void;
   onConfirm: (reason: string | undefined) => void;
@@ -59,7 +56,6 @@ export function RejectOrderDialog({
 
   const custom = picked === null && note.trim().length > 0;
   const reason = custom ? note.trim().slice(0, MAX) : (picked ?? undefined);
-  const verb = isReject ? "Reject" : "Cancel";
 
   return (
     <PortalToShell>
@@ -73,10 +69,10 @@ export function RejectOrderDialog({
           <div className="flex items-start justify-between gap-3 border-b border-line px-4 py-3">
             <div>
               <h2 id="reject-order-title" className="text-lg font-bold">
-                {verb} order {code}?
+                Reject order {code}?
               </h2>
               <p className="text-xs text-muted">
-                This can&apos;t be undone from the board.
+                This can&apos;t be undone. Deligro will contact the customer.
               </p>
             </div>
             <button
@@ -148,7 +144,7 @@ export function RejectOrderDialog({
               onClick={() => onConfirm(reason)}
               className="bg-deal text-[var(--on-deal)] shadow-none hover:brightness-[1.03]"
             >
-              {busy ? "Working…" : verb}
+              {busy ? "Working…" : "Reject"}
             </Button>
           </div>
         </div>

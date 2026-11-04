@@ -15,7 +15,7 @@ void main() {
     'Platform commission',
     'Vendor-funded discounts',
     'Deligro-funded discounts',
-    'Refunds and adjustments',
+    'Old refunds and adjustments',
     'Delivery fees collected',
     'Rider delivery earnings',
     'Vendor earnings payable',
@@ -33,7 +33,7 @@ void main() {
   test('refunds on cancelled orders are explained, not silently left out', () {
     final j = p6('finance_overview');
     (j['sales'] as Map<String, dynamic>)['refunds'] = {'total': 900, 'count': 3, 'onCancelled': 250};
-    final refunds = salesFigures(FinanceOverview.fromJson(j)).firstWhere((f) => f.label == 'Refunds and adjustments');
+    final refunds = salesFigures(FinanceOverview.fromJson(j)).firstWhere((f) => f.label == 'Old refunds and adjustments');
     expect(refunds.detail, contains('₹250 on cancelled orders'));
     expect(refunds.detail, contains('not off net sales'));
   });

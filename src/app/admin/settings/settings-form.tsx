@@ -554,6 +554,19 @@ export function SettingsForm({
               defaultChecked={settings.acceptingOrders}
             />
           </Row>
+          <Row
+            label="Customer can cancel for"
+            hint="Seconds after placing an order. Rule book: 20. 0 turns it off. The shop accepting the order also ends it."
+            htmlFor="customerCancelSeconds"
+          >
+            <Num
+              id="customerCancelSeconds"
+              name="customerCancelSeconds"
+              defaultValue={settings.customerCancelSeconds}
+              min={0}
+              max={600}
+            />
+          </Row>
           {/* These two now gate the Stores tab's category tiles and their heroes
               (lib/store-categories.ts). Until that consumer existed, switching
               one off changed nothing at all while this form confirmed the save.

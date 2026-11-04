@@ -32,8 +32,8 @@ const FAQ: { q: Bi; a: Bi }[] = [
   {
     q: { en: "How do I cancel?", hi: "ऑर्डर कैसे रद्द करें?" },
     a: {
-      en: "You can cancel from the order tracking screen before the kitchen starts preparing your food.",
-      hi: "रसोई में खाना बनना शुरू होने से पहले, ऑर्डर ट्रैकिंग वाले पेज से रद्द कर सकते हैं।",
+      en: "You can cancel only in the first few seconds after placing your order, from the order tracking screen, while the countdown is showing. After that your order will be delivered.",
+      hi: "ऑर्डर देने के बाद सिर्फ़ शुरू के कुछ सेकंड में, ऑर्डर ट्रैकिंग वाले पेज से रद्द कर सकते हैं, जब तक काउंटडाउन दिख रहा है। उसके बाद आपका ऑर्डर डिलीवर किया जाएगा।",
     },
   },
 ];

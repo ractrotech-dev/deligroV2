@@ -10,7 +10,7 @@ import 'package:go_router/go_router.dart';
 /// derived from the router's current location, not from the tap that led there.
 /// `*` matches exactly one path segment.
 const securePatterns = <String>[
-  '/finance', // overview, dues, issues, reconciliation, refunds, payouts, settlements
+  '/finance', // overview, dues, issues, reconciliation, payouts, settlements
   '/more/customers', // list, detail, retention
   '/more/approvals', // payment requests
   '/more/reports', // report previews show money and customers

@@ -117,17 +117,11 @@ void main() {
     expect(k['note'], isNull);
   });
 
-  test('rider payouts, refunds', () {
+  test('rider payouts', () {
     final p = RiderPayoutPage.fromJson(p6('rider_payouts'));
     expect(p.items.first.rider.code, 'DR-0007');
     expect(p.items.first.payout.reference, 'UTR998877');
     expect(p.totalAmount, 21000.50);
-    final r = RefundPage.fromJson(p6('refunds'));
-    expect(r.pendingCount, 1);
-    expect(r.items.first.status, RefundStatus.pending);
-    expect(r.items.first.origin, RefundOrigin.customer);
-    expect(r.items.last.settlementEffect, 'correction_created');
-    expect(r.items.last.decidedBy?.name, 'Vikram');
   });
 
   test('every reconciliation section', () {

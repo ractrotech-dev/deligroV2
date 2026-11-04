@@ -44,7 +44,7 @@ void main() {
     final fakes = await _pump(tester);
     await tester.tap(find.byKey(const Key('ex-approve-ex-1')));
     await tester.pumpAndSettle();
-    expect(find.text('This cancels order AB12CD34 and refunds the customer per the usual rules.'), findsOneWidget);
+    expect(find.text('This cancels order AB12CD34. The customer and the shop are told.'), findsOneWidget);
     expect(fakes.exceptions.decideCalls, isEmpty);
     await tester.tap(find.text('Approve and cancel'));
     await tester.pumpAndSettle();

@@ -35,7 +35,7 @@ class HelpScreen extends ConsumerWidget {
       ),
       (
         q: 'How do I cancel?',
-        a: 'You can cancel from the order tracking screen before the kitchen starts preparing your food.',
+        a: 'You can cancel only in the first few seconds after placing your order, from the order tracking screen, while the countdown is showing. After that your order will be delivered.',
       ),
       (
         q: 'Payment methods',

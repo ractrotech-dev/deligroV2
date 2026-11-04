@@ -2,7 +2,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../data/customers_repository.dart';
 import '../models/customers.dart';
-import '../models/finance.dart' show RefundPage;
 import '../models/outcome.dart';
 import '../models/tickets.dart';
 import 'paged.dart';
@@ -75,11 +74,6 @@ final customerDetailProvider = AsyncNotifierProvider.autoDispose.family<Customer
 final customerComplaintsProvider = FutureProvider.autoDispose.family<TicketPage, String>((ref, id) {
   ref.watch(signedInProvider);
   return ref.read(customersRepoProvider).complaints(id);
-}, retry: (_, _) => null);
-
-final customerRefundsProvider = FutureProvider.autoDispose.family<RefundPage, String>((ref, id) {
-  ref.watch(signedInProvider);
-  return ref.read(customersRepoProvider).refunds(id);
 }, retry: (_, _) => null);
 
 final customerFeedbackProvider = FutureProvider.autoDispose.family<CustomerFeedback, String>((ref, id) {

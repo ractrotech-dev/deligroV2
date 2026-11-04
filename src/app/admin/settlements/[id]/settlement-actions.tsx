@@ -17,7 +17,7 @@ import { formatINR } from "@/lib/utils/format";
  * payment nobody has asked for is sent for approval, and one this admin asked for
  * waits for someone else.
  *
- * A refund can change the amount while the payment waits. It is then rebuilt under
+ * An old adjustment can change the amount while the payment waits. It is then rebuilt under
  * a new id, and this takes the person straight to it to check the new amount.
  */
 export function SettlementActions({

@@ -125,7 +125,6 @@ const EMPTY_SERIES: AdminSeries = {
 
 const NO_COUNTS: AdminNavCounts = {
   pendingApprovals: 0,
-  pendingRefunds: 0,
   liveOrders: 0,
 };
 
@@ -142,33 +141,23 @@ function deltaLabel(t: Trend): string {
 /**
  * The attention row.
  *
- * The four queues an operator always wants to see, shown even at zero so the
+ * The queues an operator always wants to see, shown even at zero so the
  * row is stable and a clear queue reads as clear. Every figure is counted
  * from the database. Orders with no rider and failed payments are added only
  * when something is in them.
  */
 function attentionItems({
-  counts,
   board,
   owed,
   pendingShops,
   failedPayments,
 }: {
-  counts: AdminNavCounts;
   board: { atRisk: number; unassigned: number };
   owed: ShopsOwed;
   pendingShops: number;
   failedPayments: number;
 }): AttentionItem[] {
   return [
-    {
-      href: "/admin/refunds",
-      title: "Refunds pending review",
-      detail: "Customers waiting on their money",
-      count: counts.pendingRefunds,
-      tone: counts.pendingRefunds > 0 ? "red" : "green",
-      action: "Review all",
-    },
     {
       href: "/admin/orders",
       title: "Deliveries running late",
@@ -406,7 +395,6 @@ export default async function AdminOverviewPage({
   ];
 
   const attention = attentionItems({
-    counts,
     board,
     owed,
     pendingShops: pending.length,

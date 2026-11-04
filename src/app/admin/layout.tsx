@@ -13,7 +13,6 @@ import { adminFeaturesOff } from "@/lib/features/guards.server";
 
 const NO_COUNTS: AdminNavCounts = {
   pendingApprovals: 0,
-  pendingRefunds: 0,
   liveOrders: 0,
 };
 
@@ -56,7 +55,7 @@ export default async function AdminLayout({
     // corrected after hydration.
     resolveConsolePrefs(),
     // Screens switched off in Feature access drop out of the nav. Chrome too:
-    // a failed read shows everything rather than hiding the refund queue.
+    // a failed read shows everything rather than hiding a screen.
     adminFeaturesOff().catch(() => []),
   ]);
 

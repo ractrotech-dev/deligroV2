@@ -105,7 +105,7 @@ export function SettlementPreviewPanel({
         { key: "commission", label: "Commission (₹)" },
         { key: "gst", label: "GST (₹)" },
         { key: "other", label: "Other (₹)" },
-        { key: "refund", label: "Refund (₹)" },
+        { key: "refund", label: "Old refund (₹)" },
         { key: "shopGets", label: "Shop gets (₹)" },
       ],
       rows: preview.lines.map((l) => ({

@@ -754,7 +754,6 @@ class _OrderRowState extends ConsumerState<_OrderRow> {
     final c = context.colors;
     final cancelled = o.status == OrderStatus.cancelled;
     final why = cancelled ? cancellationNote(o) : null;
-    final owesRefund = cancelled && o.paymentStatus == 'paid';
     final items = orderItemsSummary(o);
 
     return Padding(
@@ -809,10 +808,6 @@ class _OrderRowState extends ConsumerState<_OrderRow> {
                             children: [
                               OrderStatusChip(o.status),
                               Text(placedAt(o.createdAt), style: TextStyle(fontSize: 12, color: c.muted)),
-                              if (owesRefund)
-                                Text('Refund not issued',
-                                    style: TextStyle(
-                                        fontSize: 12, color: c.popInk, fontWeight: FontWeight.w700)),
                             ],
                           ),
                           if (why != null) ...[

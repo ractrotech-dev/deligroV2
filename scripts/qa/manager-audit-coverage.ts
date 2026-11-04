@@ -184,8 +184,8 @@ console.log("\n── 2b. the money and exception modules: only the pinned follo
 type Writes = Record<string, number>;
 const FOLLOW_UPS: Record<string, { writes: Writes; why: string }> = {
   "src/lib/data-access/refunds.ts": {
-    writes: { "refunds:insert": 2 },
-    why: "queueing a refund REQUEST (pending, not a decision). The decision, the order/payment 'refunded' flags and the settlement correction are all inside audited RPCs.",
+    writes: {},
+    why: "nothing: refunds are closed (0191). What is left is the gateway path, unreachable, and every write in it is an audited RPC.",
   },
   "src/lib/data-access/admin-settlements.ts": {
     writes: {
@@ -326,7 +326,6 @@ for (const [route, keys] of [
   ["payments/requests/route.ts", ["manager.finance.initiate_payment"]],
   ["payments/requests/[id]/decide/route.ts", ["manager.finance.approve_payment"]],
   ["finance/settlements/route.ts", ["manager.finance.initiate_payment"]],
-  ["finance/refunds/[id]/decide/route.ts", ["manager.finance.adjust"]],
   ["customers/[id]/actions/route.ts", ["manager.customers.suspend"]],
   ["customers/[id]/contact/route.ts", ["manager.customers.contact"]],
   ["products/bulk/route.ts", ["manager.products.adjust_stock"]],

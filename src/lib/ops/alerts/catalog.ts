@@ -40,7 +40,7 @@ const label = (kind: OpsAlertKind) => OPS_ALERT_KINDS.find((k) => k.kind === kin
 
 export const ALERT_KINDS: readonly AlertKindDef[] = [
   { kind: "order_needs_intervention", label: label("order_needs_intervention"), unit: "minutes", defaultThreshold: 5, defaultWindowMinutes: null, mutable: true, evaluated: "sweep",
-    description: "A placed order the kitchen has not accepted, a rider's request waiting for a decision, or an order that has not moved for three times as long." },
+    description: "A placed order the kitchen has not accepted, a new order a shop rejected, a rider's request waiting for a decision, or an order that has not moved for three times as long." },
   { kind: "order_unassigned", label: label("order_unassigned"), unit: "minutes", defaultThreshold: 5, defaultWindowMinutes: null, mutable: true, evaluated: "sweep",
     description: "Food is due or ready and no rider has the order." },
   { kind: "delivery_delayed", label: label("delivery_delayed"), unit: "minutes", defaultThreshold: 10, defaultWindowMinutes: null, mutable: true, evaluated: "sweep",

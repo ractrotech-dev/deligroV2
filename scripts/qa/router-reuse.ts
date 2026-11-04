@@ -55,7 +55,6 @@ console.log("\n═══ every customer mutation clears the router cache ══�
 const REFRESHING = [
   "src/components/auth/otp-login.tsx",
   "src/components/checkout/checkout-view.tsx",
-  "src/components/orders/refund-request.tsx",
   "src/components/orders/tracking-view.tsx",
   "src/components/profile/profile-avatar.tsx",
   "src/components/profile/profile-edit-sheet.tsx",

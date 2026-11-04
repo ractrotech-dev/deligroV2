@@ -8,7 +8,6 @@ import {
 import type { PaymentStatus } from "@/types";
 import { deferNotify } from "@/lib/notifications/defer";
 import { recordDomain } from "@/lib/obs/emit";
-import { queueRefundForOrder } from "@/lib/data-access/refunds";
 import {
   decideSettlement,
   shouldReapplyCapture,
@@ -233,8 +232,8 @@ const FROM: Record<PaymentStatus, PaymentStatus[]> = {
  *   - Before an order is marked paid, what Razorpay took is compared with what
  *     the order costs now (see `decideSettlement`). Underpaid orders stay
  *     unpaid and raise an alert; orders that were cancelled while the customer
- *     was at the bank are marked paid and sent to the refund queue instead of
- *     ringing a kitchen.
+ *     was at the bank are marked paid, with no refund row, instead of ringing a
+ *     kitchen.
  *
  * Returns the order id the payment belongs to, or null if the provider order is
  * unknown to us (which is what a forged or foreign webhook looks like).
@@ -413,13 +412,11 @@ async function applyCapturedPayment(
   }
 
   if (decision.kind === "accept_cancelled") {
-    const refund = await queueRefundForOrder(p.orderId, {
-      origin: "system",
-      reason: "Payment captured after the order was cancelled",
-    });
+    // No refund row (rule book). The money is with Deligro and the order says paid:
+    // what happens next is the owner's open question on online money.
     recordDomain("payment.settle", "warn", "Payment captured for a cancelled order", {
       orderId: p.orderId,
-      attrs: { reason: "paid_after_cancel", refundQueued: refund.queued },
+      attrs: { reason: "paid_after_cancel" },
     });
     return;
   }

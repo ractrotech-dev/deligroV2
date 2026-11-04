@@ -64,7 +64,8 @@ export async function PATCH(
   if (!body.status || !ALLOWED.has(body.status)) {
     return NextResponse.json({ error: "invalid_status" }, { status: 400 });
   }
-  // Rejecting / cancelling is switchable per shop; accept and ready are core.
+  // Rejecting a new order is switchable per shop; accept and ready are core. A shop
+  // can't cancel an accepted order: updateKitchenOrderStatus answers invalid_transition.
   if (body.status === "cancelled" && !(await vendorFeatureOn("vendor.reject_orders"))) {
     return featureOffResponse("vendor.reject_orders");
   }

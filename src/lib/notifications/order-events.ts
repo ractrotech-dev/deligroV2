@@ -402,19 +402,13 @@ export function notifyDelivered(orderId: string): Promise<void> {
 /**
  * Cancelled. `byVendor` changes the wording because the two cases are not the
  * same message: a customer who cancelled knows why, and one whose order the
- * restaurant refused needs to be told plainly — and told about their money.
+ * restaurant refused needs to be told plainly, and that someone will call.
  */
 export function notifyOrderCancelled(
   orderId: string,
-  opts: { byVendor?: boolean; refundQueued?: boolean } = {}
+  opts: { byVendor?: boolean } = {}
 ): Promise<void> {
   const id = shortOrderId(orderId);
-  const moneyEn = opts.refundQueued
-    ? " Your refund has been requested and is being processed."
-    : "";
-  const moneyHi = opts.refundQueued
-    ? " आपका रिफ़ंड अनुरोध दर्ज हो गया है और प्रोसेस हो रहा है।"
-    : "";
   return notifyCustomer(
     orderId,
     opts.byVendor
@@ -422,12 +416,12 @@ export function notifyOrderCancelled(
       : { en: "Order cancelled", hi: "ऑर्डर रद्द हुआ" },
     opts.byVendor
       ? {
-          en: `The restaurant couldn't take order #${id}.${moneyEn}`,
-          hi: `रेस्टोरेंट ऑर्डर #${id} नहीं ले सका।${moneyHi}`,
+          en: `The restaurant couldn't take order #${id}. Deligro will contact you.`,
+          hi: `रेस्टोरेंट ऑर्डर #${id} नहीं ले सका। Deligro आपसे संपर्क करेगा।`,
         }
       : {
-          en: `Order #${id} was cancelled.${moneyEn}`,
-          hi: `ऑर्डर #${id} रद्द कर दिया गया।${moneyHi}`,
+          en: `Order #${id} was cancelled.`,
+          hi: `ऑर्डर #${id} रद्द कर दिया गया।`,
         },
     { card: { tone: "red" } }
   );
@@ -445,31 +439,6 @@ export function notifyPaymentFailed(orderId: string): Promise<void> {
     { card: { tone: "amber" } }
   );
 }
-
-export function notifyRefundDecided(
-  orderId: string,
-  approved: boolean
-): Promise<void> {
-  const id = shortOrderId(orderId);
-  return notifyCustomer(
-    orderId,
-    approved
-      ? { en: "Refund approved 💸", hi: "रिफ़ंड मंज़ूर 💸" }
-      : { en: "Refund declined", hi: "रिफ़ंड अस्वीकार" },
-    approved
-      ? {
-          en: `Your refund for order #${id} was approved.`,
-          hi: `ऑर्डर #${id} का आपका रिफ़ंड मंज़ूर हो गया है।`,
-        }
-      : {
-          en: `We couldn't approve the refund for order #${id}. Contact support if this looks wrong.`,
-          hi: `हम ऑर्डर #${id} का रिफ़ंड मंज़ूर नहीं कर सके। अगर यह गलत लगे तो सपोर्ट से संपर्क करें।`,
-        },
-    { card: { tone: approved ? "green" : "red" } }
-  );
-}
-
-/* ---------- rider-facing ---------- */
 
 /**
  * The kitchen just accepted — go and be there when it comes off the pass.

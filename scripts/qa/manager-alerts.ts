@@ -54,6 +54,11 @@ m = run(facts({ orders: [order("o2", { status: "placed", acceptWaitMinutes: 4 })
 check("kitchen not accepting 4 min → nothing", of(m, "order_needs_intervention").length === 0);
 m = run(facts({ orders: [order("o2", { status: "placed", acceptWaitMinutes: 5 })] }));
 check("kitchen not accepting 5 min → warning", sev(m, "order_needs_intervention") === "warning");
+m = run(facts({ rejected: [{ orderId: "o9", orderCode: "O9", zoneId: ZA, vendorName: "Spice Hub" }] }));
+{
+  const a = (m.get("order_needs_intervention") ?? []).find((x) => x.dedupeKey === "order_needs_intervention:rejected:o9");
+  check("a shop's rejection raises a critical alert staff can act on", a?.severity === "critical" && a.entity.id === "o9" && /Call the customer/.test(a.body), a);
+}
 m = run(facts({ exceptionsPending: [{ id: "x1", orderId: "o3", orderCode: "O3", zoneId: ZA, kindLabel: "Customer unreachable", createdAt: ago(6) }] }));
 check("a rider's request waiting 6 min → intervention", of(m, "order_needs_intervention")[0]?.dedupeKey === "order_needs_intervention:exception:x1");
 const stuckKey = (m: Map<string, DesiredAlert[]>) => of(m, "order_needs_intervention").some((a) => a.dedupeKey === "order_needs_intervention:stuck:o4");

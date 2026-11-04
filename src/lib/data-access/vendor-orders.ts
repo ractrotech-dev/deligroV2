@@ -16,7 +16,7 @@ import {
   notifyOrderReady,
   stopVendorRing,
 } from "@/lib/notifications/order-events";
-import { queueRefundForOrder } from "@/lib/data-access/refunds";
+import { alertOrderRejected } from "@/lib/ops/alerts/rejected";
 import { cancelOrderRow } from "@/lib/data-access/order-cancellation";
 import { cancelDeliveryForOrder, dispatchOrder } from "@/lib/dispatch/rider-dispatch";
 import {
@@ -579,10 +579,12 @@ type KitchenTarget = "kitchen" | "ready" | "cancelled";
 
 // `kitchen → ready` stays allowed for orders accepted before Accept began
 // moving them straight on, and for older Partner app installs that still send it.
+// `cancelled` only from `placed`: a shop can reject a new order and cannot cancel
+// one it accepted (rule book; guard_order_status says the same, 0191).
 const KITCHEN_TRANSITIONS: Record<string, ReadonlyArray<KitchenTarget>> = {
   placed: ["kitchen", "cancelled"],
-  kitchen: ["ready", "cancelled"],
-  ready: ["cancelled"],
+  kitchen: ["ready"],
+  ready: [],
 };
 
 /**
@@ -593,8 +595,7 @@ const KITCHEN_TRANSITIONS: Record<string, ReadonlyArray<KitchenTarget>> = {
  * failures) and are therefore not awaited: the transition is already committed,
  * and a push outage must never undo a status the database has accepted.
  *
- * The refund IS awaited, because whether the money is coming back is part of
- * the sentence we are about to send the customer. Dispatch writes the offer
+ * Dispatch writes the offer
  * row the driver board reads, so it goes through `after()` (deferNotify) —
  * guaranteed to finish, without holding the kitchen's tap while riders are
  * ranked. Like the pushes it swallows its own failures.
@@ -602,8 +603,7 @@ const KITCHEN_TRANSITIONS: Record<string, ReadonlyArray<KitchenTarget>> = {
 async function announceKitchenTransition(
   orderId: string,
   status: "kitchen" | "accepted_ready" | "ready" | "cancelled",
-  restaurantName: string | undefined,
-  actorId: string
+  restaurantName: string | undefined
 ): Promise<void> {
   if (status === "accepted_ready") {
     // The kitchen's one action, Accept, which moved the order to `ready` in
@@ -639,38 +639,18 @@ async function announceKitchenTransition(
     return;
   }
 
-  // A vendor rejecting a PAID online order used to leave the customer's money
-  // exactly where it was: no refund row, no admin queue entry, nothing anyone
-  // could act on. queueRefundForOrder is idempotent (0026 allows one pending
-  // refund per order) and answers queued:false for an order that was never
-  // paid — a COD rejection costs one cheap round trip and claims nothing.
-  let refundQueued = false;
-  try {
-    const result = await queueRefundForOrder(orderId, {
-      origin: "vendor_rejected",
-      requestedBy: actorId,
-    });
-    refundQueued = result.queued;
-  } catch (err) {
-    // The cancellation is already committed. Throwing here would tell the
-    // vendor their rejection failed and invite a retry that can now only ever
-    // return invalid_transition — so surface it in the logs, and say nothing to
-    // the customer about a refund we did not actually manage to queue.
-    console.error(
-      `[vendor-orders] refund could not be queued for ${orderId}`,
-      err
-    );
-  }
-
   // The kitchen is not making this order, so any rider dispatch asked to come
   // and get it — offered or already accepted — should stop being asked, and
   // stop being able to complete it. See cancelDeliveryForOrder's own comment
   // for why an already-accepted delivery is cancelled rather than deleted.
   await cancelDeliveryForOrder(orderId);
 
-  deferNotify(() => notifyOrderCancelled(orderId, { byVendor: true, refundQueued }));
+  deferNotify(() => notifyOrderCancelled(orderId, { byVendor: true }));
   // Rejected: stop the ring too.
   deferNotify(() => stopVendorRing(orderId));
+  // Rule book: a manager or admin contacts the customer and decides. This is what
+  // puts the order in front of them: an alert on their phones and in the inbox.
+  deferNotify(() => alertOrderRejected(orderId));
 }
 
 /**
@@ -690,8 +670,8 @@ export async function updateKitchenOrderStatus(
   orderId: string,
   status: "kitchen" | "ready" | "cancelled",
   /**
-   * Why, when the kitchen is rejecting. Stored on the order and shown to the
-   * customer verbatim (0051) — five unexplained cancellations in a row is the
+   * Why, when the kitchen is rejecting a new order. Stored on the order and shown
+   * to the customer verbatim (0051) — five unexplained cancellations in a row is the
    * complaint this exists to answer. Ignored for any other transition, where a
    * reason would be a sentence attached to nothing.
    *
@@ -781,7 +761,7 @@ export async function updateKitchenOrderStatus(
       .select("id")
       .maybeSingle();
     if (!readyError && moved?.id) {
-      await announceKitchenTransition(orderId, "accepted_ready", restaurantName, user.id);
+      await announceKitchenTransition(orderId, "accepted_ready", restaurantName);
       return true;
     }
     // The acceptance itself stands; the order waits in `kitchen`, where staff
@@ -791,7 +771,7 @@ export async function updateKitchenOrderStatus(
     }
   }
 
-  await announceKitchenTransition(orderId, status, restaurantName, user.id);
+  await announceKitchenTransition(orderId, status, restaurantName);
   return true;
 }
 

@@ -16,7 +16,6 @@ String? issueRoute(IssueSubject s) => switch (s.kind) {
       IssueSubjectKind.order => '/orders/${s.id}',
       IssueSubjectKind.vendor => '/more/vendors/${s.id}',
       IssueSubjectKind.settlement => '/finance/settlements/${s.id}',
-      IssueSubjectKind.refund => '/finance/refunds?id=${s.id}',
       IssueSubjectKind.paymentRequest => '/more/approvals?id=${s.id}',
       IssueSubjectKind.rider => '/more/riders/${s.id}',
       IssueSubjectKind.unknown => null,

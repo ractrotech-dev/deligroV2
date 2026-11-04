@@ -85,8 +85,8 @@ export default async function OrderReceiptPage({
           description={
             order.status === "CANCELLED"
               ? t(
-                  "This order was cancelled, so there is nothing to receipt. If money was taken, the refund is on the order screen.",
-                  "यह ऑर्डर कैंसिल हो गया, इसलिए इसकी रसीद नहीं बनेगी। अगर पैसे कटे हैं, तो रिफ़ंड ऑर्डर वाली स्क्रीन पर है।",
+                  "This order was cancelled, so there is nothing to receipt.",
+                  "यह ऑर्डर कैंसिल हो गया, इसलिए इसकी रसीद नहीं बनेगी।",
                 )
               : t(
                   "A receipt is issued once the order has been delivered.",

@@ -96,7 +96,7 @@ interface DbOrderItemRow {
  *
  * `Order` in `@/types` is the shape the mock catalogue also satisfies, so it
  * carries nothing about money that has (or hasn't) moved. The tracker needs
- * that: whether to offer a refund request, and what to call the total. Extending
+ * that: what to call the total. Extending
  * rather than widening keeps every existing consumer working unchanged — a
  * `UiOrder` is an `Order`.
  */
@@ -207,8 +207,7 @@ export function cancellationNote(
  * Money we are actually holding.
  *
  * `authorized` has not been captured and `refunded` has already gone back, so
- * neither is something to offer a refund against. Getting this wrong in the
- * generous direction means inviting a customer to claim money we never took.
+ * neither counts.
  */
 export function isOrderPaid(order: { paymentStatus?: PaymentStatus }): boolean {
   return order.paymentStatus === "paid";

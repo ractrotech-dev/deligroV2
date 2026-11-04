@@ -67,13 +67,13 @@ class _PaymentsScreenState extends ConsumerState<PaymentsScreen> {
               Text(
                 owed
                     ? 'From ${p.unpaidOrders} delivered ${p.unpaidOrders == 1 ? 'order' : 'orders'} not yet paid out. Deligro settles $cycle.'
-                    : 'Refunds came to more than your unpaid orders. This comes off your next payout.',
+                    : 'Earlier adjustments came to more than your unpaid orders. This comes off your next payout.',
                 style: TextStyle(color: c.muted, fontSize: 13),
               ),
               if (p.outstandingCorrections > 0) ...[
                 const SizedBox(height: 6),
                 Text(
-                  'Includes ${rupees(p.outstandingCorrections)} being recovered for refunded orders.',
+                  'Includes ${rupees(p.outstandingCorrections)} in earlier adjustments.',
                   style: TextStyle(color: c.deal, fontSize: 12.5, fontWeight: FontWeight.w600),
                 ),
               ],
@@ -241,7 +241,7 @@ class _Breakdown extends StatelessWidget {
           row('Deligro commission ($pct%)', b.commission, minus: true),
           row('GST on commission', b.commissionGst, minus: true),
           if (b.otherCharges > 0) row('Other charges', b.otherCharges, minus: true),
-          if (b.refunds > 0) row('Refunds recovered', b.refunds, minus: true),
+          if (b.refunds > 0) row('Adjustments', b.refunds, minus: true),
           const Divider(height: 18),
           row('Net earnings', b.netEarnings, bold: true),
           row('Pending settlement', b.pendingSettlement, note: 'Earned, not yet paid out'),

@@ -32,7 +32,7 @@ export async function staffFeatureOn(key: FeatureKey): Promise<boolean> {
  * Admin-console screens (`admin.*`) are switched for every admin at once, so
  * this reads the role-wide switch only. Call AFTER `requireRole("admin")`.
  * A failed read falls back to the default (on): these are product switches,
- * not the security boundary, and a blip must not hide the refund queue.
+ * not the security boundary, and a blip must not hide a console screen.
  */
 export async function adminFeatureOn(key: FeatureKey): Promise<boolean> {
   return isFeatureOn(key, null);

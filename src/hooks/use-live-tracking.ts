@@ -11,6 +11,7 @@ import type { RiderPositionSource } from "@/lib/data-access/order-tracking";
 import { DEFAULT_CENTER } from "@/lib/maps/config";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { isOrderInFlight } from "@/lib/utils/order-status";
+import type { CancelWindowReading } from "@/hooks/use-cancel-countdown";
 
 export interface LiveTrackingState {
   status: OrderStatus;
@@ -32,6 +33,8 @@ export interface LiveTrackingState {
   shopRunningLate: boolean;
   /** Rain or a storm in the shop's zone (0178), or null. */
   weather: string | null;
+  /** The last answer on the customer's cancel window, or null before the first poll. */
+  cancelWindow: CancelWindowReading | null;
 }
 
 /**
@@ -101,6 +104,7 @@ export function useLiveTracking(
     riderArrived: false,
     shopRunningLate: false,
     weather: null,
+    cancelWindow: null,
   });
   const [interp, setInterp] = useState<TrackingInterp | null>(null);
   // Seeded with the current time rather than 0, so the very first render can
@@ -162,6 +166,10 @@ export function useLiveTracking(
           riderArrived: t.riderArrived === true,
           shopRunningLate: t.shopRunningLate === true,
           weather: typeof t.weather === "string" && t.weather ? t.weather : null,
+          cancelWindow: {
+            seconds: typeof t.cancelSecondsLeft === "number" ? t.cancelSecondsLeft : 0,
+            readAt: Date.now(),
+          },
         });
         if (t.interp) setInterp(t.interp);
       } else {

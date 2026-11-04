@@ -76,20 +76,17 @@ class CustomerAllowed {
     this.suspend = false,
     this.restrict = false,
     this.reactivate = false,
-    this.decideRefunds = false,
   });
   factory CustomerAllowed.fromJson(Map<String, dynamic>? j) => CustomerAllowed(
         revealContact: jBool(j?['revealContact']),
         suspend: jBool(j?['suspend']),
         restrict: jBool(j?['restrict']),
         reactivate: jBool(j?['reactivate']),
-        decideRefunds: jBool(j?['decideRefunds']),
       );
   final bool revealContact;
   final bool suspend;
   final bool restrict;
   final bool reactivate;
-  final bool decideRefunds;
 }
 
 class CustomerDetail extends CustomerSummary {
@@ -114,7 +111,6 @@ class CustomerDetail extends CustomerSummary {
     this.ratingsGiven = 0,
     this.avgRatingGiven,
     this.openComplaints = 0,
-    this.pendingRefunds = 0,
     this.allowed = const CustomerAllowed(),
   });
 
@@ -141,7 +137,6 @@ class CustomerDetail extends CustomerSummary {
       ratingsGiven: jInt(j['ratingsGiven']),
       avgRatingGiven: jDoubleOrNull(j['avgRatingGiven']),
       openComplaints: jInt(j['openComplaints']),
-      pendingRefunds: jInt(j['pendingRefunds']),
       allowed: CustomerAllowed.fromJson(jMap(j['allowed'])),
     );
   }
@@ -156,7 +151,6 @@ class CustomerDetail extends CustomerSummary {
   final int ratingsGiven;
   final double? avgRatingGiven;
   final int openComplaints;
-  final int pendingRefunds;
   final CustomerAllowed allowed;
 }
 
@@ -347,7 +341,6 @@ String pctOrDash(double? v) => v == null ? '—' : '${v.toStringAsFixed(1)}%';
 
 enum ContactReason {
   orderIssue('order_issue', 'Problem with an order'),
-  refund('refund', 'Refund'),
   complaint('complaint', 'Complaint'),
   delivery('delivery', 'Delivery'),
   other('other', 'Other');

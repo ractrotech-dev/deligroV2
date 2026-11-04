@@ -7,7 +7,6 @@ import 'package:go_router/go_router.dart';
 import '../../core/api.dart';
 import '../../core/format.dart';
 import '../../models/customers.dart';
-import '../../models/finance.dart' show RefundItem, RefundStatus;
 import '../../models/offers.dart' show newActionId;
 import '../../models/outcome.dart';
 import '../../state/customers.dart';
@@ -37,7 +36,7 @@ class CustomerDetailScreen extends ConsumerWidget {
 }
 
 /// One customer (§10.1–10.8): permitted details with a masked phone and an
-/// audited reveal, their orders, complaints, refunds and feedback, and
+/// audited reveal, their orders, complaints and feedback, and
 /// suspend / restrict / reactivate with a reason.
 class CustomerDetailBody extends ConsumerStatefulWidget {
   const CustomerDetailBody({super.key, required this.customerId});
@@ -110,7 +109,6 @@ class _CustomerDetailBodyState extends ConsumerState<CustomerDetailBody> with Wi
       onRefresh: () async {
         await ref.read(customerDetailProvider(id).notifier).refresh();
         ref.invalidate(customerComplaintsProvider(id));
-        ref.invalidate(customerRefundsProvider(id));
         ref.invalidate(customerFeedbackProvider(id));
       },
       child: ListView(
@@ -207,7 +205,6 @@ class _CustomerDetailBodyState extends ConsumerState<CustomerDetailBody> with Wi
             ),
           ]),
           _Complaints(customerId: id, open: x.openComplaints),
-          _Refunds(customerId: id, canDecide: a.decideRefunds),
           _Feedback(customerId: id),
           if (a.suspend || a.restrict || a.reactivate)
             FormSection(title: 'Account', children: [
@@ -356,45 +353,6 @@ class _Complaints extends ConsumerWidget {
               ]),
       ),
     ]);
-  }
-}
-
-class _Refunds extends ConsumerWidget {
-  const _Refunds({required this.customerId, required this.canDecide});
-  final String customerId;
-  final bool canDecide;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final c = context.colors;
-    final v = ref.watch(customerRefundsProvider(customerId));
-    return FormSection(title: 'Refunds', children: [
-      v.when(
-        skipLoadingOnRefresh: true,
-        loading: () => const LinearProgressIndicator(),
-        error: (e, _) => TextButton(onPressed: () => ref.invalidate(customerRefundsProvider(customerId)), child: const Text("Couldn't load — retry")),
-        data: (p) => p.items.isEmpty
-            ? Text('None.', style: TextStyle(color: c.muted))
-            : Column(children: [for (final r in p.items) _refundRow(context, r)]),
-      ),
-    ]);
-  }
-
-  Widget _refundRow(BuildContext context, RefundItem r) {
-    final pending = r.status == RefundStatus.pending;
-    return ListTile(
-      key: Key('refund-${r.id}'),
-      contentPadding: EdgeInsets.zero,
-      title: Text('${rupees(r.amount)} · order ${r.order.code}'),
-      subtitle: Text('${r.status.label}${r.reason == null ? '' : ' · ${r.reason}'}', maxLines: 2, overflow: TextOverflow.ellipsis),
-      trailing: pending && canDecide
-          ? TextButton(
-              key: Key('refund-decide-${r.id}'),
-              onPressed: () => GoRouter.maybeOf(context)?.push(Uri(path: '/finance/refunds', queryParameters: {'id': r.id}).toString()),
-              child: const Text('Decide'),
-            )
-          : null,
-    );
   }
 }
 

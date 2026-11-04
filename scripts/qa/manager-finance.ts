@@ -13,7 +13,6 @@ import { join } from "node:path";
 import {
   parseFinanceRange,
   parseInitiateBody,
-  parseRefundDecideBody,
   sortIssues,
   toSettlementSummary,
   decodeKeyCursor,
@@ -54,12 +53,7 @@ const rev = parseInitiateBody({ ...base, from: "2026-10-07", to: "2026-10-01" },
 check("to before from → bad_range", !rev.ok && rev.error === "bad_range", rev);
 check("cheque is not a method", !parseInitiateBody({ ...base, method: "cheque", orderId: U }, NOW).ok);
 
-console.log("\n── refund decision body ──");
-check("approve with a reason → ok", parseRefundDecideBody({ clientActionId: U, decision: "approve", reason: "Item missing" }).ok);
-const short = parseRefundDecideBody({ clientActionId: U, decision: "deny", reason: "no" });
-check("a 2-character reason → reason_required", !short.ok && short.error === "reason_required", short);
-check("a 301-character reason → reason_required", !parseRefundDecideBody({ clientActionId: U, decision: "deny", reason: "x".repeat(301) }).ok);
-check("decision must be approve|deny", !parseRefundDecideBody({ clientActionId: U, decision: "approved", reason: "Fine" }).ok);
+
 
 console.log("\n── cursors ──");
 const c = encodeKeyCursor("2026-10-20T10:00:00.000Z", U);

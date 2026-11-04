@@ -83,7 +83,7 @@ const actions = read("src/app/admin/settlements/actions.ts");
 const paymentUi = read("src/app/admin/settlements/[id]/settlement-actions.tsx");
 ok("the new id is carried back, not dropped", /movedTo/.test(requests) && /res\.extra\?\.settlementId/.test(requests) && /movedTo: result\.movedTo/.test(actions));
 ok("the screen goes to the new payment", /router\.push\(`\/admin\/settlements\/\$\{result\.movedTo\}\?changed=1`\)/.test(paymentUi));
-ok("and the new payment says why", /A refund changed the amount/.test(read("src/app/admin/settlements/[id]/page.tsx")));
+ok("and the new payment says why", /An adjustment changed the amount/.test(read("src/app/admin/settlements/[id]/page.tsx")));
 
 console.log("\n── an admin pays alone, on the record ──");
 const pay = requests.slice(requests.indexOf("export async function adminPayOrRequestSettlement"), requests.indexOf("/** Admin \"Paid\" on one order"));
@@ -140,12 +140,18 @@ for (const page of [
 const detail = read("src/app/admin/settlements/[id]/page.tsx");
 ok("a failed read of a payment is not a 404", /Could not load this payment/.test(detail) && !/catch \{\s*notFound\(\)/.test(detail));
 
-console.log("\n── refunds: records stay reachable, none can be raised ──");
-const refundsPage = read("src/app/admin/refunds/page.tsx");
+console.log("\n── refunds: no screen left, old records stay in reports ──");
 const refunds = read("src/lib/data-access/refunds.ts");
-ok("every open refund, oldest first", /listOpenRefunds\(\)/.test(refundsPage) && /eq\("status", "pending"\)\s*\.order\("created_at", \{ ascending: true \}\)/.test(refunds));
-ok("the rest page, with totals counted from the whole table", /listDecidedRefunds\(/.test(refundsPage) && /getRefundTotals\(\)/.test(refundsPage) && !/listRefunds\(\)/.test(refundsPage));
-ok("no control raises a refund or marks one handed back", !existsSync(join(root, "src/components/admin/give-money-back.tsx")) && !/ops_raise_refund|ops_mark_refund_handed_back/.test(refunds));
+const nav = read("src/components/admin/admin-nav.ts");
+const reportDefs = read("src/lib/reports/definitions.ts");
+ok("the Refunds page is gone", !existsSync(join(root, "src/app/admin/refunds/page.tsx")) && !existsSync(join(root, "src/components/admin/refund-card.tsx")));
+ok("no sidebar item, badge or top bar icon", !/refund/i.test(nav) && !/refund/i.test(read("src/components/admin/admin-top-bar.tsx")) && !/refund/i.test(read("src/components/admin/admin-sidebar.tsx")));
+ok("no Overview figure", !/refund/i.test(read("src/app/admin/page.tsx")));
+ok("no feature switch", !/admin\.refunds/.test(read("src/lib/features/catalog.ts")));
+ok("old refunds stay in the Refund and adjustment report", /kind: "refunds-adjustments", label: "Refund and adjustment report"/.test(reportDefs));
+ok("no code raises a refund", !/queueRefundForOrder|requestRefund|queue_order_refund/.test(refunds) && !/queueRefundForOrder/.test(read("src/lib/data-access/payments.ts") + read("src/lib/data-access/vendor-orders.ts")));
+ok("no admin action can decide one", !/decideRefund|releaseRefundClaim/.test(read("src/app/admin/actions.ts")));
+ok("the gateway path is kept for the owner's decision on online money", /refundRazorpayPayment/.test(refunds) && /export async function decideRefund/.test(refunds));
 ok("nothing tells anyone to raise one", !/Raise a refund|refunded from \/admin/.test(read("src/app/admin/orders/actions.ts") + read("src/components/admin/order-intervention.tsx")));
 
 console.log(`\n${passed} passed, ${failed} failed`);

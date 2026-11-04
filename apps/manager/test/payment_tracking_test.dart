@@ -71,7 +71,7 @@ void main() {
   testWidgets('settlement detail: an outstanding correction is spelled out', (t) async {
     await pumpFinance(t, const SettlementDetailScreen(settlementId: 's-2'));
     await t.pumpAndSettle();
-    expect(find.text('Refund approved after this payout — correction outstanding ₹120'), findsOneWidget);
+    expect(find.text('Correction outstanding ₹120'), findsOneWidget);
     expect(find.text('AB12CD34'), findsOneWidget);
     expect(find.text('Awaiting approval'), findsWidgets);
     expect(find.text('−₹177'), findsOneWidget);

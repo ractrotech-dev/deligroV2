@@ -24,7 +24,10 @@ export interface Account {
 
 type Choice = "inherit" | "on" | "off";
 
-const ROLES: FeatureRole[] = ["vendor", "manager", "driver", "admin"];
+// A role with no switches gets no tab (the admin console has none today).
+const ROLES = (["vendor", "manager", "driver", "admin"] as FeatureRole[]).filter(
+  (r) => featuresFor(r).length > 0
+);
 
 const SUBJECT_LABEL: Record<FeatureRole, string> = {
   vendor: "Shop",

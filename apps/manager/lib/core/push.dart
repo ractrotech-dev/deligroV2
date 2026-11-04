@@ -77,9 +77,8 @@ String? inAppPathFrom(String? launchUrl, Map<String, dynamic>? data) {
   if (type == 'payment_request') return id == null ? '/more/approvals' : '/more/approvals?id=$id';
   if (type == 'cash_deposit') return '/more/cash';
   if (type == 'delivery_exception') return id == null ? '/live/exceptions' : '/live/exceptions?id=$id';
-  // Phase 6: a settlement (waiting, paid, voided) and a refund to decide.
+  // Phase 6: a settlement (waiting, paid, voided).
   if (type == 'settlement') return id == null ? '/finance/settlements' : '/finance/settlements/$id';
-  if (type == 'refund') return '/finance/refunds';
   // Phase 8: an alert, a ticket, and an inbox row with its own link.
   if (type == 'alert') return id == null ? '/alerts' : '/alerts/$id';
   if (type == 'ticket') return id == null ? '/more/support' : '/more/tickets/$id';
@@ -113,7 +112,7 @@ String? inAppPathFrom(String? launchUrl, Map<String, dynamic>? data) {
     if (path == '/manager/cash') return '/more/cash';
     if (path == '/manager' || path.startsWith('/manager/') || path.startsWith('/admin')) return '/';
     // Finance's own lists, and one settlement.
-    if (RegExp(r'^/finance/(vendor-dues|rider-dues|issues|settlements|rider-payouts|refunds|reconciliation)$')
+    if (RegExp(r'^/finance/(vendor-dues|rider-dues|issues|settlements|rider-payouts|reconciliation)$')
         .hasMatch(path)) {
       return path;
     }

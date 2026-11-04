@@ -152,12 +152,10 @@ export function isOrderInFlight(status: OrderStatus): boolean {
 }
 
 /**
- * Mirrors `CANCELLABLE` in `src/app/api/orders/[id]/cancel/route.ts`. Keep the
- * two in step: offering the button outside this set earns a 409 that the UI
- * reports as "the kitchen already started" — which is exactly what happened to
- * every `ready` order for as long as `ready` was displayed as `KITCHEN`. The
- * route is the authority; this only decides whether to show the button.
+ * Whether to show the customer's Cancel button: a new order the shop hasn't taken,
+ * with seconds left on the database's count. The database is the authority
+ * (customer_cancel_order, 0191); this only decides whether to show the button.
  */
-export function canCustomerCancel(status: OrderStatus): boolean {
-  return status === "PLACED" || status === "KITCHEN";
+export function canCustomerCancel(status: OrderStatus, secondsLeft: number): boolean {
+  return status === "PLACED" && secondsLeft > 0;
 }

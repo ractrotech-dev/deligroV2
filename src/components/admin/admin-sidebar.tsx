@@ -231,12 +231,12 @@ function FootLink({
 }
 
 /**
- * Which queues read as urgent. Approvals and refunds are work sitting on a
+ * Which queues read as urgent. Approvals are work sitting on a
  * person; live orders is activity, not a to-do, so it stays neutral however
  * high it climbs — an orange 60 next to Orders on a busy evening would train
  * the operator to ignore the colour that matters.
  */
-const HOT = new Set<BadgeKey>(["pendingApprovals", "pendingRefunds"]);
+const HOT = new Set<BadgeKey>(["pendingApprovals"]);
 
 function NavLink({
   item,

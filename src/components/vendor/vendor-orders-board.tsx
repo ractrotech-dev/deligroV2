@@ -222,7 +222,7 @@ function OrderCard({
   variant?: "new" | "default";
   /** Extra line-of-facts for the header row, e.g. the in-kitchen clock. */
   meta?: React.ReactNode;
-  children: React.ReactNode;
+  children?: React.ReactNode;
 }) {
   const [open, setOpen] = useState(variant === "new");
   const first = order.lines[0];
@@ -346,7 +346,7 @@ function OrderCard({
             </p>
           ) : null}
 
-          <div className="order-actions mt-3">{children}</div>
+          {children ? <div className="order-actions mt-3">{children}</div> : null}
         </div>
       ) : null}
     </article>
@@ -403,15 +403,9 @@ function IncomingList({
 
 function PreparingList({
   orders,
-  busy,
-  onPatch,
 }: {
   orders: KitchenOrder[];
-  busy: string | null;
-  onPatch: (o: KitchenOrder, s: "kitchen" | "ready" | "cancelled") => void;
 }) {
-  // Admin → Feature access; PATCH /api/orders/[id]/status refuses it too.
-  const canReject = useFeature("vendor.reject_orders");
   if (orders.length === 0) {
     return (
       <VendorEmptyState
@@ -427,19 +421,7 @@ function PreparingList({
           key={o.id}
           order={o}
           meta={<KitchenTimer since={o.acceptedAt} />}
-        >
-          {canReject ? (
-            <Button
-              variant="outline"
-              size="sm"
-              className="w-full"
-              disabled={busy === o.id}
-              onClick={() => onPatch(o, "cancelled")}
-            >
-              <X className="size-4" /> Cancel
-            </Button>
-          ) : null}
-        </OrderCard>
+        />
       ))}
     </div>
   );
@@ -448,16 +430,12 @@ function PreparingList({
 function ReadyList({
   orders,
   busy,
-  onPatch,
   onHandover,
 }: {
   orders: KitchenOrder[];
   busy: string | null;
-  onPatch: (o: KitchenOrder, s: "kitchen" | "ready" | "cancelled") => void;
   onHandover: (o: KitchenOrder) => void;
 }) {
-  // Admin → Feature access; PATCH /api/orders/[id]/status refuses it too.
-  const canReject = useFeature("vendor.reject_orders");
   if (orders.length === 0) {
     return (
       <VendorEmptyState
@@ -509,19 +487,6 @@ function ReadyList({
               <HandPlatter className="size-4" /> Handed to rider
             </Button>
           ) : null}
-          {/* Once the bag has left, cancelling from the counter is not the
-              kitchen's call — that is support's, with the rider in view. */}
-          {o.rider?.stage === "picked_up" || !canReject ? null : (
-            <Button
-              variant="outline"
-              size="sm"
-              className="col-span-2 w-full"
-              disabled={busy === o.id}
-              onClick={() => onPatch(o, "cancelled")}
-            >
-              <X className="size-4" /> Cancel order
-            </Button>
-          )}
         </OrderCard>
       ))}
     </div>
@@ -568,8 +533,7 @@ function HistoryOrderCard({
                 : statusLabel(order.status ?? "delivered")}
             </span>
             {/* Also here, not just on the live board: "was this one paid?" is
-                the first question asked of a cancelled order, and the answer
-                decides whether a refund is owed. */}
+                the first question asked of a cancelled order. */}
             <PaymentBadge order={order} />
           </div>
           <p className="mt-1 line-clamp-1 text-sm font-bold leading-snug">
@@ -940,7 +904,7 @@ export function VendorOrdersBoard({
       ? [
           {
             id: "cancelled" as const,
-            label: "Cancel",
+            label: "Cancelled",
             count: cancelled.length,
           },
           { id: "done" as const, label: "Done", count: recent.length },
@@ -1019,20 +983,19 @@ export function VendorOrdersBoard({
           <IncomingList orders={incoming} busy={busy} onPatch={patchStatus} />
         ) : null}
         {mobileTab === "prep" ? (
-          <PreparingList orders={preparing} busy={busy} onPatch={patchStatus} />
+          <PreparingList orders={preparing} />
         ) : null}
         {mobileTab === "ready" ? (
           <ReadyList
             orders={ready}
             busy={busy}
-            onPatch={patchStatus}
             onHandover={(o) => void handover(o)}
           />
         ) : null}
         {mobileTab === "cancelled" && live ? (
           <HistoryList
             orders={cancelled}
-            empty="Rejected orders stay here for your records."
+            empty="Rejected and cancelled orders stay here for your records."
             statusTone="cancelled"
             onViewAll={() => setHistoryDialog("cancelled")}
           />
@@ -1060,13 +1023,12 @@ export function VendorOrdersBoard({
           count={preparing.length}
           tone="blue"
         >
-          <PreparingList orders={preparing} busy={busy} onPatch={patchStatus} />
+          <PreparingList orders={preparing} />
         </VendorKanbanColumn>
         <VendorKanbanColumn title="Ready" count={ready.length} tone="green">
           <ReadyList
             orders={ready}
             busy={busy}
-            onPatch={patchStatus}
             onHandover={(o) => void handover(o)}
           />
         </VendorKanbanColumn>
@@ -1090,7 +1052,7 @@ export function VendorOrdersBoard({
           >
             <HistoryList
               orders={cancelled}
-              empty="Rejected orders stay in the database."
+              empty="Rejected and cancelled orders stay here for your records."
               statusTone="cancelled"
             />
           </VendorPanel>
@@ -1120,7 +1082,6 @@ export function VendorOrdersBoard({
       {rejecting ? (
         <RejectOrderDialog
           code={rejecting.code}
-          isReject={rejecting.status === "placed" || !rejecting.status}
           busy={busy === rejecting.id}
           onCancel={() => setRejecting(null)}
           onConfirm={async (reason) => {

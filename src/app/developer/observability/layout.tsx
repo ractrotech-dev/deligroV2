@@ -91,7 +91,7 @@ export default async function ObservabilityLayout({
     <ConsoleOnly
       variant="page"
       tool="The observability console"
-      why="Issues, traces and logs are wide tables and stack traces that a phone cannot show usefully. Orders, refunds and the vendor list all work here."
+      why="Issues, traces and logs are wide tables and stack traces that a phone cannot show usefully. Orders and the vendor list all work here."
     >
       <div className="flex flex-col gap-[var(--c-gap)]">
         {/* Sticky, like every other console toolbar: during an incident this

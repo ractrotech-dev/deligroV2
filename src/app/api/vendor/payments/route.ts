@@ -9,7 +9,7 @@ export const dynamic = "force-dynamic";
 /**
  * GET /api/vendor/payments — the shop's money (requirements §4): total
  * earnings, amount settled, payment due (signed: Deligro receives all customer
- * money, cash through the rider or online, so negative = refunds exceeded the
+ * money, cash through the rider or online, so negative = old refunds exceeded the
  * shop's orders), paid / unpaid / partly paid counts, settlement
  * history (paid and voided; never drafts) and the unpaid orders behind the
  * payment due. Follows the shop's Earnings switch.

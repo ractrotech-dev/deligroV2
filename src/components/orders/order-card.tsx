@@ -11,7 +11,6 @@ import { STATUS_META } from "@/lib/utils/order-status";
 import {
   cancellationNote,
   formatOrderPlacedAt,
-  isOrderPaid,
   type UiOrder,
 } from "@/lib/utils/order-map";
 import {
@@ -59,17 +58,6 @@ export function OrderCard({ order }: Readonly<{ order: UiOrder }>) {
   const placedAt = order.createdAt
     ? formatOrderPlacedAt(order.createdAt, lang)
     : order.placedAt;
-
-  /**
-   * Cancelled, and the money is still ours to give back.
-   *
-   * `payment_status` moves to `refunded` when it has actually gone back, so
-   * "paid" on a cancelled order is a fact about the ledger and not a guess:
-   * we are holding it. Worded as the state rather than as a promise, because a
-   * request may already be in flight and "refund available" would then be
-   * telling the customer to do something they have done.
-   */
-  const owesRefund = cancelled && isOrderPaid(order);
 
   /**
    * Null for a cancellation we cannot attribute — a row from before migration
@@ -156,14 +144,6 @@ export function OrderCard({ order }: Readonly<{ order: UiOrder }>) {
             </span>
             <span aria-hidden>·</span>
             <span>{placedAt}</span>
-            {owesRefund ? (
-              <>
-                <span aria-hidden>·</span>
-                <span className="font-semibold text-[color:var(--c-ink-amber)]">
-                  {t("Refund not issued", "रिफ़ंड अभी नहीं हुआ")}
-                </span>
-              </>
-            ) : null}
           </p>
           {why ? (
             <p className="mt-1 truncate text-[12px] leading-snug text-muted">

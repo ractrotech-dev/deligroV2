@@ -49,7 +49,7 @@ The rules in `docs/FLUTTER_SETUP.md` → *Deligro-specific rules* apply:
 | What | How |
 |---|---|
 | Catalog, settings, banners, own orders, profile, favourites | Supabase directly, under RLS, with the publishable key and the user's JWT. Same tables and column lists as `src/lib/data-access/*`. |
-| Login, placing and cancelling orders, tracking, coupons, addresses, reviews, refunds, payments, push registration | The website's `/api/*` routes (`lib/core/api.dart`). |
+| Login, placing and cancelling orders, tracking, coupons, addresses, reviews, payments, push registration | The website's `/api/*` routes (`lib/core/api.dart`). |
 
 **Why the API calls send a cookie.** The `/api/*` routes read the session from
 the `@supabase/ssr` cookie and ignore `Authorization` headers. The app rebuilds

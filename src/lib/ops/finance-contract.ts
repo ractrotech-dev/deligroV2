@@ -291,22 +291,6 @@ export function parseInitiateBody(body: Record<string, unknown> | null, now: Dat
   };
 }
 
-export interface RefundDecisionInput {
-  clientActionId: string;
-  decision: "approve" | "deny";
-  reason: string;
-}
-
-export function parseRefundDecideBody(body: Record<string, unknown> | null): { ok: true; input: RefundDecisionInput } | Fail {
-  if (!body) return { ok: false, status: 400, error: "bad_request" };
-  const { clientActionId, decision, reason } = body;
-  if (typeof clientActionId !== "string" || !isUuid(clientActionId)) return { ok: false, status: 400, error: "bad_request", field: "clientActionId" };
-  if (decision !== "approve" && decision !== "deny") return { ok: false, status: 400, error: "bad_request", field: "decision" };
-  const r = typeof reason === "string" ? reason.trim() : "";
-  if (r.length < 3 || r.length > 300) return { ok: false, status: 400, error: "reason_required", field: "reason" };
-  return { ok: true, input: { clientActionId: clientActionId.toLowerCase(), decision, reason: r } };
-}
-
 // ── serialising ──────────────────────────────────────────────────────────
 
 const n = (v: unknown): number => (v === null || v === undefined ? 0 : Number(v) || 0);
@@ -375,7 +359,6 @@ export function toSettlementSummary(
 export const ISSUE_TITLES: Record<FinanceIssueType, string> = {
   failed_payment: "Online payment failed",
   stuck_payment: "Online payment stuck",
-  refund_unsent: "Approved refund not sent",
   settlement_delayed: "Vendor settlement overdue",
   draft_stale: "Draft settlement waiting",
   approval_overdue: "Payment waiting for approval",

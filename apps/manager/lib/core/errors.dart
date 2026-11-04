@@ -37,16 +37,14 @@ String friendlyError(String code) {
     'orders_paused' => 'Orders are paused right now. Please try again later.',
     'online_payments_unavailable' || 'payments_unavailable' =>
       'Online payment is not available right now. Choose cash on delivery.',
-    'too_late' => 'The kitchen has already packed this order, so it can\'t be cancelled.',
+    'too_late' => 'Too late to cancel.',
     'not_found' => 'We couldn\'t find that.',
     'already_reviewed' => 'You have already rated this order.',
-    'already_requested' => 'A refund has already been requested for this order.',
-    'invalid_state' => 'A refund can\'t be requested for this order.',
     'invalid_address' => 'Enter a fuller address (at least 6 characters).',
     'invalid_name' => 'Enter your name (at least 2 characters).',
     'phone_taken' => 'That number is already used by another account.',
     'otp_invalid' => 'That code is not right.',
-    'signature_mismatch' => 'We could not confirm the payment. If money was taken, it will be refunded.',
+    'signature_mismatch' => 'We could not confirm the payment. If money was taken, contact support.',
     _ => 'Something went wrong. Please try again.',
   };
 }

@@ -1,11 +1,8 @@
 import 'dart:convert';
 
-import 'package:deligro_manager/core/api.dart';
-import 'package:deligro_manager/features/finance/refunds_screen.dart';
 import 'package:deligro_manager/features/finance/settlement_detail_screen.dart';
 import 'package:deligro_manager/features/finance/vendor_dues_screen.dart';
 import 'package:deligro_manager/features/payments/approvals_screen.dart';
-import 'package:deligro_manager/models/finance.dart';
 import 'package:deligro_manager/models/marketing.dart';
 import 'package:deligro_manager/models/outcome.dart';
 import 'package:deligro_manager/models/payment_request.dart';
@@ -19,7 +16,6 @@ import 'finance_helpers.dart';
 
 const initiator = {...financeViewer, 'manager.finance.initiate_payment'};
 const approver = {...financeViewer, 'manager.finance.approve_payment'};
-const adjuster = {...financeViewer, 'manager.finance.adjust'};
 
 FinanceFakes _withSettlementRequests() =>
     FinanceFakes(payments: FakePaymentsRepository(page: PaymentRequestPage.fromJson(p6('payment_requests_settlement'))));
@@ -61,7 +57,7 @@ void main() {
     await t.tap(find.byKey(const Key('initiate-submit')));
     await t.pumpAndSettle();
     // The sheet says it, over the dues row that says the same.
-    expect(find.text("Refunds are more than this shop's orders: it owes Deligro ₹340. Collect it separately."), findsNWidgets(2));
+    expect(find.text("Old adjustments are more than this shop's orders: it owes Deligro ₹340. Collect it separately."), findsNWidgets(2));
   });
 
   group('asking to reverse a paid settlement', () {
@@ -141,8 +137,7 @@ void main() {
     expect(find.textContaining('recorded as paid'), findsNothing);
   });
 
-  test('labels: a manager-raised refund, and a cancelled marketing request', () {
-    expect(RefundOrigin.parse('manager').label, 'Manager');
+  test('labels: a cancelled marketing request', () {
     expect(RequestStatus.parse('cancelled').label, 'Cancelled');
     expect(const RequestCounts(cancelled: 3).of(RequestStatus.cancelled), 3);
   });
@@ -206,46 +201,6 @@ void main() {
     expect(find.textContaining('another person must approve'), findsOneWidget);
   });
 
-  testWidgets('refund decisions need finance.adjust', (t) async {
-    await pumpFinance(t, const RefundsScreen());
-    await t.pumpAndSettle();
-    expect(find.text('AB12CD34'), findsOneWidget);
-    expect(find.byKey(const Key('refund-approve-rf-1')), findsNothing);
-  });
-
-  testWidgets('deny asks for a reason of at least 3 characters', (t) async {
-    final fakes = FinanceFakes();
-    await pumpFinance(t, const RefundsScreen(), fakes: fakes, permissions: adjuster);
-    await t.pumpAndSettle();
-    await t.tap(find.byKey(const Key('refund-deny-rf-1')));
-    await t.pumpAndSettle();
-    await t.enterText(find.byType(TextField).last, 'no');
-    await t.pump();
-    final submit = find.widgetWithText(FilledButton, 'Deny refund');
-    expect(t.widget<FilledButton>(submit).onPressed, isNull);
-    await t.enterText(find.byType(TextField).last, 'Already refunded in cash');
-    await t.pump();
-    await t.tap(submit);
-    await t.pumpAndSettle();
-    expect(fakes.finance.decideCalls.single.decision.approve, isFalse);
-    expect(fakes.finance.decideCalls.single.decision.reason, 'Already refunded in cash');
-  });
-
-  testWidgets('money sent but not recorded: no Retry button at all', (t) async {
-    final fakes = FinanceFakes();
-    fakes.finance.decideError = ApiException(502, 'recorded_failed_after_gateway', body: const {'refundId': 'rf-1'});
-    await pumpFinance(t, const RefundsScreen(), fakes: fakes, permissions: adjuster);
-    await t.pumpAndSettle();
-    await t.tap(find.byKey(const Key('refund-approve-rf-1')));
-    await t.pumpAndSettle();
-    await t.enterText(find.byType(TextField).last, 'Item missing, confirmed');
-    await t.pump();
-    await t.tap(find.widgetWithText(FilledButton, 'Approve refund'));
-    await t.pumpAndSettle();
-    expect(find.textContaining("don't retry"), findsOneWidget);
-    expect(find.text('Retry'), findsNothing);
-  });
-
   testWidgets("one order: found by its short code among the shop's delivered orders, then sent by id", (t) async {
     final fakes = FinanceFakes();
     await pumpFinance(t, const VendorDuesScreen(), fakes: fakes, permissions: initiator);
@@ -268,22 +223,4 @@ void main() {
     expect(fakes.finance.initiateCalls.single.orderId, 'ab12cd34-0000-4000-8000-000000000001');
   });
 
-  testWidgets('effect_failed: decision saved, retry reuses the same id', (t) async {
-    final fakes = FinanceFakes();
-    fakes.finance.decideError = ApiException(502, 'effect_failed', body: const {'refundId': 'rf-1'});
-    await pumpFinance(t, const RefundsScreen(), fakes: fakes, permissions: adjuster);
-    await t.pumpAndSettle();
-    await t.tap(find.byKey(const Key('refund-approve-rf-1')));
-    await t.pumpAndSettle();
-    await t.enterText(find.byType(TextField).last, 'Item missing, confirmed');
-    await t.pump();
-    await t.tap(find.widgetWithText(FilledButton, 'Approve refund'));
-    await t.pumpAndSettle();
-    expect(find.textContaining("Retry finishes it — it won't pay twice"), findsOneWidget);
-    await t.tap(find.text('Retry'));
-    await t.pumpAndSettle();
-    final calls = fakes.finance.decideCalls;
-    expect(calls, hasLength(2));
-    expect(calls[1].decision.clientActionId, calls[0].decision.clientActionId);
-  });
 }

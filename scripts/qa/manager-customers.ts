@@ -56,16 +56,15 @@ const PII = /phone$|email|address_line|\.lat$|\.lng$/i;
 check("summary carries no phone, email, address or position key", !walk(summary).some((k) => PII.test(k)), walk(summary));
 check("...and no unmasked number anywhere", !JSON.stringify(summary).includes("9876543210"));
 const detail: CustomerDetail = { ...summary, statusReason: null, statusChangedAt: null, statusChangedBy: null, localities: ["Station Road, Bemetara"],
-  cancelledOrders: 0, aov: 300, firstOrderAt: null, ratingsGiven: 0, avgRatingGiven: null, openComplaints: 0, pendingRefunds: 0,
+  cancelledOrders: 0, aov: 300, firstOrderAt: null, ratingsGiven: 0, avgRatingGiven: null, openComplaints: 0,
   allowed: customerAllowed("restricted", {}) };
 check("detail carries no personal-data key either", !walk(detail).some((k) => PII.test(k)));
 
 console.log("\n── permissions ──");
 const none = customerAllowed("active", {});
 check("no switches → nothing allowed", Object.values(none).every((v) => v === false));
-const all = customerAllowed("suspended", { "manager.customers.contact": true, "manager.customers.suspend": true,
-  "manager.finance.view": true, "manager.finance.adjust": true });
-check("a suspended customer: reactivate and restrict offered, not suspend again", all.reactivate && all.restrict && !all.suspend && all.revealContact && all.decideRefunds);
+const all = customerAllowed("suspended", { "manager.customers.contact": true, "manager.customers.suspend": true });
+check("a suspended customer: reactivate and restrict offered, not suspend again", all.reactivate && all.restrict && !all.suspend && all.revealContact);
 
 console.log("\n── routes (structure) ──");
 const root = join(__dirname, "../../src/app/api/manager/customers");

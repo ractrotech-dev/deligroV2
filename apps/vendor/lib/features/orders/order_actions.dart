@@ -159,7 +159,7 @@ class _RejectSheetState extends ConsumerState<_RejectSheet> {
             Text('Reject order', style: Theme.of(context).textTheme.titleLarge),
             const SizedBox(height: 4),
             Text(
-              'The customer sees this reason. If they paid online, Deligro refunds them.',
+              'The customer sees this reason. Deligro will contact them.',
               style: TextStyle(color: c.muted),
             ),
             const SizedBox(height: 12),
