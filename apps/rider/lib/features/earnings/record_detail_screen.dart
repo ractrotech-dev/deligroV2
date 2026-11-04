@@ -8,7 +8,7 @@ import 'earnings_widgets.dart';
 
 /// One record with every figure that went into it: the order, the date, the
 /// base fee, the distance and its fee, any minimum top-up, the tip (and whether
-/// it was paid in cash), incentive, deduction, the final amount, whether it has
+/// it was paid in cash), deduction, the final amount, whether it has
 /// been paid, and when and under which reference.
 class RecordDetailScreen extends StatelessWidget {
   const RecordDetailScreen({super.key, required this.record});

@@ -65,8 +65,6 @@ export const MONEY_CEILING = 1_000_000;
 const REASON_MAX = 300;
 const NOTE_MAX = 300;
 const REFERENCE_MAX = 120;
-const RULE_NAME_MAX = 80;
-const TARGET_MAX = 1000;
 
 // ---------------------------------------------------------------------------
 // reading fields

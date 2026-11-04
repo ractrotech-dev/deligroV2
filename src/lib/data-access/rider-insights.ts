@@ -23,7 +23,6 @@ import {
   isDayKey,
   istDay,
   istDayStartIso,
-  istWeekStart,
   parseRange,
 } from "@/lib/rider/earnings-math";
 import {
@@ -31,7 +30,6 @@ import {
   TERMINAL_KINDS,
   buildStints,
   decodeHistoryCursor,
-  deliveredBetween,
   encodeHistoryCursor,
   HEADLINE_DAYS,
   historyKinds,
@@ -315,9 +313,6 @@ export interface HistoryItem {
   orderValue: number;
 }
 
-export interface HistoryOptions {
-}
-
 export interface HistoryQuery {
   /** IST day `YYYY-MM-DD`; with `to`, at most 366 days apart. */
   from?: string;
@@ -402,8 +397,7 @@ interface Enriched {
 async function enrich(
   supabase: AdminClient,
   driverId: string,
-  rows: EventRow[],
-  opts: HistoryOptions
+  rows: EventRow[]
 ): Promise<Enriched[]> {
   if (rows.length === 0) return [];
   const deliveryIds = [...new Set(rows.map((r) => r.delivery_id))];
@@ -523,8 +517,7 @@ function parseHistoryQuery(q: HistoryQuery): {
  */
 export async function getRiderHistory(
   driverId: string,
-  q: HistoryQuery,
-  opts: HistoryOptions = {}
+  q: HistoryQuery
 ): Promise<{ items: HistoryItem[]; nextCursor: string | null }> {
   const parsed = parseHistoryQuery(q);
   const supabase = createAdminClient();
@@ -557,7 +550,7 @@ export async function getRiderHistory(
       lastScanned = { at: last.created_at, id: Number(last.id) };
       cursor = lastScanned;
     }
-    items.push(...(await enrich(supabase, driverId, rows, opts)));
+    items.push(...(await enrich(supabase, driverId, rows)));
     if (exhausted) break;
   }
 
@@ -591,8 +584,7 @@ function timelineReason(kind: string, reason: string | null): string | null {
  */
 export async function getRiderHistoryDetail(
   driverId: string,
-  orderId: string,
-  opts: HistoryOptions = {}
+  orderId: string
 ): Promise<HistoryDetail | null> {
   const supabase = createAdminClient();
   const { data, error } = await supabase
@@ -606,7 +598,7 @@ export async function getRiderHistoryDetail(
     .limit(10)
     .overrideTypes<EventRow[]>();
   if (error) failEvents(error);
-  const found = (await enrich(supabase, driverId, data ?? [], opts))[0];
+  const found = (await enrich(supabase, driverId, data ?? []))[0];
   if (!found) return null;
   const { item, stint, delivery } = found;
 

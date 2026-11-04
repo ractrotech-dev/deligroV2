@@ -95,7 +95,7 @@ class _Availability {
     if (cod && online) return 'Pay now by UPI or card, or pay the courier on delivery.';
     if (online) return 'Pay now by UPI, card, netbanking or wallet.';
     if (cod) return 'Pay the courier in cash when your order arrives.';
-    return 'Payment is not available for this shop right now.';
+    return 'Payment is not available for this order right now.';
   }
 }
 

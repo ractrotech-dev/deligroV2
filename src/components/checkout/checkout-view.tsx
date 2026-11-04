@@ -998,10 +998,15 @@ export function CheckoutView({ config }: Readonly<{ config: CheckoutConfig }>) {
       return (
         <p className="mb-2 flex items-center gap-1.5 text-center text-sm font-medium text-deal">
           <AlertTriangle className="size-4 shrink-0" />
-          {t(
-            "This shop cannot take payment right now.",
-            "यह दुकान अभी भुगतान नहीं ले पा रही है।",
-          )}
+          {availability.codRefusal === "over_limit"
+            ? t(
+                `Orders above ${codLimit} can't be placed right now.`,
+                `${codLimit} से ज़्यादा के ऑर्डर अभी नहीं हो सकते।`,
+              )
+            : t(
+                "This shop cannot take payment right now.",
+                "यह दुकान अभी भुगतान नहीं ले पा रही है।",
+              )}
         </p>
       );
     }
@@ -1507,8 +1512,8 @@ function paymentMethodsText(availability: PaymentAvailability, t: T): string {
     );
   }
   return t(
-    "Payment is not available for this shop right now.",
-    "इस दुकान पर अभी भुगतान की सुविधा नहीं है।",
+    "Payment is not available for this order right now.",
+    "इस ऑर्डर के लिए अभी भुगतान की सुविधा नहीं है।",
   );
 }
 

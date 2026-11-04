@@ -3,7 +3,6 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { isMissingTable } from "@/lib/data-access/schema-probe";
 import { RiderSchemaPendingError, getRiderCode } from "@/lib/data-access/rider-status";
 import { captureError } from "@/lib/obs/emit";
-import { monthlyMoney } from "@/lib/rider/figures";
 import {
   addDays,
   buildRecords,
@@ -11,7 +10,6 @@ import {
   isZeroDelivery,
   istDay,
   istDayStartIso,
-  istWeekStart,
   isDayKey,
   parseRange,
   reconcile,
@@ -30,8 +28,7 @@ export type { EarningRecord, EarningsSummary };
 
 /**
  * A rider's money, read from the 0083 ledger: the Earnings tab's summary, the
- * records list, payouts, incentive progress and the date-wise statement; and
- * the push for a newly earned incentive.
+ * records list, payouts and the date-wise statement.
  *
  * Every function takes the rider's id and trusts it, because every one runs on
  * the service-role client. The authorization is the caller's:
@@ -48,8 +45,7 @@ export type { EarningRecord, EarningsSummary };
  * Every read throws `RiderSchemaPendingError`,
  * which `riderRouteError` answers with 503 `migration_pending`. A ₹0 summary
  * would be a false statement about a rider's pay, so there is no degraded
- * answer here. `notifyNewIncentiveAwards` is the exception: it runs after a
- * delivery completes and must never affect it, so it does nothing.
+ * answer here.
  *
  * ## Volume
  *
@@ -628,7 +624,4 @@ export async function getPayout(
   };
 }
 
-// ---------------------------------------------------------------------------
-// the incentive push
-// ---------------------------------------------------------------------------
 

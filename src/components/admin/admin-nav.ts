@@ -18,7 +18,6 @@ import {
   Store,
   TicketPercent,
   ToggleRight,
-  Trophy,
   UserCog,
   Users,
   Wallet,

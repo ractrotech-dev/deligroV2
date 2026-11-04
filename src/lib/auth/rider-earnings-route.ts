@@ -6,7 +6,6 @@ import { rateLimit, tooManyRequests } from "@/lib/rate-limit";
 import { isFeatureOn } from "@/lib/features/flags.server";
 import { featureOffResponse } from "@/lib/features/guards.server";
 import { EarningsInputError } from "@/lib/data-access/rider-earnings";
-import type { FeatureKey } from "@/lib/features/catalog";
 
 /**
  * The shared door of the five `/api/rider/earnings/*` routes, in order:

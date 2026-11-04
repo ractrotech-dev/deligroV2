@@ -88,12 +88,6 @@ export function istDay(at: string | Date): string {
   return new Date(ms + IST_OFFSET_MS).toISOString().slice(0, 10);
 }
 
-/** The IST wall-clock time of an instant, `HH:MM:SS`. */
-function istTime(at: string | Date): string {
-  const ms = typeof at === "string" ? Date.parse(at) : at.getTime();
-  return new Date(ms + IST_OFFSET_MS).toISOString().slice(11, 19);
-}
-
 /** A day key plus `n` calendar days. */
 export function addDays(day: string, n: number): string {
   return new Date(Date.parse(`${day}T00:00:00Z`) + n * DAY_MS).toISOString().slice(0, 10);
@@ -573,10 +567,6 @@ export function reconcile(
     balanced: paise(openingPending) + paise(earned) - paise(paid) === paise(closingPending),
   };
 }
-
-// ---------------------------------------------------------------------------
-// incentive progress
-// ---------------------------------------------------------------------------
 
 /** What the rider's Salary tab shows. */
 export interface RiderPaySummary {

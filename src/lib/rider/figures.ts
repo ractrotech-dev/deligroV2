@@ -39,7 +39,6 @@ import {
   istDay,
   istDayStartIso,
   istWeekStart,
-  type EarningRecord,
 } from "@/lib/rider/earnings-math";
 
 // ---------------------------------------------------------------------------
@@ -455,21 +454,6 @@ export function monthlyReport(
       ),
     };
   });
-}
-
-/**
- * Money recorded per IST month from the ledger's records. A month whose records
- * are all ₹0 (or absent) has no entry: ₹0 per-delivery rows are never money.
- */
-export function monthlyMoney(records: Pick<EarningRecord, "date" | "amount">[]): Map<string, number> {
-  const paise = new Map<string, number>();
-  for (const r of records) {
-    const m = r.date.slice(0, 7);
-    paise.set(m, (paise.get(m) ?? 0) + Math.round(r.amount * 100));
-  }
-  const out = new Map<string, number>();
-  for (const [m, p] of paise) if (p !== 0) out.set(m, p / 100);
-  return out;
 }
 
 // ---------------------------------------------------------------------------

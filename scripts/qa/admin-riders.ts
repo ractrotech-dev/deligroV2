@@ -602,7 +602,6 @@ async function dataTier(): Promise<void> {
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = "y".repeat(40);
 
   const a = await import("../../src/lib/data-access/admin-riders");
-  const e = await import("../../src/lib/data-access/rider-earnings");
   const m = await import("../../src/lib/rider/admin-money");
   const { createAdminClient } = await import("../../src/lib/supabase/admin");
   const { isRiderSchemaPending } = await import("../../src/lib/data-access/rider-status");
