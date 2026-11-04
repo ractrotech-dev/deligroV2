@@ -2,15 +2,15 @@ import "server-only";
 import { NextResponse } from "next/server";
 import { getProfile } from "@/lib/auth";
 import { resolveVendorRestaurant } from "@/lib/data-access/vendor-restaurant";
-import { FEATURE_OFF_MESSAGE, type FeatureKey } from "@/lib/features/catalog";
-import { FeatureDisabledError, isFeatureOn } from "@/lib/features/flags.server";
+import { FEATURE_OFF_MESSAGE, featuresFor, type FeatureKey } from "@/lib/features/catalog";
+import { FeatureDisabledError, getFeatures, isFeatureOn } from "@/lib/features/flags.server";
 
 /**
  * The server half of every feature switch — call AFTER the role check.
  *
- * An admin is never switched off: the switches restrict what a vendor,
- * manager or rider may do, and an admin acting through those portals is
- * support, not the subject of the restriction.
+ * An admin is never switched off in the vendor, manager or rider portals: an
+ * admin acting through those is support, not the subject of the restriction.
+ * The admin console's own screens have their own switches (`adminFeatureOn`).
  */
 
 /** Vendor features are set per shop: the shop this vendor is working in. */
@@ -26,6 +26,24 @@ export async function staffFeatureOn(key: FeatureKey): Promise<boolean> {
   const profile = await getProfile();
   if (!profile || profile.role === "admin") return true;
   return isFeatureOn(key, profile.id);
+}
+
+/**
+ * Admin-console screens (`admin.*`) are switched for every admin at once, so
+ * this reads the role-wide switch only. Call AFTER `requireRole("admin")`.
+ * A failed read falls back to the default (on): these are product switches,
+ * not the security boundary, and a blip must not hide the refund queue.
+ */
+export async function adminFeatureOn(key: FeatureKey): Promise<boolean> {
+  return isFeatureOn(key, null);
+}
+
+/** Every admin-console screen switched off — what the admin chrome hides. */
+export async function adminFeaturesOff(): Promise<FeatureKey[]> {
+  const map = await getFeatures("admin", null);
+  return featuresFor("admin")
+    .map((f) => f.key as FeatureKey)
+    .filter((k) => !map[k]);
 }
 
 export async function assertVendorFeature(key: FeatureKey): Promise<void> {

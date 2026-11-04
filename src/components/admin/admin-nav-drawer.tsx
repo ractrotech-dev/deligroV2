@@ -9,8 +9,10 @@ import {
   ADMIN_NAV,
   ADMIN_NAV_GROUPS,
   activeNavItem,
+  enabledNav,
 } from "@/components/admin/admin-nav";
 import type { AdminNavCounts } from "@/lib/data-access/admin-stats";
+import type { FeatureKey } from "@/lib/features/catalog";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { cn } from "@/lib/utils/cn";
 
@@ -32,12 +34,14 @@ export function AdminNavDrawer({
   theme,
   onClose,
   counts,
+  featuresOff,
 }: Readonly<{
   open: boolean;
   /** The console palette variant — the drawer sits outside the shell div. */
   theme?: string;
   onClose: () => void;
   counts: AdminNavCounts;
+  featuresOff: readonly FeatureKey[];
 }>) {
   const pathname = usePathname();
   // Same longest-match rule as the rail — see AdminSidebar.
@@ -93,7 +97,7 @@ export function AdminNavDrawer({
           aria-label="Admin navigation"
         >
           {ADMIN_NAV_GROUPS.map((group) => {
-            const items = ADMIN_NAV.filter((i) => i.group === group);
+            const items = enabledNav(ADMIN_NAV, featuresOff).filter((i) => i.group === group);
             if (!items.length) return null;
             return (
               <div key={group}>

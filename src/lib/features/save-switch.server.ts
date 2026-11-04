@@ -2,7 +2,13 @@ import "server-only";
 import { revalidatePath } from "next/cache";
 import { rateLimit } from "@/lib/rate-limit";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
-import { featureDef, isFeatureKey, ROLE_SUBJECT, type FeatureRole } from "@/lib/features/catalog";
+import {
+  featureDef,
+  isFeatureKey,
+  ROLE_SUBJECT,
+  ROLE_WIDE_ONLY,
+  type FeatureRole,
+} from "@/lib/features/catalog";
 import { writeSwitch } from "@/lib/features/flags.server";
 import type { SwitchInput, SwitchResult } from "@/lib/features/switch-types";
 
@@ -34,6 +40,9 @@ export async function saveFeatureSwitch(actorId: string, input: SwitchInput): Pr
   }
 
   const role = featureDef(input.feature).role as FeatureRole;
+  if (input.subjectId !== null && ROLE_WIDE_ONLY.includes(role)) {
+    return { ok: false, error: "This switch applies to everyone; it has no per-account exceptions." };
+  }
   try {
     await writeSwitch({
       feature: input.feature,
@@ -54,5 +63,6 @@ export async function saveFeatureSwitch(actorId: string, input: SwitchInput): Pr
   revalidatePath("/vendor", "layout");
   revalidatePath("/manager", "layout");
   revalidatePath("/driver", "layout");
+  revalidatePath("/admin", "layout");
   return { ok: true };
 }

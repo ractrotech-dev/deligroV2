@@ -53,7 +53,7 @@ const MENU_DESC: Record<string, string> = {
   "/admin/banners": "Pause or end a live campaign",
   "/admin/customers": "Directory, order history & contact",
   "/admin/settings/employees": "Create manager & rider logins, assign their zones",
-  "/admin/settings/feature-access": "What managers, vendors and riders may use, per role or person",
+  "/admin/settings/feature-access": "What managers, vendors and riders may use, and which admin screens are on",
   "/admin/settings/zones": "Cities and delivery zones managers are scoped to",
   "/admin/settings/sms": "Text shops when a new order arrives",
   "/admin/storage": "Food photos and home-strip category pictures",

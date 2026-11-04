@@ -13,7 +13,7 @@
  * `resolve.ts`, database access in `flags.server.ts`.
  */
 
-export type FeatureRole = "vendor" | "manager" | "driver";
+export type FeatureRole = "vendor" | "manager" | "driver" | "admin";
 
 /** Who a per-account override attaches to: a vendor's shop, or a person. */
 export type FeatureSubjectKind = "restaurant" | "profile";
@@ -91,10 +91,17 @@ export const FEATURES = [
   { key: "driver.incentives", role: "driver", label: "Incentives & targets", offMeans: "Incentive targets and bonus progress are hidden. Bonuses already earned still count in earnings." },
   { key: "driver.performance", role: "driver", label: "Performance & ratings", offMeans: "The Performance screen is hidden: delivery targets, customer ratings, rates and the monthly report." },
   { key: "driver.cash", role: "driver", label: "Cash in hand & deposits", offMeans: "The Cash screen is hidden: no cash-in-hand figure or deposits in the app; a manager records handovers. Collecting cash on delivery still works." },
+  { key: "driver.cod_change", role: "driver", label: "Cash change to wallet", offMeans: "The rider can't put a cash customer's extra money into their wallet; change is given back in cash." },
   { key: "driver.support", role: "driver", label: "Help tickets", offMeans: "No new tickets, replies or ticket history. Calling or WhatsApping Deligro, SOS and emergency reports still work." },
   { key: "driver.call_customer", role: "driver", label: "Call customer", offMeans: "Call buttons are hidden; the rider uses the delivery code only." },
   { key: "driver.navigation", role: "driver", label: "Navigation", offMeans: "No Navigate / Google Maps hand-off button." },
   { key: "driver.profile_edit", role: "driver", label: "Edit profile", offMeans: "Profile is read-only." },
+  // ---- admin console ----
+  // Whole console screens, switched for every admin at once (no per-person
+  // exceptions). Off hides the screen's menu entry and shortcuts, the route
+  // shows a notice, and its Server Actions refuse. Turning it back on is this
+  // same switch, so an admin can never lock themselves out of it.
+  { key: "admin.refunds", role: "admin", label: "Refunds", offMeans: "The Refunds page, its menu entry and top-bar shortcut are hidden for every admin, and refund decisions are refused." },
 ] as const satisfies readonly FeatureDef[];
 
 export type FeatureKey = (typeof FEATURES)[number]["key"];
@@ -103,13 +110,18 @@ export const ROLE_SUBJECT: Record<FeatureRole, FeatureSubjectKind> = {
   vendor: "restaurant",
   manager: "profile",
   driver: "profile",
+  admin: "profile",
 };
 
 export const ROLE_LABEL: Record<FeatureRole, string> = {
   vendor: "Vendors (per shop)",
   manager: "Managers",
   driver: "Riders",
+  admin: "Admin console",
 };
+
+/** Roles whose switches are role-wide only: no per-shop or per-person exceptions. */
+export const ROLE_WIDE_ONLY: readonly FeatureRole[] = ["admin"];
 
 export function featuresFor(role: FeatureRole): FeatureDef[] {
   return FEATURES.filter((f) => f.role === role);

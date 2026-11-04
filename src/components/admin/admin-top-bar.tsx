@@ -7,6 +7,7 @@ import { Menu, ReceiptText, RotateCcw, Search, Store, X } from "lucide-react";
 import { activeNavItem } from "@/components/admin/admin-nav";
 import { ConsoleThemeToggle } from "@/components/admin/console/chrome";
 import type { AdminNavCounts } from "@/lib/data-access/admin-stats";
+import type { FeatureKey } from "@/lib/features/catalog";
 import { cn } from "@/lib/utils/cn";
 
 /** Where the search box can send you — each is a page that really filters on `q`. */
@@ -50,9 +51,11 @@ type ScopeId = (typeof SCOPES)[number]["id"];
  */
 export function AdminTopBar({
   counts,
+  featuresOff,
   onMenu,
 }: Readonly<{
   counts: AdminNavCounts;
+  featuresOff: readonly FeatureKey[];
   onMenu: () => void;
 }>) {
   const pathname = usePathname();
@@ -163,13 +166,15 @@ export function AdminTopBar({
             tone="accent"
             icon={<Store className="size-4" strokeWidth={1.8} />}
           />
-          <QuickAction
-            href="/admin/refunds"
-            label="Refunds waiting"
-            count={counts.pendingRefunds}
-            tone="deal"
-            icon={<RotateCcw className="size-4" strokeWidth={1.8} />}
-          />
+          {featuresOff.includes("admin.refunds") ? null : (
+            <QuickAction
+              href="/admin/refunds"
+              label="Refunds waiting"
+              count={counts.pendingRefunds}
+              tone="deal"
+              icon={<RotateCcw className="size-4" strokeWidth={1.8} />}
+            />
+          )}
 
           <span
             aria-hidden

@@ -25,6 +25,7 @@ import {
   ScrollText,
   Siren,
 } from "lucide-react";
+import type { FeatureKey } from "@/lib/features/catalog";
 
 /**
  * One nav definition, three consumers: the web sidebar, the phone bottom tabs,
@@ -67,6 +68,11 @@ export interface AdminNavItem {
   primary?: boolean;
   /** Rail and drawer only — never offered as a phone destination. */
   reach?: "console";
+  /**
+   * The Feature access switch (`admin.*`) that turns this screen off. Off drops
+   * the entry everywhere it is listed, and the route renders a notice.
+   */
+  feature?: FeatureKey;
   /** Live count rendered as a pill. */
   badge?: BadgeKey;
   /** Colour used by the phone tab bar and the sidebar's active state. */
@@ -102,6 +108,7 @@ export const ADMIN_NAV: AdminNavItem[] = [
     primary: true,
     badge: "pendingRefunds",
     tone: "deal",
+    feature: "admin.refunds",
     match: (p) => p.startsWith("/admin/refunds"),
   },
   {
@@ -331,6 +338,14 @@ export const ADMIN_NAV_GROUPS = [
 export const ADMIN_PHONE_MENU = ADMIN_NAV.filter(
   (i) => !i.primary && i.reach !== "console"
 );
+
+/** The entries still on: drops every screen whose `feature` is switched off. */
+export function enabledNav<T extends AdminNavItem>(
+  items: readonly T[],
+  featuresOff: readonly FeatureKey[]
+): T[] {
+  return items.filter((i) => !i.feature || !featuresOff.includes(i.feature));
+}
 
 /** Longest matching route wins, so /admin doesn't claim /admin/orders. */
 export function activeNavItem(pathname: string): AdminNavItem | null {

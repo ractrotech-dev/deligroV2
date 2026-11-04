@@ -12,6 +12,7 @@ import {
 } from "@/components/admin/console/chrome";
 import type { AdminNavCounts } from "@/lib/data-access/admin-stats";
 import type { ConsolePrefs } from "@/lib/console-theme.server";
+import type { FeatureKey } from "@/lib/features/catalog";
 
 /**
  * Admin chrome: the web console only (sidebar + top bar). There is no phone
@@ -35,6 +36,8 @@ import type { ConsolePrefs } from "@/lib/console-theme.server";
 interface AdminShellProps {
   children: React.ReactNode;
   counts: AdminNavCounts;
+  /** Admin-console screens switched off in Feature access; their nav goes. */
+  featuresOff: FeatureKey[];
   name: string;
   email: string | null;
   /** Palette and rail width, resolved server-side. See `resolveConsolePrefs`. */
@@ -57,6 +60,7 @@ export function AdminShell({ prefs, ...props }: Readonly<AdminShellProps>) {
 function AdminShellChrome({
   children,
   counts,
+  featuresOff,
   name,
   email,
 }: Readonly<Omit<AdminShellProps, "prefs">>) {
@@ -72,12 +76,14 @@ function AdminShellChrome({
       >
         <AdminSidebar
           counts={counts}
+          featuresOff={featuresOff}
           name={name}
           email={email}
         />
         <div className="admin-content">
           <AdminTopBar
             counts={counts}
+            featuresOff={featuresOff}
             onMenu={() => setNavOpen(true)}
           />
           <main className="admin-main @container">{children}</main>
@@ -87,6 +93,7 @@ function AdminShellChrome({
         open={navOpen}
         onClose={closeNav}
         counts={counts}
+        featuresOff={featuresOff}
         theme={theme}
       />
       {/* Carries `console-theme` itself: it sits outside the shell div that

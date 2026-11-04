@@ -11,10 +11,12 @@ import {
   ADMIN_NAV,
   ADMIN_NAV_GROUPS,
   activeNavItem,
+  enabledNav,
   type AdminNavItem,
   type BadgeKey,
 } from "@/components/admin/admin-nav";
 import type { AdminNavCounts } from "@/lib/data-access/admin-stats";
+import type { FeatureKey } from "@/lib/features/catalog";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { initials } from "@/lib/utils/format";
 import { cn } from "@/lib/utils/cn";
@@ -50,10 +52,12 @@ import { cn } from "@/lib/utils/cn";
  */
 export function AdminSidebar({
   counts,
+  featuresOff,
   name,
   email,
 }: Readonly<{
   counts: AdminNavCounts;
+  featuresOff: readonly FeatureKey[];
   name: string;
   email: string | null;
 }>) {
@@ -109,7 +113,7 @@ export function AdminSidebar({
           aria-label="Admin navigation"
         >
           {ADMIN_NAV_GROUPS.map((group, groupIndex) => {
-            const items = ADMIN_NAV.filter((i) => i.group === group);
+            const items = enabledNav(ADMIN_NAV, featuresOff).filter((i) => i.group === group);
             if (!items.length) return null;
             return (
               <div key={group}>

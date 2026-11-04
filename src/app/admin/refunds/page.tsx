@@ -1,5 +1,6 @@
 import { requireRole } from "@/lib/auth";
 import { RotateCcw } from "lucide-react";
+import Link from "next/link";
 import { listRefunds, type RefundRow } from "@/lib/data-access/refunds";
 import { RefundCard } from "@/components/admin/refund-card";
 import { EmptyState } from "@/components/admin/admin-ui";
@@ -14,6 +15,7 @@ import {
   type MetricItem,
 } from "@/components/admin/console";
 import { formatINR, formatWaited } from "@/lib/utils/format";
+import { adminFeatureOn } from "@/lib/features/guards.server";
 
 /**
  * Admin → Refunds. The queue of money decisions, oldest ask first.
@@ -51,6 +53,30 @@ export default async function AdminRefundsPage({
   // The layout is not a guard: Next skips it when the client already holds that
   // segment, so the page that reads service-role data checks for itself.
   await requireRole("admin");
+
+  // Feature access → Admin console → Refunds. Off: the nav has already dropped
+  // the entry; a bookmark or a link from elsewhere lands on this notice, and
+  // the decision actions refuse (app/admin/actions.ts).
+  if (!(await adminFeatureOn("admin.refunds"))) {
+    return (
+      <div className="space-y-6">
+        <PageHeader title="Refunds" description="Money to give back on cancelled paid orders." />
+        <EmptyState
+          icon={RotateCcw}
+          title="Refunds is switched off"
+          description="An admin turned this page off in Feature access. Refund requests are still recorded; they wait here until it is switched back on."
+          action={
+            <Link
+              href="/admin/settings/feature-access"
+              className="press text-[13px] font-semibold text-accent underline-offset-2 hover:underline"
+            >
+              Open Feature access
+            </Link>
+          }
+        />
+      </div>
+    );
+  }
 
   const [sp, refunds] = await Promise.all([searchParams, listRefunds()]);
   const status = FILTERS.includes(sp.status as Filter)

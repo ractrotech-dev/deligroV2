@@ -9,6 +9,9 @@ import type { RefundDecisionError } from "@/lib/data-access/refunds";
 import { notifyRefundDecided } from "@/lib/notifications/order-events";
 import { rateLimit } from "@/lib/rate-limit";
 import { deferNotify } from "@/lib/notifications/defer";
+import { adminFeatureOn } from "@/lib/features/guards.server";
+
+const REFUNDS_OFF = "Refunds is switched off in Feature access.";
 
 export interface ActionResult {
   ok: boolean;
@@ -25,6 +28,7 @@ export interface ActionResult {
  */
 export async function releaseRefundClaimAction(id: string, reason: string): Promise<ActionResult> {
   const admin = await requireRole("admin");
+  if (!(await adminFeatureOn("admin.refunds"))) return { ok: false, error: REFUNDS_OFF };
   const why = reason.trim();
   if (why.length < 3) return { ok: false, error: "Write what you checked (at least 3 characters)." };
   const result = await releaseRefundClaim({ id: admin.id }, id, why).catch(() => null);
@@ -89,6 +93,7 @@ export async function decideRefundAction(
   reason: string
 ): Promise<ActionResult> {
   const admin = await requireRole("admin");
+  if (!(await adminFeatureOn("admin.refunds"))) return { ok: false, error: REFUNDS_OFF };
 
   // The ordinary write ceiling, keyed on the admin (checklist §4). The
   // one-gateway-call-per-refund claim (the double-refund guard) lives inside

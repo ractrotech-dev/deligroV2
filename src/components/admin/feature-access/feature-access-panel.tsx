@@ -6,6 +6,7 @@ import { Section } from "@/components/admin/console";
 import { cn } from "@/lib/utils/cn";
 import {
   ROLE_LABEL,
+  ROLE_WIDE_ONLY,
   featureDef,
   featuresFor,
   isDefaultOn,
@@ -23,12 +24,13 @@ export interface Account {
 
 type Choice = "inherit" | "on" | "off";
 
-const ROLES: FeatureRole[] = ["vendor", "manager", "driver"];
+const ROLES: FeatureRole[] = ["vendor", "manager", "driver", "admin"];
 
 const SUBJECT_LABEL: Record<FeatureRole, string> = {
   vendor: "Shop",
   manager: "Manager",
   driver: "Rider",
+  admin: "Admin",
 };
 
 /**
@@ -149,6 +151,7 @@ export function FeatureAccessPanel({
         </ul>
       </Section>
 
+      {ROLE_WIDE_ONLY.includes(role) ? null : (
       <Section
         title={role === "vendor" ? "Exceptions for one shop" : "Exceptions for one person"}
         meta={exceptions.length ? `${exceptions.length} with exceptions` : undefined}
@@ -196,6 +199,7 @@ export function FeatureAccessPanel({
           />
         ) : null}
       </Section>
+      )}
     </div>
   );
 }

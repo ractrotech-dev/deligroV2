@@ -8,6 +8,7 @@ import {
 import { createClient } from "@/lib/supabase/server";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { resolveConsolePrefs } from "@/lib/console-theme.server";
+import { adminFeaturesOff } from "@/lib/features/guards.server";
 
 const NO_COUNTS: AdminNavCounts = {
   pendingApprovals: 0,
@@ -43,7 +44,7 @@ export default async function AdminLayout({
   // The console's badges and its "signed in as". Both are chrome: a failure
   // here must not take the page under it down, so counts fall back to zero
   // (nothing to do) and the name to a neutral label — never to someone else's.
-  const [counts, profile, email, prefs] = await Promise.all([
+  const [counts, profile, email, prefs, featuresOff] = await Promise.all([
     isSupabaseConfigured
       ? getAdminNavCounts().catch(() => NO_COUNTS)
       : Promise.resolve(NO_COUNTS),
@@ -53,6 +54,9 @@ export default async function AdminLayout({
     // mode above: decided here, or the first paint is a guess that has to be
     // corrected after hydration.
     resolveConsolePrefs(),
+    // Screens switched off in Feature access drop out of the nav. Chrome too:
+    // a failed read shows everything rather than hiding the refund queue.
+    adminFeaturesOff().catch(() => []),
   ]);
 
   return (
@@ -62,6 +66,7 @@ export default async function AdminLayout({
       <AdminShell
         prefs={prefs}
         counts={counts}
+        featuresOff={featuresOff}
         name={profile?.full_name?.trim() || "Admin"}
         email={email}
       >

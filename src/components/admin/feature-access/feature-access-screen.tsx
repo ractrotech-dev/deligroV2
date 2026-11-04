@@ -59,13 +59,15 @@ export async function FeatureAccessScreen({
     driver: staff
       .filter((e) => e.role === "driver")
       .map((e) => ({ id: e.id, name: e.fullName ?? e.phone ?? "Rider" })),
+    // Admin-console switches are role-wide only.
+    admin: [],
   };
 
   return (
     <div className="space-y-6">
       <PageHeader
         title="Feature access"
-        description="Choose what vendors, managers and riders can use. Off means hidden in their app and refused by the server. Set it for everyone, then make exceptions for one shop or one person — here, or on that rider's or shop's Access tab. Sensitive manager powers (payments, corrections, customer contact) start off."
+        description="Choose what vendors, managers and riders can use, and which admin-console screens are switched on. Off means hidden in their app and refused by the server. Set it for everyone, then make exceptions for one shop or one person — here, or on that rider's or shop's Access tab. Sensitive manager powers (payments, corrections, customer contact) start off."
       />
       {!available ? (
         <Section title="Not active yet">
