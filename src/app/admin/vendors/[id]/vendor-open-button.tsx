@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useTransition } from "react";
+import { StatusText } from "@/components/admin/console/status";
 import { setVendorOpenAction } from "../actions";
 
 /**
@@ -22,8 +23,11 @@ export function VendorOpenButton({ id, isOpen }: Readonly<{ id: string; isOpen: 
   };
 
   return (
-    <button type="button" onClick={toggle} disabled={pending} className="c-btn c-btn-outline">
-      {pending ? "Saving…" : isOpen ? "Open now · Close shop" : "Closed now · Open shop"}
-    </button>
+    <span className="inline-flex items-center gap-2">
+      <StatusText tone={isOpen ? "green" : "neutral"}>{isOpen ? "Open" : "Closed"}</StatusText>
+      <button type="button" onClick={toggle} disabled={pending} className="c-btn c-btn-outline">
+        {pending ? "Saving…" : isOpen ? "Close shop" : "Open shop"}
+      </button>
+    </span>
   );
 }

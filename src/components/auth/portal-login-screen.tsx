@@ -41,7 +41,10 @@ export async function PortalLoginScreen({
       portalKey === "vendor"
         ? vendorAccess
         : roleEntersPortal(portal, profile.role);
-    if (allowed) redirect(landing);
+    // A manager sent back here with denied=1 has been stopped by an admin but still
+    // holds a session. Sending them on would just bounce them back, forever.
+    const stoppedManager = denied === "1" && profile.role === "manager";
+    if (allowed && !stoppedManager) redirect(landing);
   }
 
   const signedInAs = profile
